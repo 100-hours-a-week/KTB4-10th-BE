@@ -1,0 +1,17 @@
+<svg width="328" height="52" viewBox="0 0 328 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0.5" y="0.5" width="327" height="51" rx="13.5" fill="white" stroke="#D1D5DB"/>
+
+  <g id="trophy" stroke="#222222" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19 15H31V20.5C31 25.2 28.3 28 25 28C21.7 28 19 25.2 19 20.5V15Z"/>
+    <path d="M19 18H15.5V20C15.5 23 17.2 24.8 20.1 25.2"/>
+    <path d="M31 18H34.5V20C34.5 23 32.8 24.8 29.9 25.2"/>
+    <path d="M25 28V33"/>
+    <path d="M20.5 36H29.5"/>
+    <path d="M22 33H28L29.5 36H20.5L22 33Z"/>
+    <path d="M25 18.7L25.9 20.5L27.9 20.8L26.45 22.2L26.8 24.2L25 23.25L23.2 24.2L23.55 22.2L22.1 20.8L24.1 20.5L25 18.7Z" fill="#222222" stroke="none"/>
+  </g>
+
+  <text x="48" y="32" fill="#222222" font-family="Pretendard, Arial, sans-serif" font-size="16" font-weight="600">랭킹 보기</text>
+
+  <path d="M300 21L305 26L300 31" stroke="#6B7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

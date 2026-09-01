@@ -1,0 +1,73 @@
+<svg width="350" height="728" viewBox="0 0 350 728" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="350" height="728" fill="#FFFFFF"/>
+
+  <!-- status and header -->
+  <text x="20" y="25" fill="#222222" font-family="Pretendard, Arial, sans-serif" font-size="11" font-weight="500">9:41</text>
+  <path d="M296 16V22M302 14V22M308 12V22" stroke="#6B7280" stroke-width="2"/>
+  <circle cx="317" cy="17" r="4" stroke="#6B7280" stroke-width="1.5"/>
+  <path d="M327 17H335" stroke="#6B7280" stroke-width="2" stroke-linecap="round"/>
+  <text x="20" y="71" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="28" font-weight="700">어디로 떠나볼까요?</text>
+
+  <!-- ranking period tabs -->
+  <text x="69" y="114" text-anchor="middle" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="16" font-weight="700">월간</text>
+  <text x="175" y="114" text-anchor="middle" fill="#8A8A8A" font-family="Pretendard, Arial, sans-serif" font-size="16" font-weight="500">주간</text>
+  <line x1="20" y1="127" x2="330" y2="127" stroke="#E5E7EB"/>
+  <line x1="20" y1="126" x2="118" y2="126" stroke="#222222" stroke-width="3"/>
+
+  <!-- ranking filters -->
+  <rect x="20" y="143" width="88" height="34" rx="17" fill="#FFFFFF" stroke="#A9A9A9"/>
+  <text x="35" y="165" fill="#444444" font-family="Pretendard, Arial, sans-serif" font-size="13">지역 전체</text>
+  <path d="M92 157L97 162L102 157" stroke="#666666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="116" y="143" width="116" height="34" rx="17" fill="#FFFFFF" stroke="#A9A9A9"/>
+  <text x="132" y="165" fill="#444444" font-family="Pretendard, Arial, sans-serif" font-size="13">카테고리 전체</text>
+  <path d="M216 157L221 162L226 157" stroke="#666666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="20" y="199" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="11">방문자의 별점과 평가 수를 반영한 순위예요</text>
+
+  <!-- rank card 1 -->
+  <rect x="20" y="214" width="310" height="120" rx="15" fill="#FFFFFF" stroke="#222222"/>
+  <text x="35" y="243" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="22" font-weight="700">1</text>
+  <rect x="70" y="229" width="61" height="25" rx="12.5" fill="#F5F5F5" stroke="#B3B3B3"/>
+  <text x="100.5" y="246" text-anchor="middle" fill="#555555" font-family="Pretendard, Arial, sans-serif" font-size="11">문화유산</text>
+  <text x="35" y="278" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="17" font-weight="700">경복궁</text>
+  <text x="35" y="303" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="12">★ 4.8 · 평가 832개</text>
+  <text x="35" y="322" fill="#8A8A8A" font-family="Pretendard, Arial, sans-serif" font-size="11">서울특별시 종로구</text>
+  <rect x="259" y="229" width="55" height="88" rx="10" fill="#F3F4F6" stroke="#B9BCC2"/>
+  <path d="M278 270H295V283H278V270ZM280 278L284 274L288 278L291 275L294 279" stroke="#AEB2B8" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- rank card 2 -->
+  <rect x="20" y="346" width="310" height="120" rx="15" fill="#FFFFFF" stroke="#222222"/>
+  <text x="35" y="375" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="22" font-weight="700">2</text>
+  <rect x="70" y="361" width="67" height="25" rx="12.5" fill="#F5F5F5" stroke="#B3B3B3"/>
+  <text x="103.5" y="378" text-anchor="middle" fill="#555555" font-family="Pretendard, Arial, sans-serif" font-size="11">행사·축제</text>
+  <text x="35" y="410" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="17" font-weight="700">강릉단오제</text>
+  <text x="35" y="435" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="12">★ 4.7 · 평가 615개</text>
+  <text x="35" y="454" fill="#8A8A8A" font-family="Pretendard, Arial, sans-serif" font-size="11">강원특별자치도 강릉시</text>
+  <rect x="259" y="361" width="55" height="88" rx="10" fill="#F3F4F6" stroke="#B9BCC2"/>
+  <path d="M278 402H295V415H278V402ZM280 410L284 406L288 410L291 407L294 411" stroke="#AEB2B8" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- rank card 3 -->
+  <rect x="20" y="478" width="310" height="120" rx="15" fill="#FFFFFF" stroke="#222222"/>
+  <text x="35" y="507" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="22" font-weight="700">3</text>
+  <rect x="70" y="493" width="49" height="25" rx="12.5" fill="#F5F5F5" stroke="#B3B3B3"/>
+  <text x="94.5" y="510" text-anchor="middle" fill="#555555" font-family="Pretendard, Arial, sans-serif" font-size="11">명소</text>
+  <text x="35" y="542" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="17" font-weight="700">경포해변</text>
+  <text x="35" y="567" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="12">★ 4.6 · 평가 502개</text>
+  <text x="35" y="586" fill="#8A8A8A" font-family="Pretendard, Arial, sans-serif" font-size="11">강원특별자치도 강릉시</text>
+  <rect x="259" y="493" width="55" height="88" rx="10" fill="#F3F4F6" stroke="#B9BCC2"/>
+  <path d="M278 534H295V547H278V534ZM280 542L284 538L288 542L291 539L294 543" stroke="#AEB2B8" stroke-width="1.5" stroke-linejoin="round"/>
+
+  <!-- bottom navigation retained from information tab -->
+  <rect x="0" y="642" width="350" height="86" fill="#FFFFFF"/>
+  <line x1="0" y1="642.5" x2="350" y2="642.5" stroke="#E5E7EB"/>
+  <g stroke="#777777" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="44" cy="672" r="7"/><path d="M44 661V665M44 679V683M33 672H37M51 672H55"/>
+    <circle cx="131" cy="672" r="8"/><path d="M131 670V678M131 666V666.5"/>
+    <rect x="210" y="664" width="16" height="16"/><rect x="213" y="667" width="10" height="10"/>
+    <circle cx="306" cy="672" r="8"/>
+  </g>
+  <text x="44" y="703" text-anchor="middle" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="11">맵</text>
+  <text x="131" y="703" text-anchor="middle" fill="#111111" font-family="Pretendard, Arial, sans-serif" font-size="11" font-weight="700">정보</text>
+  <text x="218" y="703" text-anchor="middle" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="11">가이드북</text>
+  <text x="306" y="703" text-anchor="middle" fill="#777777" font-family="Pretendard, Arial, sans-serif" font-size="11">마이페이지</text>
+  <line x1="108" y1="718" x2="154" y2="718" stroke="#222222" stroke-width="3" stroke-linecap="round"/>
+</svg>
