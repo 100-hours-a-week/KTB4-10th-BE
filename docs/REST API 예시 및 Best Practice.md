@@ -2,7 +2,9 @@
 
 > 적용 범위: V3 API 설계  
 > 연계 문서: [V3 API 명세서](./V3%20API%20명세서.md)  
-> 기준일: 2026-09-01
+> 기준일: 2026-09-02
+>
+> 데이터 모델 기준: [테이블정의서](./테이블정의서.md)
 
 ## 1. 이 문서를 보는 목적
 
@@ -32,7 +34,7 @@ URL에는 가능하면 동사가 아니라 관리하려는 대상을 복수 명�
 동사가 필요한 경우도 있다. OAuth 콜백, 평가 제출, 주문 취소처럼 단순 CRUD보다 명령의 의미가 중요한 동작은 하위 액션 리소스로 표현할 수 있다.
 
 ```http
-POST /api/v1/rating-sessions/{sessionId}/submission
+POST /api/v1/guidebook-evaluations/{evaluationId}/submit
 POST /api/v1/orders/{orderId}/cancellation
 ```
 
@@ -160,7 +162,7 @@ Accept-Language: ko-KR
 | 코드 | 언제 사용하는가 | V3 예시 |
 |---:|---|---|
 | `200 OK` | 조회 또는 본문을 반환하는 변경 성공 | 가이드북 상세, 알림 읽음 처리 |
-| `201 Created` | 즉시 새 리소스 생성 완료 | 주문, 공유 링크, 평가 세션 |
+| `201 Created` | 즉시 새 리소스 생성 완료 | 주문, 공유 링크 |
 | `202 Accepted` | 작업은 접수했지만 아직 미완료 | AI 생성, PDF 생성, 환불 처리 |
 | `204 No Content` | 성공했지만 반환할 본문이 없음 | 로그아웃, 관심 장소 삭제 |
 | `400 Bad Request` | JSON·타입·형식·범위 오류 | 검색어 10자 초과, 날짜 역전 |
@@ -225,9 +227,7 @@ PUT /api/v1/members/me/preferences
 
 ```json
 {
-  "themes": ["FOOD", "NATURE"],
-  "pace": "RELAXED",
-  "companions": ["FRIENDS"]
+  "preference_option_ids": [1, 4, 7]
 }
 ```
 
@@ -285,8 +285,8 @@ Location: /api/v1/guidebook-generations/gen_123
 {
   "message": "guidebook_generation_accepted",
   "data": {
-    "generation_id": "gen_123",
-    "status": "QUEUED"
+    "job_id": "job_123",
+    "status": "PENDING"
   }
 }
 ```
@@ -294,10 +294,10 @@ Location: /api/v1/guidebook-generations/gen_123
 ### 9.2 상태 조회
 
 ```http
-GET /api/v1/guidebook-generations/gen_123
+GET /api/v1/guidebook-generations/job_123
 ```
 
-상태는 예를 들어 `QUEUED → GENERATING → SUCCEEDED` 또는 `FAILED/CANCELED`로 이동한다. 성공 시 생성된 `guidebook_id`를 반환하고, 실패 시 사용자에게 보여줄 수 있는 안정적인 오류 코드를 반환한다.
+생성 작업 상태는 테이블 정의서와 동일하게 `PENDING → PROCESSING → COMPLETED` 또는 `FAILED`로 이동한다. 최초 생성 성공이면 새 `guidebook_id`를, 재생성 성공이면 기존 `guidebook_id`와 증가한 `guidebook_version`을 반환한다. `CANCELED`는 현재 저장 enum에 없으므로 사용자 취소를 제공하려면 상태 모델을 먼저 확정해야 한다.
 
 프론트는 짧은 간격의 무한 폴링을 피하고 점진적으로 조회 간격을 늘리거나, 추후 SSE·WebSocket·푸시를 적용할 수 있다.
 
@@ -312,12 +312,14 @@ GET /api/v1/guidebook-generations/gen_123
 따라서 V3에서는 다음 흐름이 안전하다.
 
 1. 생성 요청과 멱등 키를 검증한다.
-2. DOM-05에서 생성권 1회를 `RESERVED` 상태로 예약한다.
-3. GenerationJob을 생성하고 AI 작업을 수행한다.
-4. 성공하면 새 Guidebook을 저장하고 예약을 `CONSUMED`로 확정한다.
-5. 실패 또는 취소면 예약을 `RELEASED`로 돌린다.
+2. `credit_wallets.reserved_count`를 조건부 원자 연산으로 1 증가시키고 `credit_transactions(RESERVE)`를 기록한다.
+3. 백엔드가 `job_...` ID의 GenerationJob을 만들고 같은 ID를 AI에 전달한다.
+4. 기술적 재시도는 같은 작업 ID와 예약을 사용하며 최대 3회 수행한다.
+5. 최초 생성 성공이면 새 Guidebook을 저장하고 총잔액·예약수량을 각각 1 감소시킨 뒤 `CONSUME` 원장을 기록한다.
+6. 재생성 성공이면 같은 가이드북 ID의 본문·일정을 교체하고 version을 증가시킨 뒤 동일하게 `CONSUME` 처리한다.
+7. 최종 실패면 예약수량을 1 감소시키고 `RELEASE` 원장을 기록한다. 재생성 실패는 기존 가이드북을 변경하지 않는다.
 
-분산 트랜잭션을 바로 도입하기보다, 상태 전이·고유 키·재처리 작업으로 보상 가능한 구조를 먼저 설계하는 것이 소규모 팀에 현실적이다.
+`credit_transactions`의 `(generation_job_id, type)` 유일 제약이 같은 작업의 예약·확정·해제를 중복 반영하지 않게 한다. 별도 예약 테이블이나 `RESERVED/CONSUMED/RELEASED` 예약 엔티티를 API에 노출하지 않는다.
 
 ## 11. 결제·웹훅 설계 시 주의점
 
@@ -332,7 +334,85 @@ GET /api/v1/guidebook-generations/gen_123
 
 외부 시스템에는 서버 내부 예외 대신 정상 수신 여부를 명확히 응답하고, 재시도 정책과 서명 실패 로그를 운영 기준에 포함한다.
 
-## 12. 인증과 인가를 분리한다
+### 11.1 생성권 API 용어는 테이블과 맞춘다
+
+API에서도 `entitlement`보다 테이블 정의서와 같은 `credit` 용어를 사용한다.
+
+```http
+GET /api/v1/credits/wallet
+GET /api/v1/credits/transactions
+GET /api/v1/credit-products
+```
+
+- `credit_balance`: 보유 총수량
+- `reserved_count`: 진행 중 생성 작업에 예약된 수량
+- `available_count`: `credit_balance - reserved_count` 파생값
+- `credit_delta`, `reserved_delta`: 원장 한 건의 변화량
+- `credit_balance_after`, `reserved_count_after`: 처리 직후 값
+
+지갑과 원장은 구현 내부 모델일 뿐, 클라이언트가 예약·차감 API를 직접 호출하지 않는다. 가이드북 생성 애플리케이션 서비스가 같은 트랜잭션 경계에서 처리한다.
+
+### 11.2 환불 API는 저장 구조와 함께 확정한다
+
+요구사항에는 환불이 있지만 현재 테이블 정의서에는 환불 요청 ID, 요청 금액, 사유, 멱등 키, 처리 상태를 독립적으로 보존할 테이블이 없다. `payment_attempts.status=REFUNDED`만으로는 접수부터 PG 완료 전까지의 비동기 상태를 표현하기 어렵다.
+
+따라서 `POST /orders/{merchantOrderId}/refund`를 확정하려면 먼저 다음 중 하나를 선택해야 한다.
+
+- `refunds` 테이블을 추가해 요청·PG 결과·원장 반영 상태를 분리한다.
+- 부분 환불을 제외하고 동기 전체 취소만 지원하도록 범위를 줄인다.
+
+정책과 저장 모델이 정해지기 전에는 환불 API를 구현 확정본으로 표시하지 않는다.
+
+## 12. 평가 API와 저장 모델을 함께 본다
+
+V3의 영속 리소스 이름은 `rating-session`이 아니라 `guidebook_evaluations`와 `place_ratings`다.
+
+```http
+PUT   /api/v1/guidebooks/{guidebookId}/evaluation
+GET   /api/v1/guidebook-evaluations/{evaluationId}
+PUT   /api/v1/guidebook-evaluations/{evaluationId}/places/{contentId}
+PATCH /api/v1/guidebook-evaluations/{evaluationId}
+POST  /api/v1/guidebook-evaluations/{evaluationId}/submit
+```
+
+`다음에 하기`는 `DEFERRED` 상태 전이가 아니다. `prompt_dismissed_at`만 기록하며 평가 status는 `PENDING` 또는 `IN_PROGRESS`를 유지한다.
+
+별점 값은 다음처럼 구분한다.
+
+- `score: 0`: 유효한 0점 평가
+- `score: null`: 해당 장소 건너뛰기
+- 응답 항목 또는 초안 값 없음: 아직 응답하지 않음
+
+다만 현재 `place_ratings`는 `(member_id, tourism_content_id)`당 최종값 하나만 유지한다. 이 구조만으로는 제출 전 초안과 이전에 제출된 최종 평가를 분리하기 어렵다. 이전·다음 이동 중 저장과 최종 제출을 모두 보장하려면 평가별 초안 JSON 또는 평가 항목 테이블을 추가할지 결정해야 한다.
+
+## 13. 재생성과 재시도를 구분한다
+
+두 동작은 모두 AI를 다시 호출하지만 비즈니스 의미가 다르다.
+
+| 구분 | 작업 ID | 가이드북 ID | 생성권 | 성공 결과 |
+|---|---|---|---|---|
+| 기술 재시도 | 같은 `job_id` | 그대로 | 추가 예약 없음 | 동일 작업 완료 |
+| 사용자 재생성 | 새 `job_id` | 기존 `guidebook_id` 참조 | 새 1회 예약 | 같은 가이드북 갱신, version 증가 |
+
+재생성 성공 시 새 가이드북을 만들면 공유·평가·목록의 참조가 갈라진다. 현재 요구사항과 테이블은 같은 ID 유지 방식을 선택했으므로 응답도 `source_guidebook_id`나 새 결과 ID가 아니라 대상 `guidebook_id`와 `guidebook_version`을 반환한다.
+
+## 14. API와 테이블의 연결을 확인하는 법
+
+API 필드가 테이블 컬럼과 이름이 완전히 같을 필요는 없지만 저장·복구 경로는 설명할 수 있어야 한다.
+
+| API 값 | 저장 또는 계산 기준 |
+|---|---|
+| `preference_option_ids` | `member_preference_selections.preference_option_id` |
+| `region_code` | `regions.administrative_code`로 조회한 `region_id` |
+| `job_id` | `generation_jobs.id`; 백엔드가 생성해 AI에도 전달 |
+| `guidebook_version` | `guidebooks.version` |
+| `available_count` | `credit_balance - reserved_count` |
+| `share_token` | 원문은 응답에만 노출, DB에는 `share_links.token_hash` 저장 |
+| 지도 marker/cluster | 콘텐츠·좌표를 조합한 응답 모델, 별도 테이블 없음 |
+
+저장할 곳을 설명할 수 없는 요청 필드는 구현 전에 테이블을 보강하거나 API에서 제외해야 한다. 현재 약관 동의, PDF 작업, 평가 초안, 환불 작업이 대표적인 검토 대상이다.
+
+## 15. 인증과 인가를 분리한다
 
 - 인증(Authentication): “누가 요청했는가?”를 확인한다.
 - 인가(Authorization): “그 사용자가 이 작업을 해도 되는가?”를 확인한다.
@@ -341,7 +421,7 @@ GET /api/v1/guidebook-generations/gen_123
 
 공개 공유 링크는 로그인이 없어도 미리보기를 허용할 수 있지만, 만료 시간·폐기 여부를 검증하고 내부 DB 순번처럼 예측 가능한 토큰을 사용하지 않는다.
 
-### 12.1 도메인 병합과 내부 모듈 경계
+### 15.1 도메인 병합과 내부 모듈 경계
 
 V3에서는 알림을 별도 도메인으로 두지 않고 DOM-01 회원의 하위 책임으로 관리한다. 알림이 수신 회원에게 귀속되고 현재 범위가 인앱 목록·읽음 상태·푸시 설정 중심이기 때문이다.
 
@@ -353,15 +433,15 @@ V3에서는 알림을 별도 도메인으로 두지 않고 DOM-01 회원의 하�
 - 알림 저장·푸시 실패는 원본 가이드북 생성이나 평가 제출을 롤백하지 않는다.
 - 채널과 발송량이 커지면 현재 내부 경계를 기준으로 독립 도메인·서비스 분리를 검토한다.
 
-## 13. 데이터 표현 규칙
+## 16. 데이터 표현 규칙
 
-### 13.1 날짜와 시간
+### 16.1 날짜와 시간
 
 - 날짜만 의미하면 ISO 8601의 `YYYY-MM-DD`를 사용한다.
 - 시각은 타임존이 포함된 형식을 사용한다. 예: `2026-09-01T14:30:00+09:00`.
 - 저장 기준과 랭킹 집계 기준 타임존을 명시한다.
 
-### 13.2 금액
+### 16.2 금액
 
 부동소수점 대신 최소 화폐 단위의 정수를 사용한다.
 
@@ -372,17 +452,17 @@ V3에서는 알림을 별도 도메인으로 두지 않고 DOM-01 회원의 하�
 }
 ```
 
-### 13.3 Enum
+### 16.3 Enum
 
 서버와 프론트가 함께 쓰는 상태값은 대문자 영문 enum으로 고정하고 임의 문자열을 허용하지 않는다.
 
 ```text
-QUEUED, GENERATING, SUCCEEDED, FAILED, CANCELED
+PENDING, PROCESSING, COMPLETED, FAILED
 ```
 
 새 enum이 추가될 가능성을 고려해 프론트는 알 수 없는 값을 받았을 때의 기본 UI도 준비한다.
 
-### 13.4 `null`, 누락, 빈 배열
+### 16.4 `null`, 누락, 빈 배열
 
 - 누락: 값이 전달되지 않았거나 PATCH에서 변경하지 않음
 - `null`: 값이 명시적으로 없음을 표현
@@ -390,7 +470,7 @@ QUEUED, GENERATING, SUCCEEDED, FAILED, CANCELED
 
 평가에서는 `score: 0`이 유효한 별점이고 `score: null`은 미평가이므로 둘을 truthy/falsy 검사로 처리하면 안 된다.
 
-## 14. API 버전과 호환성
+## 17. API 버전과 호환성
 
 V3 명세는 `/api/v1` Prefix를 사용한다. 여기의 `v1`은 앱 기획 버전 V3와 다른 개념으로, 외부 API 계약의 첫 번째 버전이라는 뜻이다.
 
@@ -404,7 +484,7 @@ V3 명세는 `/api/v1` Prefix를 사용한다. 여기의 `v1`은 앱 기획 버�
 
 선택 응답 필드를 추가하는 변경은 대체로 호환 가능하지만, 프론트가 알 수 없는 필드를 무시하도록 구현해야 한다.
 
-## 15. OpenAPI로 옮길 때 확인할 내용
+## 18. OpenAPI로 옮길 때 확인할 내용
 
 Markdown 명세가 합의되면 OpenAPI 문서에 다음을 구조화할 수 있다.
 
@@ -418,7 +498,7 @@ Markdown 명세가 합의되면 OpenAPI 문서에 다음을 구조화할 수 있
 
 OpenAPI를 사용하면 Swagger UI, 요청 검증, 타입·클라이언트 코드 생성에 활용할 수 있다. 다만 자동 생성물이 비즈니스 규칙과 설계 근거를 대신하지 않으므로 Markdown 설명과 요구사항 ID 연결은 유지하는 편이 좋다.
 
-## 16. 자주 발생하는 안티패턴
+## 19. 자주 발생하는 안티패턴
 
 | 안티패턴 | 문제 | 개선 |
 |---|---|---|
@@ -432,7 +512,7 @@ OpenAPI를 사용하면 Swagger UI, 요청 검증, 타입·클라이언트 코�
 | 재시도 정책만 있고 멱등성 없음 | 중복 주문·가이드북·차감 발생 | 멱등 키와 DB 고유 제약 병행 |
 | 내부 오류를 그대로 노출 | 보안 정보 유출 | 표준 오류 코드와 추적 ID 사용 |
 
-## 17. API 리뷰 체크리스트
+## 20. API 리뷰 체크리스트
 
 각 엔드포인트를 제출하기 전에 아래를 확인한다.
 
@@ -449,7 +529,7 @@ OpenAPI를 사용하면 Swagger UI, 요청 검증, 타입·클라이언트 코�
 - [ ] 프론트가 상태와 오류 코드에 따라 화면을 구현할 수 있는가?
 - [ ] 로그·메트릭·추적에 필요한 식별자가 있는가?
 
-## 18. V3 API 명세서를 읽는 순서
+## 21. V3 API 명세서를 읽는 순서
 
 1. `엔드포인트 요약`에서 화면에 필요한 API를 찾는다.
 2. 해당 도메인 표에서 요청, 성공 응답, 오류, 인증 조건을 확인한다.
@@ -458,9 +538,10 @@ OpenAPI를 사용하면 Swagger UI, 요청 검증, 타입·클라이언트 코�
 5. 비동기 작업은 `GenerationJob`, 결제는 주문·결제 상태 전이를 함께 본다.
 6. 미확정 정책은 `DEC-*` 항목을 팀 논의 후 명세에 반영한다.
 
-## 19. 참고 자료
+## 22. 참고 자료
 
 - [V3 요구사항정의서](https://github.com/100-hours-a-week/KTB4-10th-BE/blob/main/docs/%EC%9A%94%EA%B5%AC%EC%82%AC%ED%95%AD%EC%A0%95%EC%9D%98%EC%84%9C.md)
+- [V3 테이블정의서](./테이블정의서.md)
 - [RFC 9110: HTTP Semantics](https://www.rfc-editor.org/rfc/rfc9110.html)
 - [RFC 9457: Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html)
 - [OpenAPI Specification 3.2.0](https://spec.openapis.org/oas/v3.2.0.html)
