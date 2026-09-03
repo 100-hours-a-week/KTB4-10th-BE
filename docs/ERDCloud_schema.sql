@@ -1,18 +1,18 @@
 -- V3 ERDCloud import schema
 -- Dialect: MySQL 8.x (ERDCloud import compatibility)
 -- Source of truth: docs/테이블정의서.md
--- Production DB is PostgreSQL. See the notes at the end for PostgreSQL-only constraints.
+-- Production DB: MySQL 8.x / InnoDB / utf8mb4
 
 CREATE TABLE members (
     id BIGINT NOT NULL AUTO_INCREMENT,
     oauth_provider VARCHAR(20) NOT NULL,
     oauth_subject VARCHAR(255) NOT NULL,
     nickname VARCHAR(50) NOT NULL,
-    profile_image_url TEXT NULL,
+    profile_image_url VARCHAR(2048) NULL,
     language_code VARCHAR(10) NOT NULL DEFAULT 'ko',
     status VARCHAR(20) NOT NULL DEFAULT 'ONBOARDING',
     push_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    withdrawn_at DATETIME(6) NULL,
+    deleted_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
@@ -35,10 +35,12 @@ CREATE TABLE auth_sessions (
 ) COMMENT = '리프레시 토큰 단위 로그인 세션';
 
 CREATE TABLE member_preferences (
+    id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
     preference_type VARCHAR(20) NOT NULL,
     preference_code VARCHAR(50) NOT NULL,
-    PRIMARY KEY (member_id, preference_type, preference_code),
+    PRIMARY KEY (id),
+    CONSTRAINT uq_member_preferences_selection UNIQUE (member_id, preference_type, preference_code),
     CONSTRAINT fk_member_preferences_member FOREIGN KEY (member_id) REFERENCES members (id),
     INDEX ix_member_preferences_code (preference_type, preference_code)
 ) COMMENT = '회원이 선택한 취향 Enum 코드';
@@ -75,19 +77,19 @@ CREATE TABLE tourism_contents (
     description TEXT NULL,
     region_id BIGINT NOT NULL,
     address VARCHAR(500) NULL,
-    latitude DECIMAL(10,7) NULL,
-    longitude DECIMAL(10,7) NULL,
+    location POINT SRID 4326 NOT NULL,
     phone VARCHAR(50) NULL,
-    homepage_url TEXT NULL,
-    thumbnail_url TEXT NULL,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    deactivated_at DATETIME(6) NULL,
+    homepage_url VARCHAR(2048) NULL,
+    thumbnail_url VARCHAR(2048) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    deleted_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uq_tourism_contents_source UNIQUE (source_provider, source_content_id),
     CONSTRAINT fk_tourism_contents_region FOREIGN KEY (region_id) REFERENCES regions (id),
-    INDEX ix_tourism_contents_region_category (region_id, category)
+    INDEX ix_tourism_contents_region_category (region_id, category),
+    SPATIAL INDEX ix_tourism_contents_location (location)
 ) COMMENT = '관광 콘텐츠 공통 원본';
 
 CREATE TABLE event_details (
@@ -105,20 +107,24 @@ CREATE TABLE event_details (
 CREATE TABLE content_images (
     id BIGINT NOT NULL AUTO_INCREMENT,
     content_id BIGINT NOT NULL,
-    image_url TEXT NOT NULL,
+    image_url VARCHAR(2048) NOT NULL,
+    image_url_hash BINARY(32) NOT NULL,
     sort_order INT NOT NULL DEFAULT 0,
-    source_url TEXT NULL,
+    source_url VARCHAR(2048) NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uq_content_images_url_hash UNIQUE (content_id, image_url_hash),
     CONSTRAINT fk_content_images_content FOREIGN KEY (content_id) REFERENCES tourism_contents (id),
     INDEX ix_content_images_content_order (content_id, sort_order)
 ) COMMENT = '관광 콘텐츠 이미지';
 
 CREATE TABLE favorite_contents (
+    id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
     content_id BIGINT NOT NULL,
     created_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (member_id, content_id),
+    PRIMARY KEY (id),
+    CONSTRAINT uq_favorite_contents_member_content UNIQUE (member_id, content_id),
     CONSTRAINT fk_favorite_contents_member FOREIGN KEY (member_id) REFERENCES members (id),
     CONSTRAINT fk_favorite_contents_content FOREIGN KEY (content_id) REFERENCES tourism_contents (id)
 ) COMMENT = '회원과 관심 관광 콘텐츠의 N:M 관계';
@@ -162,8 +168,12 @@ CREATE TABLE generation_jobs (
     completed_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
+    active_member_id BIGINT GENERATED ALWAYS AS (
+        CASE WHEN status IN ('PENDING', 'PROCESSING') THEN member_id ELSE NULL END
+    ) STORED,
     PRIMARY KEY (id),
     CONSTRAINT uq_generation_jobs_idempotency UNIQUE (idempotency_key),
+    CONSTRAINT uq_generation_jobs_active_member UNIQUE (active_member_id),
     CONSTRAINT fk_generation_jobs_member FOREIGN KEY (member_id) REFERENCES members (id),
     CONSTRAINT fk_generation_jobs_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT ck_generation_jobs_attempt CHECK (attempt_count BETWEEN 0 AND 3),
@@ -263,8 +273,10 @@ CREATE TABLE ranking_snapshots (
     period_start DATE NOT NULL,
     period_end DATE NOT NULL,
     region_id BIGINT NULL,
+    scope_region_id BIGINT GENERATED ALWAYS AS (COALESCE(region_id, 0)) STORED,
     calculated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
+    CONSTRAINT uq_ranking_snapshots_scope UNIQUE (period_type, period_start, period_end, scope_region_id),
     CONSTRAINT fk_ranking_snapshots_region FOREIGN KEY (region_id) REFERENCES regions (id),
     CONSTRAINT ck_ranking_snapshots_period CHECK (period_start <= period_end)
 ) COMMENT = '일간·주간·월간, 전국·지역별 랭킹 스냅샷';
@@ -293,7 +305,8 @@ CREATE TABLE credit_products (
     credit_amount INT NOT NULL,
     price BIGINT NOT NULL,
     currency CHAR(3) NOT NULL DEFAULT 'KRW',
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    deleted_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
@@ -376,20 +389,3 @@ CREATE TABLE credit_transactions (
     CONSTRAINT ck_credit_transactions_balance CHECK (credit_balance_after >= 0),
     INDEX ix_credit_transactions_wallet_created (wallet_id, created_at)
 ) COMMENT = '생성권 증감의 불변 원장';
-
--- PostgreSQL-only production constraints not representable as ordinary ERDCloud keys:
--- 1) One active generation job per member:
---    CREATE UNIQUE INDEX uq_generation_jobs_active_member
---    ON generation_jobs(member_id)
---    WHERE status IN ('PENDING', 'PROCESSING');
--- 2) One ranking snapshot per period and scope:
---    CREATE UNIQUE INDEX uq_ranking_snapshot_region
---    ON ranking_snapshots(period_type, period_start, period_end, region_id)
---    WHERE region_id IS NOT NULL;
---    CREATE UNIQUE INDEX uq_ranking_snapshot_all
---    ON ranking_snapshots(period_type, period_start, period_end)
---    WHERE region_id IS NULL;
--- 3) PostgreSQL uses TIMESTAMPTZ instead of DATETIME(6), JSONB instead of JSON,
---    and GENERATED BY DEFAULT AS IDENTITY instead of AUTO_INCREMENT.
--- 4) content_images requires UNIQUE (content_id, image_url) in PostgreSQL.
---    It is omitted here because MySQL cannot create a full UNIQUE key on TEXT.

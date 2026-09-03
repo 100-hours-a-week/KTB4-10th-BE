@@ -2,8 +2,8 @@
 
 > 문서 성격: **검토용 비권위 초안**
 >
-> 현재 요구사항정의서와 테이블정의서를 수정하지 않고 현행 설계를 해체해 설명하는 보조 문서다.
-> **[변경 제안]**은 미확정 사항이며 팀 검토 후 원본 문서·ERD·API에 별도로 반영한다.
+> 현재 요구사항정의서·테이블정의서·ERDCloud 스키마에 반영된 현행 설계와 그 근거를 설명하는 보조 문서다.
+> **[변경 제안]**은 아직 미확정인 검토 후보다. 확정되면 요구사항·테이블·ERD에 함께 반영한다.
 
 ## 1. 목적
 
@@ -20,7 +20,7 @@ PL 리뷰에서 다음 질문에 답할 수 있도록 한다.
 - **[현행]** 현재 테이블 정의서에 반영된 설계
 - **[근거]** 현행 선택 이유
 - **[트레이드오프]** 현행으로 감수하는 단점
-- **[변경 제안]** 검토 후보이며 원본 문서에는 미반영
+- **[변경 제안]** 검토 후보이며 확정되면 원본 문서에 반영
 - **[확장 조건]** 실제 요구가 발생하면 검토할 구조
 
 ## 2. 요구사항과 도메인 연결
@@ -41,13 +41,13 @@ PL 리뷰에서 다음 질문에 답할 수 있도록 한다.
 
 | 형태 | 사용처 | 근거 | 단점 |
 | --- | --- | --- | --- |
-| BIGINT IDENTITY | 내부 회원·콘텐츠·관계 행 | 증가량에 여유가 있고 PostgreSQL 표준 자동 생성 방식 | 외부 노출 시 순차 추측 가능 |
+| BIGINT AUTO_INCREMENT | 내부 회원·콘텐츠·관계 행 | MySQL의 단순한 대리키로 JPA 식별자 매핑과 연관관계 참조가 쉬움 | 외부 노출 시 순차 추측 가능 |
 | VARCHAR(50) ID | 생성 작업, 가이드북 | job_, gb_ 접두사로 종류 구분, 추측 어려운 공개 ID | UUID/ULID 규격 확정 후 길이 재검토 |
-| 복합 PK | 회원 취향, 관심 장소 | 관계 자체가 행이며 동일 조합 중복 차단 | 관계 행을 다시 참조할 때 불편 |
+| 대리키 + 복합 UNIQUE | 회원 취향, 관심 장소 | BIGINT PK로 JPA 매핑을 단순화하고 업무 조합 UNIQUE로 중복 차단 | PK와 UNIQUE 인덱스를 모두 유지 |
 
 ### 문자열
 
-PostgreSQL에서 VARCHAR(n)이 TEXT보다 본질적으로 빠른 것은 아니다. 길이는 성능보다 **도메인 입력 상한을 DB에서도 방어하는 제약**이다.
+MySQL의 `VARCHAR(n)` 길이는 도메인 입력 상한이며, 긴 문자열을 인덱스할 때는 `utf8mb4`의 인덱스 키 길이도 함께 고려한다.
 
 | 길이 | 사용 예 | 근거 |
 | ---: | --- | --- |
@@ -59,24 +59,24 @@ PostgreSQL에서 VARCHAR(n)이 TEXT보다 본질적으로 빠른 것은 아니�
 | 200~255 | 콘텐츠 제목·운영시간·오류 코드 | 중간 길이 표시값 |
 | 500 | 주소·알림·실패 메시지 | 현재 화면·도메인의 입력 상한 |
 
-AI 본문과 긴 설명처럼 상한 예측이 어려운 값은 TEXT가 적합하다. 외부 URL도 500자를 넘을 수 있으므로 `profile_image_url`, `homepage_url`, `thumbnail_url`, `image_url`, `source_url`은 TEXT로 저장하고 API 계층에서 입력 상한을 검증한다.
+AI 본문과 긴 설명은 TEXT로 저장한다. 외부 URL은 서비스 계약을 명확히 하기 위해 `VARCHAR(2048)`로 제한하고, UNIQUE가 필요한 이미지 URL은 SHA-256 `BINARY(32)` 해시를 인덱싱한다.
 
 ### 날짜·시각·수치
 
-- 사건 시각은 TIMESTAMPTZ로 저장해 서버·사용자 타임존과 무관하게 같은 순간을 비교한다.
+- 사건 시각은 타임존 정보가 없는 MySQL `DATETIME(6)`에 UTC 값으로 저장하고 DB 세션과 JDBC 타임존을 UTC로 고정한다. 한국 사용자에게 표시할 때만 `Asia/Seoul`로 변환한다.
 - 여행일·행사일은 달력 날짜가 의미이므로 DATE, 하루 안 방문 예정 시각은 TIME을 사용한다.
 - 수량·인원·순위는 INT, 최대 7일의 일차처럼 작은 범위는 SMALLINT를 사용한다.
 - 금액은 원 단위 BIGINT로 부동소수점 오차를 피한다.
-- 좌표와 랭킹 점수는 고정 소수 계산을 위해 DECIMAL을 사용한다.
+- 좌표는 반경·영역 조회를 위해 `POINT SRID 4326`, 랭킹 점수는 고정 소수 계산을 위해 DECIMAL을 사용한다.
 - 별점은 0~5 정수만 허용하므로 SMALLINT를 사용한다.
 
 ### 상태값
 
 상태를 저장하지 않는다는 뜻이 아니다. DB에는 VARCHAR로 저장하고 애플리케이션에서 Enum으로 제한한다. 코드 안정성과 DB 네이티브 Enum보다 쉬운 변경을 얻는 대신, DB를 직접 우회한 오타는 막지 못한다. 핵심 상태는 CHECK로 보강할 수 있으나 상태 추가 시 마이그레이션이 필요하다.
 
-### JSONB
+### JSON
 
-generation_jobs.request_payload와 itinerary_items.place_snapshot은 AI 계약이 변할 수 있고 당시 원문 보존이 필요해 JSONB를 사용한다. 검색·정렬·FK·유일성 검사가 필요한 지역, 날짜, 소유자, 상태는 일반 컬럼으로 둔다.
+generation_jobs.request_payload와 itinerary_items.place_snapshot은 AI 계약이 변할 수 있고 당시 원문 보존이 필요해 JSON를 사용한다. 검색·정렬·FK·유일성 검사가 필요한 지역, 날짜, 소유자, 상태는 일반 컬럼으로 둔다.
 
 **[트레이드오프]** JSON 내부 구조는 강한 DB 제약을 걸기 어렵다.
 **[변경 제안]** AI 계약 변경 가능성이 커지면 payload_schema_version을 추가한다.
@@ -84,16 +84,17 @@ generation_jobs.request_payload와 itinerary_items.place_snapshot은 AI 계약�
 ## 4. 제약·인덱스 해석
 
 - **PK**: 한 행을 유일하게 식별한다.
-- **FK**: 존재하지 않는 부모 데이터 참조를 차단한다. PostgreSQL은 FK 선언만으로 자식 컬럼 인덱스를 만들지 않는다.
+- **FK**: 존재하지 않는 부모 데이터 참조를 차단한다. MySQL InnoDB의 자식 FK 인덱스 생성 여부와 별개로 실제 JOIN·삭제 쿼리에 적합한지 검토한다.
 - **UNIQUE**: 조회 성능뿐 아니라 중복되면 깨지는 규칙을 보장한다. OAuth 계정, 관심 등록, 멱등 키가 예다.
 - **CHECK**: 날짜 역전, 음수 잔액, 범위 밖 점수를 애플리케이션 검증 누락 시에도 차단한다.
 - **복합 인덱스**: 왼쪽 컬럼부터 사용된다. 실제 API의 WHERE·ORDER BY가 근거여야 한다.
-- **부분 유일 인덱스**: 완료 이력은 여러 건 허용하면서 특정 상태만 하나로 제한한다.
+- **생성 컬럼 UNIQUE**: MySQL에서 완료 이력은 여러 건 허용하면서 진행 중 상태만 하나로 제한한다.
 
 ~~~sql
-CREATE UNIQUE INDEX uq_generation_jobs_active_member
-ON generation_jobs(member_id)
-WHERE status IN ('PENDING', 'PROCESSING');
+active_member_id BIGINT GENERATED ALWAYS AS (
+  CASE WHEN status IN ('PENDING', 'PROCESSING') THEN member_id ELSE NULL END
+) STORED,
+UNIQUE (active_member_id)
 ~~~
 
 이는 회원별 진행 작업만 하나로 제한한다. UNIQUE(member_id)는 과거 완료·실패 이력까지 한 건으로 제한하므로 맞지 않는다.
@@ -114,6 +115,7 @@ erDiagram
         varchar oauth_provider UK
         varchar oauth_subject UK
         varchar status
+        datetime deleted_at
     }
     AUTH_SESSIONS {
         bigint id PK
@@ -121,9 +123,10 @@ erDiagram
         varchar refresh_token_hash UK
     }
     MEMBER_PREFERENCES {
-        bigint member_id PK,FK
-        varchar preference_type PK
-        varchar preference_code PK
+        bigint id PK
+        bigint member_id FK,UK
+        varchar preference_type UK
+        varchar preference_code UK
     }
     NOTIFICATIONS {
         bigint id PK
@@ -153,7 +156,8 @@ erDiagram
         varchar category
         varchar source_provider UK
         varchar source_content_id UK
-        boolean is_active
+        point location "NOT NULL, SRID 4326"
+        varchar status
     }
     EVENT_DETAILS {
         bigint content_id PK,FK
@@ -163,11 +167,13 @@ erDiagram
     CONTENT_IMAGES {
         bigint id PK
         bigint content_id FK
+        binary image_url_hash UK
         int sort_order
     }
     FAVORITE_CONTENTS {
-        bigint member_id PK,FK
-        bigint content_id PK,FK
+        bigint id PK
+        bigint member_id FK,UK
+        bigint content_id FK,UK
     }
     MEMBERS {
         bigint id PK
@@ -195,8 +201,9 @@ erDiagram
         bigint member_id FK
         varchar guidebook_id FK
         varchar status
-        jsonb request_payload
+        json request_payload
         varchar idempotency_key UK
+        bigint active_member_id UK
     }
     GUIDEBOOKS {
         varchar id PK
@@ -205,7 +212,7 @@ erDiagram
         date start_date
         date end_date
         int version
-        timestamptz deleted_at
+        datetime deleted_at
     }
     ITINERARY_DAYS {
         bigint id PK
@@ -218,7 +225,7 @@ erDiagram
         bigint itinerary_day_id FK
         bigint tourism_content_id FK
         smallint sequence UK
-        jsonb place_snapshot
+        json place_snapshot
     }
     SHARE_LINKS {
         bigint id PK
@@ -267,6 +274,7 @@ erDiagram
         bigint id PK
         varchar period_type
         bigint region_id FK
+        bigint scope_region_id UK
     }
     RANKING_ENTRIES {
         bigint id PK
@@ -315,6 +323,7 @@ erDiagram
         bigint id PK
         int credit_amount
         bigint price
+        varchar status
     }
     ORDERS {
         bigint id PK
@@ -346,12 +355,12 @@ erDiagram
 - id는 OAuth 자연키를 다른 테이블에 전파하지 않는 내부 참조 기준이다.
 - UNIQUE(provider, subject)는 동일 외부 계정의 중복 가입을 차단한다.
 - profile_image_url은 공급자가 이미지를 주지 않을 수 있어 NULL이다.
-- status는 ONBOARDING, ACTIVE, WITHDRAWN을 구분한다. 탈퇴 후에도 결제·평가 등 보존 데이터가 있어 탈퇴 상태가 필요하다.
-- withdrawn_at은 탈퇴하지 않은 회원에게 없으므로 NULL이며 파기·익명화 배치 기준이다.
+- status는 삭제와 무관한 가입 진행 상태인 ONBOARDING, ACTIVE를 구분한다.
+- 회원 탈퇴는 `deleted_at`으로 소프트 삭제한다. 값이 없으면 이용 가능한 회원이고, 값이 있으면 서비스 접근을 차단하며 파기·익명화 배치 기준으로 사용한다.
 - status 인덱스는 운영 조회 후보이나 값 종류가 적어 선택도가 낮을 수 있다.
 
 **[트레이드오프]** 회원당 OAuth 계정 하나만 지원한다. 멀티 연동 시 social_accounts로 분리한다.
-**[변경 제안]** 실제 탈퇴 배치가 있다면 INDEX(status, withdrawn_at)이 단독 status보다 적합한지 실행 계획으로 확인한다.
+**[변경 제안]** 실제 탈퇴 배치가 있다면 INDEX(deleted_at)이 필요한지 실행 계획으로 확인한다.
 
 ### auth_sessions
 
@@ -370,7 +379,7 @@ erDiagram
 회원이 선택한 대분류·중분류·여행 스타일을 행으로 저장한다.
 
 - 여러 취향을 가지므로 members에 theme_1, theme_2 같은 반복 컬럼을 두지 않는다.
-- 복합 PK(member_id, type, code)가 중복 선택을 막는다.
+- BIGINT 대리키로 JPA 식별자 매핑을 단순화하고 UNIQUE(member_id, type, code)가 중복 선택을 막는다.
 - 관리자 운영 데이터가 아니므로 옵션 테이블 없이 앱·서버 Enum으로 관리한다.
 - 현재값만 필요해 selected_at이 없다.
 - 대분류 1~3개와 중분류 종속은 여러 행을 봐야 하므로 서비스 트랜잭션에서 검증한다.
@@ -408,13 +417,12 @@ erDiagram
 - category는 콘텐츠당 하나이며 회원 취향과 다른 개념이다.
 - UNIQUE(source_provider, source_content_id)는 재수집 upsert 기준이다.
 - description은 길이 예측이 어려워 TEXT NULL이다.
-- 좌표는 지도 조회마다 카카오 지오코딩을 호출하지 않도록 저장한다.
-- 좌표 NULL은 원본 좌표와 유효 주소가 없는 경우이며 지도 조회에서는 제외한다.
-- `is_active=false`는 외부 데이터에서 사라졌거나 더 이상 노출할 수 없는 콘텐츠를 물리 삭제 없이 표시한다.
+- 좌표는 `POINT SRID 4326`로 저장해 MySQL 공간 함수와 SPATIAL INDEX로 반경·영역 조회를 지원한다.
+- MySQL SPATIAL INDEX와 SRID 제약을 명확히 적용하기 위해 `location`은 NOT NULL로 둔다. 원본 좌표가 없으면 지오코딩 후 활성화하거나 수집·노출 대상에서 제외한다.
+- `status`는 삭제가 아닌 노출 상태 `ACTIVE`, `INACTIVE`를 구분한다. 정책·관리자 삭제는 `deleted_at`으로 소프트 삭제한다.
 - 비활성 콘텐츠는 검색·신규 생성 후보·신규 랭킹에서 제외하고, 기존 가이드북의 스냅샷과 평가 참조는 유지한다. 다시 수집되면 활성화할 수 있다.
 - INDEX(region_id, category)는 필터 조합을 지원한다.
 
-**[변경 제안]** 한국어 포함 검색은 B-tree보다 pg_trgm GIN을 데이터량 측정 후 검토한다.
 **[확장 조건]** 의미 검색 도입 시 원문은 유지하고 임베딩을 별도 파생 데이터로 저장한다.
 
 ### event_details
@@ -431,16 +439,16 @@ erDiagram
 복수 이미지와 표시 순서를 저장한다.
 
 - 반복 데이터여서 JSON 배열 대신 행으로 둔다.
-- UNIQUE(content_id, image_url)는 재수집 중복을 막는다.
+- URL은 `VARCHAR(2048)`로 저장하고 UNIQUE(content_id, image_url_hash)는 `utf8mb4` 인덱스 길이 제한 없이 재수집 중복을 막는다.
 - INDEX(content_id, sort_order)는 상세 화면 정렬을 지원한다.
 
 ### favorite_contents
 
 회원과 콘텐츠의 N:M 관심 관계다.
 
-- 복합 PK(member_id, content_id)가 중복 등록을 막는다.
+- BIGINT 대리키는 JPA 매핑과 후속 참조를 단순화하고 UNIQUE(member_id, content_id)가 중복 등록을 막는다.
 - created_at은 등록순 정렬에 사용한다.
-- 다른 기능이 이 관계 행을 참조하지 않아 별도 id가 없다.
+- PK와 복합 UNIQUE 인덱스를 모두 유지하는 쓰기·공간 비용을 감수한다.
 
 ### generation_jobs
 
@@ -451,7 +459,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 - 최초 생성 중 guidebook_id는 NULL, 성공 시 결과 ID를 연결한다. 재생성은 시작부터 기존 ID를 가진다.
 - request_payload는 날짜·동행·인원·취향의 요청 당시 스냅샷이다.
 - idempotency_key UNIQUE는 네트워크 재전송의 중복 작업을 막는다.
-- 부분 유일 인덱스는 회원별 진행 작업 하나만 허용한다.
+- 진행 중일 때만 회원 ID를 갖는 `active_member_id` 생성 컬럼 UNIQUE는 회원별 진행 작업 하나만 허용한다.
 - attempt_count CHECK는 무한 재시도를 막는다.
 
 **[중요 예외]** AI 성공만으로 완료가 아니다. 가이드북·일정 저장, 작업 완료, 생성권 차감, 원장 기록이 모두 성공해야 한다.
@@ -518,7 +526,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 - snapshot은 일·주·월, 전국·지역별 계산 묶음이며 요청마다 전체 평가를 다시 계산하지 않게 한다.
 - region_id NULL은 전국이다.
-- PostgreSQL UNIQUE는 NULL을 서로 다르게 취급하므로 전국과 지역용 부분 유일 인덱스를 분리한다.
+- MySQL UNIQUE의 복수 NULL 허용을 피하기 위해 `scope_region_id = COALESCE(region_id, 0)` 생성 컬럼과 기간 조합에 UNIQUE를 둔다.
 - entry의 snapshot+content UNIQUE는 콘텐츠 중복, snapshot+rank_position UNIQUE는 순위 중복을 막는다.
 - weighted_score는 정렬 정밀도, raw_average는 설명용 평균, rating_count는 신뢰도·보조 정렬 근거다.
 
@@ -539,7 +547,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 ### credit_products / orders / payment_attempts
 
-- product는 현재 판매 수량·가격을 관리하고 is_active=false로 과거 주문 FK를 유지한다.
+- product는 현재 판매 수량·가격을 관리하고 `status=INACTIVE`로 판매만 중지한다. 관리자 삭제는 `deleted_at`으로 소프트 삭제하고 과거 주문 FK는 유지한다.
 - 금액 BIGINT는 원 단위 정수라 오차가 없고 currency CHAR(3)은 ISO 4217 코드다.
 - order는 현재 상품이 바뀌어도 과거 구매를 설명하도록 수량·금액·통화를 복사한다.
 - 내부 PK와 외부 merchant_order_id를 분리한다.
@@ -595,7 +603,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 1. members.status 단독 인덱스의 실제 쿼리 확인
 2. 취향 역방향 인덱스 사용 여부
-3. 데이터량 측정 후 pg_trgm 도입 여부
+3. MySQL FULLTEXT 검색 도입 여부와 한국어 분석 한계
 4. 알림 대상 삭제 시 처리와 읽음 이력 보존 여부
 5. 가이드북 이전 버전 복구 여부
 6. 장소 평가의 여행별 이력 필요 여부
@@ -612,7 +620,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 | 여러 소셜 계정 | social_accounts 분리 |
 | 관리자 취향 편집 | 취향 그룹·옵션 테이블 |
 | 시·군·구 필터 | regions 계층화 |
-| 의미 검색 | pgvector 임베딩 파생 데이터 |
+| 의미 검색 | 요구와 규모를 확인한 후 별도 검색 저장소 검토 |
 | 가이드북 복원 | guidebook_versions |
 | 평가 임시 저장 | 서버 초안·임시 점수 |
 | 여행별 반복 평가 | 평가 세션/일정 FK |
@@ -634,12 +642,12 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 - [ ] 문자열 길이가 화면 또는 외부 API 규격에 근거한다.
 - [ ] 날짜·시각과 타임존 기준이 일관된다.
 - [ ] 중복 요청, 실패, 재시도, 롤백을 검토했다.
-- [ ] JSONB 중 검색·조인·제약 값은 일반 컬럼으로 분리했다.
+- [ ] JSON 중 검색·조인·제약 값은 일반 컬럼으로 분리했다.
 - [ ] MVP 이후 기능을 현재 구현 의무처럼 표현하지 않았다.
 - [ ] 확정 후 요구사항 → 테이블·ERD → API → 테크스펙을 함께 갱신한다.
 
 ## 12. 결론
 
-현행 구조는 회원, 콘텐츠 탐색, 비동기 AI 생성, 평가·랭킹, 생성권·결제의 핵심 정합성을 설명할 수 있는 수준이다. 특히 생성 작업과 결과 가이드북 분리, 콘텐츠 원본과 일정 스냅샷 병행, 지갑과 불변 원장 분리는 유지 근거가 분명하다.
+현행 구조는 MySQL 기준으로 회원, 콘텐츠 탐색, 비동기 AI 생성, 평가·랭킹, 생성권·결제의 핵심 정합성을 설명할 수 있는 수준이다. 특히 생성 작업과 결과 가이드북 분리, 콘텐츠 원본과 일정 스냅샷 병행, 지갑과 불변 원장 분리는 유지 근거가 분명하다.
 
-데이터 길이와 인덱스는 절대적인 정답이 아니라 현재 가정이다. 화면 제한, 외부 API 규격, 실제 쿼리와 데이터량을 확인한 뒤 조정한다. 별점 정수화, 외부 URL TEXT, 최초 원본 기준 중복 방지, 가이드북 소프트 삭제, 콘텐츠 비활성화, 환불 MVP 제외는 확정됐다. 남은 핵심 검토 항목은 FK 삭제·보존 정책, 평가 이력 범위, 랭킹 파라미터 보존 수준이다.
+데이터 길이와 인덱스는 절대적인 정답이 아니라 현재 가정이다. 화면 제한, 외부 API 규격, 실제 쿼리와 데이터량을 확인한 뒤 조정한다. 별점 정수화, 외부 URL `VARCHAR(2048)`, 관계 테이블의 대리키와 업무 조합 UNIQUE, 최초 원본 기준 중복 방지, 상태 기반 소프트 삭제, 환불 MVP 제외는 확정됐다. 남은 핵심 검토 항목은 FK 삭제·보존 정책, 평가 이력 범위, 랭킹 파라미터 보존 수준이다.
