@@ -26,7 +26,7 @@
 
 ### 읽는 방법
 
-각 API의 Request Body와 응답 예시는 엑셀과 동일하다. `미확정`은 팀 결정이 필요한 계약이며 예시 숫자나 Enum을 최종 정책으로 간주하지 않는다. URL·HTTP 동작·검증 조건은 명세에 남기고, 테이블 선택 이유·FR/BR 연결은 별도 근거 문서로 분리한다.
+각 API의 Request Body와 응답 예시는 이 문서의 최신 계약 초안을 따른다. 엑셀은 다음 일괄 갱신 전까지 이 문서와 다를 수 있다. `미확정`은 팀 결정이 필요한 계약이며 예시 숫자나 Enum을 최종 정책으로 간주하지 않는다. URL·HTTP 동작·검증 조건은 명세에 남기고, 테이블 선택 이유·FR/BR 연결은 별도 근거 문서로 분리한다.
 
 ## 2. 엔드포인트 목록
 
@@ -85,9 +85,12 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/auth/oauth/{provider}/login` | 공개; OAuth state/PKCE 검증 흐름 별도 확정 |
+| POST | `/auth/oauth/{provider}/login` | 공개(Bearer 불필요); OAuth 검증 필수, 구체 흐름은 아래 API-DEC-01 |
 
-- Path provider: String, KAKAO 또는 GOOGLE(지원 공급자 확정 필요)
+- Path provider: 필수 String, `KAKAO` 또는 `GOOGLE` (V3 지원 공급자 확정)
+- 서비스 버전별 범위: V1은 KAKAO만, V2 이상은 KAKAO와 GOOGLE 모두 지원
+- 위 V1/V2/V3는 기능 출시 단계이며 공통 URL `/api/v1`의 API 계약 버전과 다름
+- 공급자 2개 지원은 한 회원에 두 소셜 계정을 연결하는 기능을 의미하지 않음. 기존 회원 판별은 `(oauth_provider, oauth_subject)` 기준
 - Body authorization_code: 필수 String, 일회용 인증 코드
 - redirect_uri: 필수 String, 등록된 콜백과 일치
 - 기기 ID·서비스 약관 동의 값은 받지 않음
@@ -141,7 +144,29 @@
 | 502 | UPSTREAM_SERVICE_ERROR | 동기 외부 연동 실패 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-01: OAuth 플랫폼·state/PKCE·토큰 보관/수명. 3600초는 예시이지 확정 TTL이 아님.
+**구현 전 확인:** 공급자는 확정됐지만 아래 인증 흐름은 아직 설계 결정이 필요하다. 3600초는 예시이지 확정 TTL이 아니다. 현재 Body의 authorization_code/redirect_uri만으로 안전한 로그인 전체 흐름이 정의된 것은 아니며, 시작·콜백 계약 확정 전 구현 완료로 보지 않는다.
+
+#### OAuth 검증 결정표 — API-DEC-01
+
+| 결정 항목 | 무엇을 정해야 하는가 | 권장 방향 / API 영향 |
+|---|---|---|
+| 실행 환경·연동 방식 | 웹 리다이렉트, 팝업 SDK, 네이티브 중 실제 플랫폼과 공급자별 SDK | KAKAO·GOOGLE 지원 여부가 아닌 연동 방식의 결정. code 흐름과 ID token credential 흐름을 섞지 않음 |
+| 로그인 시작·콜백 주체 | 프론트와 백엔드 중 누가 인가 요청을 만들고 콜백을 받는가 | 백엔드 관리 인가 요청을 우선 검토. 프론트 콜백을 유지하면 code와 로그인 시도 식별을 백엔드까지 안전하게 전달 |
+| state 생성·결속 | 난수 생성 주체, 요청 브라우저/세션과의 연결, provider/client_id/redirect_uri 매핑 | 백엔드가 로그인 시작 전에 발급·보관하는 방안을 권장. 프론트가 state_valid=true라고 보내는 값은 신뢰하지 않음 |
+| state 저장·TTL·소비 | 임시 세션/저장소, 실제 만료 시간, 원자적인 일회 소비, 다중 탭·다중 서버 | 로그인 시도별 분리. 누락·불일치·만료·재사용은 거절. 서명된 state도 만료/재사용 대응이 별도로 필요 |
+| PKCE 적용 방식 | 각 플랫폼/공급자 흐름의 S256 지원과 라이브러리 옵션 | 지원되는 인가 코드 흐름에서 S256 적용을 우선. 미지원이면 조용히 plain/PKCE 미사용으로 낮추지 말고 대안 흐름의 보안을 검토 |
+| verifier 보관·전달 | 누가 code_verifier를 만들고 토큰 교환 시 공급자에 전달하는가 | challenge는 인가 요청, verifier는 토큰 교환에 사용. verifier를 인가 URL·로그에 노출하지 않음. 백엔드 보관이면 프론트 Body에 추가할 필요 없음 |
+| 다중 공급자·OIDC | 공급자 혼동 방지, client/redirect 고정, ID token 사용 여부 | 로그인 시도에 결속된 provider로 토큰 교환. OIDC 사용 시 서명·iss·aud·exp 및 요청한 nonce 검증 |
+| 성공·취소·오류 복귀 | 실패 코드·HTTP 매핑, 재시작 화면, 허용된 복귀 경로 | 검증 실패 시 회원/세션·서비스 토큰 발급 금지. 로그인 거절과 공급자 장애를 구분. 임의 외부 return URL 금지 |
+| 서비스 토큰 | 쿠키/Body·메모리 보관, CSRF/CORS, access/refresh TTL·회전·동시 갱신 | OAuth 인가 요청용 임시 상태와 로그인 후 auth_sessions를 분리 |
+
+현재 API-MEM-01은 코드 교환 결과의 JSON 계약 초안이다. 프론트 콜백 방식이면 state와 임시 로그인 시도 결속을 전달할 계약이 추가로 필요할 수 있고, 백엔드 콜백 방식이면 시작/콜백 URL과 세션 전달 방식이 필요하다. 어느 쪽이든 **요청 전에 만든 값과 비교**해야 하며, 콜백에서 처음 받은 state를 그대로 저장한 뒤 비교하면 검증이 아니다. state/code_verifier 필드를 무조건 현재 Body에 추가하는 것으로 문제를 해결하지 않는다.
+
+state는 로그인 요청과 응답의 연결 및 CSRF 방어에, PKCE는 인가 코드와 최초 요청자의 verifier를 결속하는 데 사용한다. 본 설계안은 state 결속과 지원 흐름의 PKCE S256을 함께 검토한다. 둘의 역할을 같다고 보거나 PKCE가 모든 애플리케이션의 CSRF 방어를 대체한다고 보지 않는다. [OAuth 보안 BCP](https://www.rfc-editor.org/rfc/rfc9700.html), [PKCE 규격](https://www.rfc-editor.org/rfc/rfc7636.html)
+
+공급자 확인 자료: [카카오 REST API](https://developers.kakao.com/docs/ko/kakaologin/rest-api), [구글 웹 서버 OAuth](https://developers.google.com/identity/protocols/oauth2/web-server). 카카오는 OIDC 메타데이터에 S256을 명시하지만, 실제 사용할 SDK/REST 흐름의 파라미터 처리까지 PoC로 확인한다. 공급자 지원 사실과 우리 앱의 검증 구현 완료는 별개다.
+
+확정 시 정상 로그인 외에 state 누락/변조/만료/재사용, provider 교체, 잘못된 verifier, redirect 불일치, 사용자 취소, 다중 탭·서버 환경을 테스트한다. 오류 코드 세분화와 추가 요청 필드는 그 흐름에 맞춰 동결한다.
 
 ### API-MEM-02 토큰 갱신
 
@@ -1869,7 +1894,7 @@ Body 없음.
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 탈퇴 보존·파기·재가입. WITHDRAWN enum이 아닌 deleted_at 사용. |
 | DEC-12 | GDE-09~16/RNK | 재생성 가능 시점·공유/PDF/평가 영향·HTML 일관성. |
-| API-DEC-01 | MEM-01~03 | 지원 OAuth 플랫폼, state/PKCE, 쿠키/Body, 토큰 TTL·회전·동시 갱신. 예시 TTL은 확정값 아님. |
+| API-DEC-01 | MEM-01~03 | 지원 공급자는 V1 KAKAO, V2 이상 KAKAO·GOOGLE로 확정. 남은 결정은 실행 플랫폼/SDK, 시작·콜백 주체, state 브라우저 결속·TTL·일회성, 공급자별 PKCE S256 적용·verifier 보관, OIDC 검증, 쿠키/Body·토큰 TTL·회전·동시 갱신. 상세는 API-MEM-01의 OAuth 검증 결정표. |
 | API-DEC-02 | MEM-06/GDE-16 | 탈퇴·삭제와 진행 중 작업의 경합. 즉시 삭제/완료 거절/작업 종료 중 선택 필요. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 취향·부모 관계·동행·언어·알림 Enum 및 선택/인원 상한. |
 | API-DEC-04 | MEM-05/12/13 | 직접 프로필 수정 요구 충돌; 정적 정책 배포 위치와 형식. |
