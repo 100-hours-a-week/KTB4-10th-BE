@@ -47,8 +47,6 @@
 | API-NOT-01 | 미읽은 알림 목록 | GET | `/notifications` |
 | API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` |
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` |
-| API-NOT-04 | 푸시 설정 조회 | GET | `/push-preferences` |
-| API-NOT-05 | 푸시 설정 변경 | PATCH | `/push-preferences` |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` |
 | API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` |
@@ -414,6 +412,7 @@ Body 없음.
 - language_code: 선택 String ≤10자, 지원 코드만
 - push_enabled: 선택 Boolean
 - 최소 1개 필수; 누락은 유지, null 불가
+- push_enabled=false는 푸시 발송만 금지하며, 필요한 인앱 알림 저장에는 영향을 주지 않음
 
 **Request Body**
 
@@ -582,68 +581,6 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-### API-NOT-04 푸시 설정 조회
-
-| Method | URL | 인증 |
-|---|---|---|
-| GET | `/push-preferences` | Bearer 필수 |
-
-- 응답 enabled: Boolean = members.push_enabled
-
-**Request Body**
-
-없음.
-
-**응답 200**
-
-```json
-{
-  "message": "push_preference_get_success",
-  "data": {
-    "enabled": true
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-### API-NOT-05 푸시 설정 변경
-
-| Method | URL | 인증 |
-|---|---|---|
-| PATCH | `/push-preferences` | Bearer 필수 |
-
-- enabled: 필수 Boolean, null 불가
-- 인앱 알림 저장과 무관
-
-**Request Body**
-
-```json
-{
-  "enabled": false
-}
-```
-
-**응답 200**
-
-```json
-{
-  "message": "push_preference_update_success",
-  "data": {
-    "enabled": false
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
