@@ -57,9 +57,7 @@
 | API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` |
 | API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` |
 | API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` |
-| API-GDE-06 | 가이드북 제목 수정 | PATCH | `/guidebooks/{guidebook_id}` |
 | API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` |
-| API-GDE-08 | 일정 전체 저장 | PUT | `/guidebooks/{guidebook_id}/itinerary` |
 | API-GDE-09 | 가이드북 재생성 접수 | POST | `/guidebooks/{guidebook_id}/regenerations` |
 | API-GDE-10 | 공유 링크 발급 | POST | `/guidebooks/{guidebook_id}/shares` |
 | API-GDE-11 | 공유 미리보기 | GET | `/shares/{share_token}` |
@@ -969,46 +967,6 @@ Body 없음.
 
 **구현 전 확인:** DEC-01: 기존 카드에 표시할 취향의 기준.
 
-### API-GDE-06 가이드북 제목 수정
-
-| Method | URL | 인증 |
-|---|---|---|
-| PATCH | `/guidebooks/{guidebook_id}` | Bearer 필수 |
-
-- title: 필수 String, 공백만 불가, 최대15자
-- 다른 필드 수신 불가
-- 응답 updated_at: ISO8601 UTC 시각
-
-**Request Body**
-
-```json
-{
-  "title": "경주 역사 여행"
-}
-```
-
-**응답 200**
-
-```json
-{
-  "message": "guidebook_update_success",
-  "data": {
-    "guidebook_id": "gb_example",
-    "title": "경주 역사 여행",
-    "updated_at": "2026-09-04T00:00:00Z"
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
-| 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
-| 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
-
 ### API-GDE-07 일정 조회
 
 | Method | URL | 인증 |
@@ -1043,52 +1001,6 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-### API-GDE-08 일정 전체 저장
-
-| Method | URL | 인증 |
-|---|---|---|
-| PUT | `/guidebooks/{guidebook_id}/itinerary` | Bearer 필수 |
-
-- days: 필수 Array, 전체 일정; 빠진 항목은 제거
-- 날짜는 여행 기간 내·중복 불가; day_number≥1·중복 불가
-- items.sequence: 일자별 1부터 연속, 중복 불가
-- content_id: 신규 항목에서 필수; 기존 미매핑 항목만 null 허용(설계안)
-- item_id: 기존 항목만 전달; 서버가 소유권 검증
-- place_snapshot은 클라이언트가 임의 덮어쓰지 않음
-
-**Request Body**
-
-```json
-{
-  "days": [
-    {"day_number":1,"itinerary_date":"2026-10-12","items":[{"item_id":"501","content_id":"101","sequence":1,"scheduled_time":"10:00:00"}]}
-  ]
-}
-```
-
-**응답 200**
-
-```json
-{
-  "message": "itinerary_update_success",
-  "data": {
-    "guidebook_id": "gb_example",
-    "days": [{"day_number":1,"itinerary_date":"2026-10-12","items":[{"item_id":"501","content_id":"101","sequence":1,"scheduled_time":"10:00:00","place_snapshot":{"title":"불국사","address":"경상북도 경주시","latitude":35.7898,"longitude":129.3321}}]}]
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
-| 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
-| 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
-
-**구현 전 확인:** API-DEC-07: 빈 일자/장소 수, 미매핑 장소 편집 범위·HTML 동기화·동시 수정 정책.
-
 ### API-GDE-09 가이드북 재생성 접수
 
 | Method | URL | 인증 |
@@ -1096,8 +1008,9 @@ Body 없음.
 | POST | `/guidebooks/{guidebook_id}/regenerations` | Bearer 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
-- feedback: 필수 String, 공백만 불가, ≤200자(기존 API 설계안)
-- 현재 기본 취향 사용; feedback은 해당 가이드북만 반영
+- feedback: 필수 String, 공백만 불가, ≤200자(기존 API 설계안). 사용자가 초안 확인 화면에서 입력한 자연어 수정 요청
+- 일정·제목을 직접 수정하는 API는 제공하지 않으며, 변경은 이 재생성으로만 반영
+- 현재 기본 취향 사용; feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
 - 새 작업; 성공 시 같은 guidebook_id의 version 증가
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
@@ -1932,7 +1845,11 @@ Body 없음.
 |---|---|---|
 | API-MEM-05 | PATCH /members/me | 직접 프로필 수정 보류. FR-MEM-04와 테이블의 닉네임 직접 수정 미제공을 팀에서 정리해야 함. 언어는 MEM-11. |
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
+| API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
+| API-NOT-05 | PATCH /push-preferences | 푸시 설정 변경은 MEM-11 회원 설정 부분 수정으로 통합. |
 | API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
+| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 사용자의 가이드북 제목 직접 수정 기능이 없어 제외. |
+| API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 사용자의 일정 직접 편집 기능이 없어 제외. 변경은 GDE-09 자연어 피드백 재생성으로만 처리. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |
 | API-RNK-04 | PUT /guidebook-evaluations/{evaluation_id}/places/{content_id} | 서버 초안 저장 API 미제공. 최종 ratings를 RNK-06 Body로 제출. |
 | API-PAY-08 | POST /orders/{merchant_order_id}/refund | 환불은 MVP 이후. 현재 구현 대상 아님. |
@@ -1951,14 +1868,13 @@ Body 없음.
 | DEC-09 | GDE-02/03/09 | attempt_count 0~3와 최대 재시도3의 해석, 타임아웃·복구. CANCELED 상태 없는 현재 모델에서 사용자 취소 API 미제공. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 탈퇴 보존·파기·재가입. WITHDRAWN enum이 아닌 deleted_at 사용. |
-| DEC-12 | GDE-08~16/RNK | 재생성 가능 시점·공유/PDF/평가 영향·HTML 일관성. |
+| DEC-12 | GDE-09~16/RNK | 재생성 가능 시점·공유/PDF/평가 영향·HTML 일관성. |
 | API-DEC-01 | MEM-01~03 | 지원 OAuth 플랫폼, state/PKCE, 쿠키/Body, 토큰 TTL·회전·동시 갱신. 예시 TTL은 확정값 아님. |
 | API-DEC-02 | MEM-06/GDE-16 | 탈퇴·삭제와 진행 중 작업의 경합. 즉시 삭제/완료 거절/작업 종료 중 선택 필요. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 취향·부모 관계·동행·언어·알림 Enum 및 선택/인원 상한. |
 | API-DEC-04 | MEM-05/12/13 | 직접 프로필 수정 요구 충돌; 정적 정책 배포 위치와 형식. |
 | API-DEC-05 | CON-01/03 | 검색 정렬·월 형식·지도 최대 반경/마커/줌·클러스터 DTO. |
 | API-DEC-06 | CON-04 | 비활성 관심 장소 표시 정책. |
-| API-DEC-07 | GDE-08 | 일정 편집 범위·미매핑 장소·최대 항목·동시 수정·HTML 반영. |
 | API-DEC-08 | GDE-13 | 동기 PDF 한도·타임아웃·비동기 전환 기준. |
 | API-DEC-09 | RNK-03/06 | 다른 여행의 기존 최종 평가 덮어쓰기, null 의미, 미매핑 장소, 중복 제출 비교 및 오류/재응답 정책. |
 | API-DEC-10 | PAY-06/07 | PG 원문 계약·서명·승인 API·결제 시도/이벤트 멱등 저장. |
