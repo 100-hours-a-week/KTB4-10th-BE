@@ -64,7 +64,7 @@
 | API-GDE-03 | FR-GDE-02/07; 요구사항 11.2 | 진행률을 추정해서 꾸미지 않고 저장된 작업 상태를 반환한다. 접수 후 실패는 이 API에서 FAILED로 확인한다. |
 | API-GDE-05 | FR-GDE-02~03; BR-GDE-14 | 가이드북 저장 필드와 지역 정보를 조합한다. 별도 events 테이블이나 시군구 정보를 만들어 응답하지 않는다. |
 | API-GDE-07 | US-04; BR-GDE-06~07 | 현재 콘텐츠가 비활성화돼도 보존된 place_snapshot으로 기존 여행 내용을 표시한다. |
-| API-GDE-09 | FR-GDE-07; BR-GDE-13; BR-PAY-04 | 사용자가 초안에 대한 자연어 피드백을 보내면 기존 가이드북을 직접 편집하는 대신 새 재생성 작업을 시작한다. 성공 시 1개 차감하고, 실패하면 기존 가이드북·일정을 보존한다. 기술 재시도와는 다른 사용자 요청이다. |
+| API-GDE-09 | FR-GDE-07; BR-GDE-13; BR-PAY-04 | 사용자가 공백이 아닌 제목과 자연어 피드백을 함께 보내면 기존 가이드북을 직접 편집하는 대신 새 재생성 작업을 시작한다. 성공 시 제목·본문·일정을 갱신하고 1개 차감하며, 실패하면 기존 결과를 보존한다. 기술 재시도와는 다른 사용자 요청이다. |
 | API-GDE-10 | FR-GDE-04; BR-GDE-08 | 난수 원문은 URL로 반환하고 해시만 저장한다. 현재 테이블에는 링크 요청 멱등 키가 없으므로 결과 재생을 약속하지 않는다. |
 | API-GDE-11 | FR-GDE-04; BR-GDE-08/12/14 | 토큰 소유자를 위한 제한 공개 조회다. 소유 회원 식별 정보와 개인화 입력은 미리보기에 포함하지 않는다. |
 | API-GDE-12 | FR-GDE-05; BR-GDE-09~10 | 공유 링크 ID가 아닌 회원+root_guidebook_id UNIQUE로 중복을 판단한다. 가이드북·일정·가져오기 기록을 함께 저장한다. |
@@ -177,7 +177,7 @@ deleted_at은 필터링에 쓰는 데이터이며 컬럼이 존재한다고 자�
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
 | API-NOT-04 | GET /push-preferences | MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | MEM-11 회원 설정 부분 수정으로 통합. |
-| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목 직접 수정 제외. 변경은 GDE-09 자연어 재생성. |
+| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목만 직접 수정하는 기능은 제외. 제목 변경은 필수 feedback과 함께 GDE-09 재생성으로 처리. |
 | API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 일정 직접 편집 제외. 변경은 GDE-09 자연어 재생성. |
 | API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |

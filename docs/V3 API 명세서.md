@@ -1033,10 +1033,11 @@ Body 없음.
 | POST | `/guidebooks/{guidebook_id}/regenerations` | Bearer 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
+- title: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤15자. 재생성 결과에 적용할 가이드북 제목
 - feedback: 필수 String, 공백만 불가, ≤200자(기존 API 설계안). 사용자가 초안 확인 화면에서 입력한 자연어 수정 요청
-- 일정·제목을 직접 수정하는 API는 제공하지 않으며, 변경은 이 재생성으로만 반영
+- 제목만 또는 일정을 직접 수정하는 별도 API는 제공하지 않으며, 제목 변경은 필수 feedback과 함께 이 재생성으로만 반영
 - 현재 기본 취향 사용; feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
-- 새 작업; 성공 시 같은 guidebook_id의 version 증가
+- 새 작업; 성공 시 같은 guidebook_id의 제목·본문·일정을 함께 갱신하고 version 증가
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
@@ -1044,6 +1045,7 @@ Body 없음.
 
 ```json
 {
+  "title": "경주 여유 여행",
   "feedback": "걷는 시간을 줄여 주세요."
 }
 ```
@@ -1873,7 +1875,7 @@ Body 없음.
 | API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | 푸시 설정 변경은 MEM-11 회원 설정 부분 수정으로 통합. |
 | API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
-| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 사용자의 가이드북 제목 직접 수정 기능이 없어 제외. |
+| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목만 직접 수정하는 기능은 제외. 제목 변경은 필수 feedback과 함께 GDE-09 재생성으로만 처리. |
 | API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 사용자의 일정 직접 편집 기능이 없어 제외. 변경은 GDE-09 자연어 피드백 재생성으로만 처리. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |
 | API-RNK-04 | PUT /guidebook-evaluations/{evaluation_id}/places/{content_id} | 서버 초안 저장 API 미제공. 최종 ratings를 RNK-06 Body로 제출. |
