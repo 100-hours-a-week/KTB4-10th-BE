@@ -13,7 +13,7 @@
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
 | 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
-| 응답 예외 | 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
+| 응답 예외 | OAuth 시작·콜백은 302 리다이렉트이며 JSON Body 없음. 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
 | ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
 | 날짜·시각 | 사건 시각 ISO8601 오프셋 포함, 예시 UTC Z. DB DATETIME(6)에 UTC 저장. 여행 날짜 YYYY-MM-DD, 일정 시각 HH:mm:ss. 일간 경계 등 정책은 DEC-03. |
 | 좌표 | API latitude/longitude는 WGS84 도 단위 Number. DB location POINT SRID4326과 변환. X/Y 순서를 임의로 위도·경도라고 가정하지 않음. |
@@ -32,7 +32,8 @@
 
 | API ID | 기능 | Method | URL |
 |---|---|---|---|
-| API-MEM-01 | 소셜 로그인·가입 | POST | `/auth/oauth/{provider}/login` |
+| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` |
+| API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` |
 | API-MEM-04 | 내 회원 조회 | GET | `/members/me` |
 | API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` |
@@ -80,87 +81,78 @@
 
 ## 3. 회원
 
-### API-MEM-01 소셜 로그인·가입
+### API-MEM-01 소셜 로그인 시작
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/auth/oauth/{provider}/login` | 공개(세션 쿠키 불필요); OAuth 검증 필수, 성공 시 세션 쿠키 발급 |
+| GET | `/auth/oauth/authorize/{provider}` | 공개. 브라우저 최상위 페이지 이동으로 호출 |
 
-- Path provider: 필수 String, `KAKAO` 또는 `GOOGLE` (V3 지원 공급자 확정)
-- 서비스 버전별 범위: V1은 KAKAO만, V2 이상은 KAKAO와 GOOGLE 모두 지원
-- 위 V1/V2/V3는 기능 출시 단계이며 공통 URL `/api/v1`의 API 계약 버전과 다름
-- 공급자 2개 지원은 한 회원에 두 소셜 계정을 연결하는 기능을 의미하지 않음. 기존 회원 판별은 `(oauth_provider, oauth_subject)` 기준
-- Body authorization_code: 필수 String, 일회용 인증 코드
-- redirect_uri: 필수 String, 등록된 콜백과 일치
-- 기기 ID·서비스 약관 동의 값은 받지 않음
-- 성공 응답에 `Set-Cookie`로 불투명한 세션 ID를 발급하고 서비스 액세스·리프레시 토큰은 응답하지 않음
-- onboarding_required: Boolean
-- member.status=ONBOARDING이면 취향 선택, ACTIVE이면 지도 화면으로 분기
+- Path provider: 필수 String, `KAKAO` 또는 `GOOGLE`. V1 KAKAO, V2 이상(V3 포함) 두 공급자 지원.
+- 출시 단계 V1/V2/V3와 API Prefix `/api/v1`은 별개다. 위 URL에도 공통 prefix를 적용한다.
+- Query/Body 없음. 프론트는 code, state, verifier, redirect_uri를 만들거나 Body로 전달하지 않는다.
+- 서버가 공급자별 client_id·client_secret·redirect_uri를 설정으로 관리한다. 임의 return URL을 받지 않는다.
+- 새로운 로그인 시도와 state·PKCE S256 값을 만든 뒤 공급자의 인가 URL로 이동시킨다. 이 단계에서는 회원이나 서비스 세션을 생성하지 않는다.
 
-**Request Body**
-
-```json
-{
-  "authorization_code": "oauth_code",
-  "redirect_uri": "https://app.example.com/oauth/callback"
-}
-```
-
-**응답 200**
-
-```json
-{
-  "message": "login_success",
-  "data": {
-    "member": {"member_id":"1","nickname":"여행자","profile_image_url":null,"language_code":"ko","status":"ACTIVE"},
-    "onboarding_required": false
-  }
-}
-```
-
-**응답 201**
-
-```json
-{
-  "message": "member_created",
-  "data": {
-    "member": {"member_id":"1","nickname":"여행자","profile_image_url":null,"language_code":"ko","status":"ONBOARDING"},
-    "onboarding_required": true
-  }
-}
-```
+**응답 302**: `Location`에 공급자 인가 URL. `response_type=code`, 고정 client_id/redirect_uri, scope, state, code_challenge, `code_challenge_method=S256`을 포함한다. OIDC 흐름은 nonce도 포함한다. JSON Body 없음. `Cache-Control: no-store`.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_SESSION_EXPIRED | 세션 만료·폐기 |
-| 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
-| 502 | UPSTREAM_SERVICE_ERROR | 동기 외부 연동 실패 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+| 400 | COMMON_VALIDATION_ERROR | 지원하지 않는 provider |
+| 500 | INTERNAL_SERVER_ERROR | 시작 처리 실패. 공통 JSON 오류, 비밀값 제외 |
 
-**구현 전 확인:** 공급자와 서버 세션 방식은 확정됐다. 현재 Body의 authorization_code/redirect_uri만으로 안전한 로그인 전체 흐름이 정의된 것은 아니며, 시작·콜백 주체와 세션 쿠키 수명·SameSite 정책 확정 전 구현 완료로 보지 않는다.
+### API-MEM-15 소셜 로그인 콜백·가입
 
-#### OAuth 검증 결정표 — API-DEC-01
-
-| 결정 항목 | 무엇을 정해야 하는가 | 권장 방향 / API 영향 |
+| Method | URL | 인증 |
 |---|---|---|
-| 실행 환경·연동 방식 | 웹 리다이렉트, 팝업 SDK, 네이티브 중 실제 플랫폼과 공급자별 SDK | KAKAO·GOOGLE 지원 여부가 아닌 연동 방식의 결정. code 흐름과 ID token credential 흐름을 섞지 않음 |
-| 로그인 시작·콜백 주체 | 프론트와 백엔드 중 누가 인가 요청을 만들고 콜백을 받는가 | 백엔드 관리 인가 요청을 우선 검토. 프론트 콜백을 유지하면 code와 로그인 시도 식별을 백엔드까지 안전하게 전달 |
-| state 생성·결속 | 난수 생성 주체, 요청 브라우저/세션과의 연결, provider/client_id/redirect_uri 매핑 | 백엔드가 로그인 시작 전에 발급·보관하는 방안을 권장. 프론트가 state_valid=true라고 보내는 값은 신뢰하지 않음 |
-| state 저장·TTL·소비 | 임시 세션/저장소, 실제 만료 시간, 원자적인 일회 소비, 다중 탭·다중 서버 | 로그인 시도별 분리. 누락·불일치·만료·재사용은 거절. 서명된 state도 만료/재사용 대응이 별도로 필요 |
-| PKCE 적용 방식 | 각 플랫폼/공급자 흐름의 S256 지원과 라이브러리 옵션 | 지원되는 인가 코드 흐름에서 S256 적용을 우선. 미지원이면 조용히 plain/PKCE 미사용으로 낮추지 말고 대안 흐름의 보안을 검토 |
-| verifier 보관·전달 | 누가 code_verifier를 만들고 토큰 교환 시 공급자에 전달하는가 | challenge는 인가 요청, verifier는 토큰 교환에 사용. verifier를 인가 URL·로그에 노출하지 않음. 백엔드 보관이면 프론트 Body에 추가할 필요 없음 |
-| 다중 공급자·OIDC | 공급자 혼동 방지, client/redirect 고정, ID token 사용 여부 | 로그인 시도에 결속된 provider로 토큰 교환. OIDC 사용 시 서명·iss·aud·exp 및 요청한 nonce 검증 |
-| 성공·취소·오류 복귀 | 실패 코드·HTTP 매핑, 재시작 화면, 허용된 복귀 경로 | 검증 실패 시 회원·서비스 세션 생성 금지. 로그인 거절과 공급자 장애를 구분. 임의 외부 return URL 금지 |
-| 서비스 세션 | 쿠키 이름·수명, Secure·HttpOnly·SameSite, CSRF/CORS, 동시 로그인 허용 수 | OAuth 인가 요청용 임시 상태와 로그인 후 `auth_sessions`를 분리 |
+| GET | `/auth/oauth/callback/{provider}` | 공개 경로지만 기존 로그인 시도·브라우저 결속 검증 필수 |
 
-현재 API-MEM-01은 코드 교환 결과의 JSON 계약 초안이다. 프론트 콜백 방식이면 state와 임시 로그인 시도 결속을 전달할 계약이 추가로 필요할 수 있고, 백엔드 콜백 방식이면 시작/콜백 URL과 세션 전달 방식이 필요하다. 어느 쪽이든 **요청 전에 만든 값과 비교**해야 하며, 콜백에서 처음 받은 state를 그대로 저장한 뒤 비교하면 검증이 아니다. state/code_verifier 필드를 무조건 현재 Body에 추가하는 것으로 문제를 해결하지 않는다.
+- Path provider: `KAKAO` 또는 `GOOGLE`. 서버가 저장한 로그인 시도의 provider와 일치해야 한다.
+- 성공 Query: `code`, `state` 필수 String. 실패 Query: 공급자의 `error`, 가능하면 `state`. Body 없음.
+- 공급자 콘솔에는 prefix를 포함한 실제 HTTPS 백엔드 콜백 주소를 정확히 등록한다. Spring의 등록 redirectUri와 콜백 처리 경로도 일치시킨다.
+- state·브라우저·provider·유효기간을 검증하고 시도를 원자적으로 소비한 뒤, 저장한 verifier로 코드를 교환한다. client_secret과 verifier는 백엔드에서만 공급자에 전달한다.
+- 검증된 `(oauth_provider, oauth_subject)`로 회원을 조회·생성한다. 같은 이메일로 계정을 자동 병합하지 않는다. 동시 신규 가입은 DB 유일 제약과 트랜잭션으로 중복 생성을 방지한다.
+- 성공한 회원/세션 저장을 커밋한 뒤 새 불투명 서비스 세션 ID를 쿠키로 발급한다. 로그인 전 임시 세션 ID를 서비스 세션 ID로 재사용하지 않는다.
 
-state는 로그인 요청과 응답의 연결 및 CSRF 방어에, PKCE는 인가 코드와 최초 요청자의 verifier를 결속하는 데 사용한다. 본 설계안은 state 결속과 지원 흐름의 PKCE S256을 함께 검토한다. 둘의 역할을 같다고 보거나 PKCE가 모든 애플리케이션의 CSRF 방어를 대체한다고 보지 않는다. [OAuth 보안 BCP](https://www.rfc-editor.org/rfc/rfc9700.html), [PKCE 규격](https://www.rfc-editor.org/rfc/rfc7636.html)
+**성공 응답 302**: `Set-Cookie`로 서비스 세션을 발급하고, `Location: {FRONTEND_ORIGIN}/auth/complete`. JSON Body 없음. `Cache-Control: no-store`.
 
-공급자 확인 자료: [카카오 REST API](https://developers.kakao.com/docs/ko/kakaologin/rest-api), [구글 웹 서버 OAuth](https://developers.google.com/identity/protocols/oauth2/web-server). 카카오는 OIDC 메타데이터에 S256을 명시하지만, 실제 사용할 SDK/REST 흐름의 파라미터 처리까지 PoC로 확인한다. 공급자 지원 사실과 우리 앱의 검증 구현 완료는 별개다.
+- 세션 쿠키 이름 `KGB_SESSION`은 기존 예시를 계약명으로 사용한다(서비스 브랜드 확정을 뜻하지 않음). 운영 속성은 `HttpOnly; Secure; SameSite=Lax; Path=/`, Domain 미지정(host-only).
+- 운영은 같은 사이트 구성을 기준으로 한다. 교차 origin API 호출은 프론트 credentials와 서버의 정확한 허용 origin 설정이 필요하다. 다른 사이트 배포는 별도 보안 검토 없이 쿠키 정책을 바꾸지 않는다.
+- 서비스 세션 TTL·연장 여부·동시 로그인 수는 별도 운영 정책이다. PKCE 10분 TTL을 서비스 로그인 유지기간에 적용하지 않는다.
+- 프론트 완료 화면은 세션 쿠키로 `GET /members/me`를 호출한다. `status=ONBOARDING`이면 PREF-01, `ACTIVE`이면 MAP-01. 401이면 로그인 화면으로 복귀한다. `onboarding_required`를 별도 로그인 응답으로 전달하지 않는다.
+- 서비스 액세스·리프레시 토큰은 발급하지 않으며, URL·localStorage에 인증 자격증명을 전달하지 않는다.
 
-확정 시 정상 로그인 외에 state 누락/변조/만료/재사용, provider 교체, 잘못된 verifier, redirect 불일치, 사용자 취소, 다중 탭·서버 환경을 테스트한다. 오류 코드 세분화와 추가 요청 필드는 그 흐름에 맞춰 동결한다.
+**실패 응답 302**: `Location: {FRONTEND_ORIGIN}/auth/error?code={아래의 허용된 코드}`. JSON Body 없음. 프론트는 오류 문구와 로그인 재시작 버튼을 표시한다. 원본 공급자 오류·인가 코드·state·verifier는 URL/응답/로그에 노출하지 않는다.
+
+| 복귀 code | 조건 | 복구 |
+|---|---|---|
+| OAUTH_ACCESS_DENIED | 결속 검증된 공급자 응답의 사용자 취소·거절 | 로그인 화면에서 재시작 |
+| OAUTH_INVALID_REQUEST | state 누락/불일치/만료/재사용, 브라우저·provider 불일치, 필수 Query 오류 | 기존 시도로 재시도하지 않고 새 로그인 시작 |
+| OAUTH_AUTHENTICATION_FAILED | 코드 교환 거절, 잘못된 verifier, ID token 검증 실패 | 새 로그인 시작 |
+| OAUTH_PROVIDER_UNAVAILABLE | 공급자 타임아웃·5xx·통신 장애 | 잠시 후 새 로그인 시작 |
+| OAUTH_INTERNAL_ERROR | 회원/세션 저장 등 내부 처리 실패 | 새 로그인 시작 |
+
+오류 복귀 code는 공통 JSON의 HTTP error.code 표와 구분한다. 공급자가 state를 돌려주지 않으면 임의 오류 문자열을 신뢰하지 않고 OAUTH_INVALID_REQUEST로 처리한다. 실패한 시도에서는 신규 회원·서비스 세션을 발급하지 않는다. 매칭되지 않는 state 요청은 다른 정상 시도를 삭제하지 않는다.
+
+#### OAuth 확정 계약 — API-DEC-01
+
+| 항목 | 확정 내용 |
+|---|---|
+| 실행 방식 | 웹 리다이렉트 Authorization Code + Spring Security `oauth2Login()`. 시작·콜백·코드 교환 모두 백엔드 담당. 프론트 SDK 코드 전달 방식은 사용하지 않음 |
+| state | 암호학적 난수로 생성. 로그인 전 HttpSession에 로그인 시도별로 provider·고정 redirect_uri·생성 시각과 함께 저장하고 해당 브라우저의 임시 세션 쿠키에 결속 |
+| 임시 보관 | Spring AuthorizationRequestRepository를 HttpSession 기반으로 구성. state별 map에 verifier 원문·필요한 nonce를 보관. 생성부터 10분 후 만료, 연장 없음. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
+| 일회성·다중 탭 | 동일 state의 검증·소비를 원자 처리해 콜백 중복 교환 금지. 각 탭은 별도 state로 관리. 만료 정리 및 브라우저당 최대 5개 시도, 초과 시작은 가장 오래된 시도를 폐기 |
+| PKCE | 두 공급자 로그인에 S256 사용. 서버에서 32바이트 난수를 base64url(no padding)로 인코딩한 verifier 생성. challenge는 BASE64URL(SHA256(verifier)). challenge만 인가 요청에, verifier 원문은 토큰 교환에 전달 |
+| 공급자·OIDC | Google은 OIDC(scope openid)로 ID token 서명·iss·aud·exp·nonce 검증. Kakao는 OAuth 사용자 정보 API의 검증된 id로 식별. Kakao OIDC는 이번 흐름에 추가하지 않음. 공급자별 응답을 공통 회원 식별로 매핑 |
+| 비밀값 | client_secret·verifier·공급자 토큰은 서버에서만 처리, 브라우저와 로그에 노출 금지. 서비스 세션 ID는 DB에 SHA-256 해시만 보관 |
+| 다중 서버 | 로그인 후 세션은 기존 공용 MySQL 사용. 로그인 전 HttpSession 저장소는 별개다. 단일 서버에서는 메모리 사용, 다중 서버 배포 전에 공유 HttpSession 저장소와 원자 소비를 적용·검증해야 함. Redis/새 업무 테이블을 지금 추가하지 않음 |
+| 쿠키·CSRF | 임시 세션 쿠키도 운영 HttpOnly·Secure·SameSite=Lax·host-only 적용. 서비스 세션 인증의 POST/PUT/PATCH/DELETE에는 Spring Security CSRF 토큰 검증 적용. PKCE/state가 일반 API의 CSRF 방어를 대체하지 않음 |
+| 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
+
+프레임워크 기본 설정만으로 10분 TTL·다중 시도·원자 소비·현재 auth_sessions 매핑이 자동 구현되는 것은 아니다. AuthorizationRequestRepository 확장, 로그인 성공 처리, 서비스 세션 검증 및 CSRF 연동을 구현한다. CSRF 토큰 전달 계약과 서비스 세션 운영 수치는 별도 보안 구현 항목이며 PKCE 설계 미정 항목이 아니다.
+
+**구현 검증 체크리스트(설계 재결정 아님):** 선택한 Spring 버전에 맞춰 confidential client에도 S256을 명시 적용하고, KAKAO·GOOGLE 실제 요청에서 challenge/verifier 및 틀린 verifier 거절을 확인한다. state 누락·변조·만료·재사용, 브라우저/공급자 교체, 다중 탭·동시 콜백, 사용자 취소, 공급자 장애, 저장 실패, 로그인 후 세션 폐기·CSRF 거절을 테스트한다. 공급자/라이브러리 호환성 실패 시 배포를 막고 원인을 해결하며 plain 또는 PKCE 미사용으로 조용히 낮추지 않는다. 문서 확정은 연동 테스트 완료를 뜻하지 않는다.
+
+참고: [Spring OAuth 로그인](https://docs.spring.io/spring-security/reference/servlet/oauth2/login/advanced.html), [Spring PKCE 설정](https://docs.spring.io/spring-security/reference/servlet/oauth2/client/authorization-grants.html), [PKCE RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html), [OAuth 보안 RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), [Spring CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html).
 
 ### API-MEM-03 로그아웃
 
@@ -1842,6 +1834,7 @@ Body 없음.
 
 | API ID | 이전 URL | 현재 처리 |
 |---|---|---|
+| API-MEM-01(구 계약) | POST /auth/oauth/{provider}/login | 프론트 코드 전달 초안 폐기. MEM-01 시작 GET + MEM-15 콜백 GET으로 대체. |
 | API-MEM-02 | POST /auth/token/refresh | 서버 세션 방식에서는 별도 토큰 갱신이 필요하지 않아 제외. ID는 재사용하지 않음. |
 | API-MEM-05 | PATCH /members/me | 프로필 직접 수정은 제공하지 않는 것으로 확정. OAuth 프로필은 로그인 시 동기화하고 언어는 MEM-11에서 변경. |
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
@@ -1869,7 +1862,7 @@ Body 없음.
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지. |
-| API-DEC-01 | MEM-01/03 | 서버 세션 방식과 지원 공급자는 확정. 서비스 액세스·리프레시 토큰과 갱신 API는 사용하지 않음. 남은 결정은 실행 플랫폼/SDK, 시작·콜백 주체, state 결속·TTL·일회성, PKCE/OIDC 검증, 세션 쿠키 수명·SameSite·동시 로그인 수. |
+| API-DEC-01 | MEM-01/15/03 | 확정: 웹 Authorization Code, Spring Security OAuth2 Login, 백엔드 시작·콜백, state 브라우저 결속·10분 TTL·일회 소비, PKCE S256 및 서버 verifier 보관. 서비스 세션 쿠키 유지, 서비스 액세스·리프레시 토큰과 갱신 API 없음. 별도 운영 결정은 서비스 세션 수명·연장 여부·동시 로그인 수와 배포 주소이며 PKCE 결정과 구분한다. |
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |
