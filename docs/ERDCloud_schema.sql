@@ -23,16 +23,16 @@ CREATE TABLE members (
 CREATE TABLE auth_sessions (
     id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
-    refresh_token_hash VARCHAR(255) NOT NULL,
+    session_id_hash BINARY(32) NOT NULL,
     expires_at DATETIME(6) NOT NULL,
     revoked_at DATETIME(6) NULL,
     last_used_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
-    CONSTRAINT uq_auth_sessions_refresh_token UNIQUE (refresh_token_hash),
+    CONSTRAINT uq_auth_sessions_session_id UNIQUE (session_id_hash),
     CONSTRAINT fk_auth_sessions_member FOREIGN KEY (member_id) REFERENCES members (id),
     INDEX ix_auth_sessions_member_state (member_id, revoked_at, expires_at)
-) COMMENT = '리프레시 토큰 단위 로그인 세션';
+) COMMENT = '서버 측 로그인 세션';
 
 CREATE TABLE member_preferences (
     id BIGINT NOT NULL AUTO_INCREMENT,

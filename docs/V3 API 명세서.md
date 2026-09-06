@@ -11,7 +11,7 @@
 | 기준 | 2026-09-06 · 요구사항정의서/테이블정의서/ERDCloud SQL과 동기화한 V3 구현 계약. 명시적 MVP 제외 항목은 별도 표기. |
 | API Prefix | /api/v1. URL 칼럼에서는 prefix 생략. |
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
-| 인증 | 별도 공개/PG 표시 외 Bearer 필수. 회원 ID는 인증 세션에서 결정하며 Body로 받지 않음. 소유권·탈퇴 여부를 매 요청 검증. |
+| 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
 | 응답 예외 | 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
 | ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
@@ -33,7 +33,6 @@
 | API ID | 기능 | Method | URL |
 |---|---|---|---|
 | API-MEM-01 | 소셜 로그인·가입 | POST | `/auth/oauth/{provider}/login` |
-| API-MEM-02 | 토큰 갱신 | POST | `/auth/token/refresh` |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` |
 | API-MEM-04 | 내 회원 조회 | GET | `/members/me` |
 | API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` |
@@ -85,7 +84,7 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/auth/oauth/{provider}/login` | 공개(Bearer 불필요); OAuth 검증 필수, 구체 흐름은 아래 API-DEC-01 |
+| POST | `/auth/oauth/{provider}/login` | 공개(세션 쿠키 불필요); OAuth 검증 필수, 성공 시 세션 쿠키 발급 |
 
 - Path provider: 필수 String, `KAKAO` 또는 `GOOGLE` (V3 지원 공급자 확정)
 - 서비스 버전별 범위: V1은 KAKAO만, V2 이상은 KAKAO와 GOOGLE 모두 지원
@@ -94,7 +93,8 @@
 - Body authorization_code: 필수 String, 일회용 인증 코드
 - redirect_uri: 필수 String, 등록된 콜백과 일치
 - 기기 ID·서비스 약관 동의 값은 받지 않음
-- 응답 expires_in: Integer, 초 단위; 토큰 String; onboarding_required: Boolean
+- 성공 응답에 `Set-Cookie`로 불투명한 세션 ID를 발급하고 서비스 액세스·리프레시 토큰은 응답하지 않음
+- onboarding_required: Boolean
 - member.status=ONBOARDING이면 취향 선택, ACTIVE이면 지도 화면으로 분기
 
 **Request Body**
@@ -112,9 +112,6 @@
 {
   "message": "login_success",
   "data": {
-    "access_token": "access_token",
-    "refresh_token": "refresh_token",
-    "expires_in": 3600,
     "member": {"member_id":"1","nickname":"여행자","profile_image_url":null,"language_code":"ko","status":"ACTIVE"},
     "onboarding_required": false
   }
@@ -127,9 +124,6 @@
 {
   "message": "member_created",
   "data": {
-    "access_token": "access_token",
-    "refresh_token": "refresh_token",
-    "expires_in": 3600,
     "member": {"member_id":"1","nickname":"여행자","profile_image_url":null,"language_code":"ko","status":"ONBOARDING"},
     "onboarding_required": true
   }
@@ -139,12 +133,12 @@
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_EXPIRED | 토큰 만료·폐기 |
+| 401 | AUTH_SESSION_EXPIRED | 세션 만료·폐기 |
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 502 | UPSTREAM_SERVICE_ERROR | 동기 외부 연동 실패 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** 공급자는 확정됐지만 아래 인증 흐름은 아직 설계 결정이 필요하다. 3600초는 예시이지 확정 TTL이 아니다. 현재 Body의 authorization_code/redirect_uri만으로 안전한 로그인 전체 흐름이 정의된 것은 아니며, 시작·콜백 계약 확정 전 구현 완료로 보지 않는다.
+**구현 전 확인:** 공급자와 서버 세션 방식은 확정됐다. 현재 Body의 authorization_code/redirect_uri만으로 안전한 로그인 전체 흐름이 정의된 것은 아니며, 시작·콜백 주체와 세션 쿠키 수명·SameSite 정책 확정 전 구현 완료로 보지 않는다.
 
 #### OAuth 검증 결정표 — API-DEC-01
 
@@ -157,8 +151,8 @@
 | PKCE 적용 방식 | 각 플랫폼/공급자 흐름의 S256 지원과 라이브러리 옵션 | 지원되는 인가 코드 흐름에서 S256 적용을 우선. 미지원이면 조용히 plain/PKCE 미사용으로 낮추지 말고 대안 흐름의 보안을 검토 |
 | verifier 보관·전달 | 누가 code_verifier를 만들고 토큰 교환 시 공급자에 전달하는가 | challenge는 인가 요청, verifier는 토큰 교환에 사용. verifier를 인가 URL·로그에 노출하지 않음. 백엔드 보관이면 프론트 Body에 추가할 필요 없음 |
 | 다중 공급자·OIDC | 공급자 혼동 방지, client/redirect 고정, ID token 사용 여부 | 로그인 시도에 결속된 provider로 토큰 교환. OIDC 사용 시 서명·iss·aud·exp 및 요청한 nonce 검증 |
-| 성공·취소·오류 복귀 | 실패 코드·HTTP 매핑, 재시작 화면, 허용된 복귀 경로 | 검증 실패 시 회원/세션·서비스 토큰 발급 금지. 로그인 거절과 공급자 장애를 구분. 임의 외부 return URL 금지 |
-| 서비스 토큰 | 쿠키/Body·메모리 보관, CSRF/CORS, access/refresh TTL·회전·동시 갱신 | OAuth 인가 요청용 임시 상태와 로그인 후 auth_sessions를 분리 |
+| 성공·취소·오류 복귀 | 실패 코드·HTTP 매핑, 재시작 화면, 허용된 복귀 경로 | 검증 실패 시 회원·서비스 세션 생성 금지. 로그인 거절과 공급자 장애를 구분. 임의 외부 return URL 금지 |
+| 서비스 세션 | 쿠키 이름·수명, Secure·HttpOnly·SameSite, CSRF/CORS, 동시 로그인 허용 수 | OAuth 인가 요청용 임시 상태와 로그인 후 `auth_sessions`를 분리 |
 
 현재 API-MEM-01은 코드 교환 결과의 JSON 계약 초안이다. 프론트 콜백 방식이면 state와 임시 로그인 시도 결속을 전달할 계약이 추가로 필요할 수 있고, 백엔드 콜백 방식이면 시작/콜백 URL과 세션 전달 방식이 필요하다. 어느 쪽이든 **요청 전에 만든 값과 비교**해야 하며, 콜백에서 처음 받은 state를 그대로 저장한 뒤 비교하면 검증이 아니다. state/code_verifier 필드를 무조건 현재 Body에 추가하는 것으로 문제를 해결하지 않는다.
 
@@ -168,58 +162,18 @@ state는 로그인 요청과 응답의 연결 및 CSRF 방어에, PKCE는 인가
 
 확정 시 정상 로그인 외에 state 누락/변조/만료/재사용, provider 교체, 잘못된 verifier, redirect 불일치, 사용자 취소, 다중 탭·서버 환경을 테스트한다. 오류 코드 세분화와 추가 요청 필드는 그 흐름에 맞춰 동결한다.
 
-### API-MEM-02 토큰 갱신
-
-| Method | URL | 인증 |
-|---|---|---|
-| POST | `/auth/token/refresh` | Bearer 불필요; refresh_token 검증 |
-
-- refresh_token: 필수 String. 만료·폐기·탈퇴 회원 세션 사용 불가
-
-**Request Body**
-
-```json
-{
-  "refresh_token": "refresh_token"
-}
-```
-
-**응답 200**
-
-```json
-{
-  "message": "token_refresh_success",
-  "data": {
-    "access_token": "new_access_token",
-    "refresh_token": "new_refresh_token",
-    "expires_in": 3600
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-**구현 전 확인:** API-DEC-01: 토큰 회전 및 동시 갱신 재시도 정책 확정 필요.
-
 ### API-MEM-03 로그아웃
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/auth/logout` | Bearer 필수 |
+| POST | `/auth/logout` | 세션 쿠키 필수 |
 
-- refresh_token: 필수 String, 로그인 회원의 현재 세션
+- 현재 요청의 세션을 폐기하고 세션 쿠키를 만료시킴
 - 기기별 관리·all_devices 옵션 미제공
 
 **Request Body**
 
-```json
-{
-  "refresh_token": "refresh_token"
-}
-```
+없음.
 
 **응답 204**
 
@@ -227,14 +181,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-MEM-04 내 회원 조회
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/members/me` | Bearer 필수 |
+| GET | `/members/me` | 세션 쿠키 필수 |
 
 - Query/Body 없음
 - 응답 nickname ≤50자, profile_image_url: String|null ≤2048자
@@ -262,14 +216,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-MEM-06 회원 탈퇴
 
 | Method | URL | 인증 |
 |---|---|---|
-| DELETE | `/members/me` | Bearer 필수 |
+| DELETE | `/members/me` | 세션 쿠키 필수 |
 
 - Body 없음. 확인 모달은 프론트 처리
 - 완료 후 현재 세션 포함 모든 세션 사용 불가
@@ -287,7 +241,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** DEC-11/API-DEC-02 확정: 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
@@ -296,7 +250,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/preference-options` | Bearer 필수 |
+| GET | `/preference-options` | 세션 쿠키 필수 |
 
 - Query language_code: 선택 String ≤10자
 - 응답 preference_type: THEME|DETAIL|TRAVEL_STYLE
@@ -320,7 +274,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** API-DEC-03 확정: 현재 승인된 화면정의서·기능설계도에 존재하는 허용 코드·부모 관계·표시명·언어만 사용.
@@ -329,7 +283,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/members/me/preferences` | Bearer 필수 |
+| GET | `/members/me/preferences` | 세션 쿠키 필수 |
 
 - 응답 selections: Array<{preference_type:String,preference_code:String}>
 - 최초 미선택이면 빈 배열
@@ -351,14 +305,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-MEM-09 기본 취향 전체 저장
 
 | Method | URL | 인증 |
 |---|---|---|
-| PUT | `/members/me/preferences` | Bearer 필수 |
+| PUT | `/members/me/preferences` | 세션 쿠키 필수 |
 
 - selections: 필수 Array, 전체 선택 집합
 - preference_type: 필수 THEME|DETAIL|TRAVEL_STYLE
@@ -393,7 +347,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 
@@ -403,7 +357,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/members/me/settings` | Bearer 필수 |
+| GET | `/members/me/settings` | 세션 쿠키 필수 |
 
 - 응답 language_code: String ≤10자, 기본 ko
 - push_enabled: Boolean
@@ -426,14 +380,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-MEM-11 설정 부분 수정
 
 | Method | URL | 인증 |
 |---|---|---|
-| PATCH | `/members/me/settings` | Bearer 필수 |
+| PATCH | `/members/me/settings` | 세션 쿠키 필수 |
 
 - language_code: 선택 String ≤10자, 지원 코드만
 - push_enabled: 선택 Boolean
@@ -464,7 +418,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-MEM-12 정책 안내 목록
@@ -535,7 +489,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/notifications` | Bearer 필수 |
+| GET | `/notifications` | 세션 쿠키 필수 |
 
 - Query cursor: 선택 불투명 문자열; size: Integer 1~20, 기본 4
 - 최신 created_at DESC,id DESC. 읽은 알림은 없음
@@ -562,7 +516,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** DEC-08 확정: 초기 4개, 미읽음 최대 20개, 초과 시 최고령순 삭제. API-DEC-03의 알림 Enum·이동 대상은 승인된 화면정의서·기능설계도에 존재하는 값만 사용.
@@ -571,7 +525,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| DELETE | `/notifications/{notification_id}` | Bearer 필수 |
+| DELETE | `/notifications/{notification_id}` | 세션 쿠키 필수 |
 
 - Path notification_id: 필수 ID 문자열
 - Body 없음; 자기 알림만 삭제, 이미 없으면 204
@@ -586,14 +540,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-NOT-03 알림 전체 삭제
 
 | Method | URL | 인증 |
 |---|---|---|
-| DELETE | `/notifications` | Bearer 필수 |
+| DELETE | `/notifications` | 세션 쿠키 필수 |
 
 - Body 없음
 - 요청 처리 시작 시 존재하는 자기 알림만 삭제; 이후 생성된 알림은 유지
@@ -608,7 +562,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ## 4. 관광콘텐츠
@@ -617,7 +571,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/contents` | Bearer 필수 |
+| GET | `/contents` | 세션 쿠키 필수 |
 
 - Query q: 선택 String, 최대 10자; 빈 값=전체
 - region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
@@ -649,7 +603,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** DEC-02/API-DEC-05 확정: `month=YYYY-MM`, 행사에만 기간 중첩 조건을 적용하고 상시 장소는 포함. 검색은 `title` 부분 일치이며 `%`, `_`, 이스케이프 문자는 일반 문자로 처리한다. 검색어 유무와 관계없이 DB 등록 최신순이다.
@@ -658,7 +612,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/contents/{content_id}` | Bearer 필수 |
+| GET | `/contents/{content_id}` | 세션 쿠키 필수 |
 
 - Path content_id: 필수 ID 문자열
 - latitude/longitude: Number, WGS84 도 단위
@@ -697,7 +651,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -706,7 +660,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/map/contents` | Bearer 필수 |
+| GET | `/map/contents` | 세션 쿠키 필수 |
 
 - Query (latitude,longitude,radius_m) 또는 (south,west,north,east) 중 정확히 하나의 조합
 - 좌표 Number: 위도 -90~90, 경도 (-180,180]. radius_m 1~10,000; 최초 진입 기본 반경 3,000m
@@ -736,7 +690,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** API-DEC-05 확정: Figma MAP-01 기준 기본 반경 3km, 줌 6~21(최초 16~17), 클러스터 숫자 10 이상 `9+`. 백엔드 상한은 반경 10km, 마커·클러스터 합계 200개이며 서버가 클러스터를 집계한다.
@@ -745,7 +699,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/members/me/favorites` | Bearer 필수 |
+| GET | `/members/me/favorites` | 세션 쿠키 필수 |
 
 - Query cursor, size: 공통 커서 규칙
 - 최신 등록 순; 응답 content와 favorited_at
@@ -770,7 +724,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** API-DEC-06 확정: 비활성·삭제 관심 장소는 목록에서 숨김.
@@ -779,7 +733,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| PUT | `/members/me/favorites/{content_id}` | Bearer 필수 |
+| PUT | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
 - Path content_id: 필수 ID 문자열
 - Body 없음. 활성 콘텐츠만 신규 등록; 중복 요청도 200
@@ -802,7 +756,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
@@ -810,7 +764,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| DELETE | `/members/me/favorites/{content_id}` | Bearer 필수 |
+| DELETE | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
 - Path content_id: 필수 ID 문자열
 - Body 없음. 이미 해제된 경우도 204
@@ -825,7 +779,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ## 5. 가이드북
@@ -834,7 +788,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebooks` | Bearer 필수 |
+| GET | `/guidebooks` | 세션 쿠키 필수 |
 
 - Query cursor, size: 공통 커서 규칙
 - sort=created_at,desc 고정; id DESC 보조 정렬
@@ -860,14 +814,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/guidebook-generations` | Bearer 필수 |
+| POST | `/guidebook-generations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
 - region_code: 필수 String ≤20자, 17개 광역 지역 중 하나
@@ -907,7 +861,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
 | 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
@@ -921,7 +875,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebook-generations/{job_id}` | Bearer 필수 |
+| GET | `/guidebook-generations/{job_id}` | 세션 쿠키 필수 |
 
 - Path job_id: 필수 String ≤50자
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
@@ -952,7 +906,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -961,7 +915,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebooks/{guidebook_id}` | Bearer 필수 |
+| GET | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
 - Path guidebook_id: 필수 String ≤50자
 - 응답 companion String; people_count Integer; version Integer ≥1
@@ -995,7 +949,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1006,7 +960,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebooks/{guidebook_id}/itinerary` | Bearer 필수 |
+| GET | `/guidebooks/{guidebook_id}/itinerary` | 세션 쿠키 필수 |
 
 - days[].day_number: Integer ≥1; itinerary_date: YYYY-MM-DD
 - items[].item_id: ID; content_id: ID|null
@@ -1031,7 +985,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1040,7 +994,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/guidebooks/{guidebook_id}/regenerations` | Bearer 필수 |
+| POST | `/guidebooks/{guidebook_id}/regenerations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
 - title: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤15자. 재생성 결과에 적용할 가이드북 제목
@@ -1080,7 +1034,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
 | 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
@@ -1096,7 +1050,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/guidebooks/{guidebook_id}/shares` | Bearer 필수 |
+| POST | `/guidebooks/{guidebook_id}/shares` | 세션 쿠키 필수 |
 
 - 요청 본문 없음; 만료 시각은 발급 시점부터 24시간 후로 서버가 계산
 - share_url: String; expires_at: String
@@ -1120,7 +1074,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1132,7 +1086,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/shares/{share_token}` | Bearer 필수 |
+| GET | `/shares/{share_token}` | 세션 쿠키 필수 |
 
 - Path share_token: 필수 난수 문자열
 - 미존재·만료·원본 삭제는 모두 404
@@ -1162,7 +1116,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 404 | SHARE_LINK_UNAVAILABLE | 공유 토큰 미존재·만료·대상 삭제 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
@@ -1172,7 +1126,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/shares/{share_token}/imports` | Bearer 필수 |
+| POST | `/shares/{share_token}/imports` | 세션 쿠키 필수 |
 
 - Path share_token: 필수 String
 - Body 없음. 최초 원본 기준 같은 회원의 중복 복사 금지
@@ -1209,7 +1163,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 404 | SHARE_LINK_UNAVAILABLE | 공유 토큰 미존재·만료·대상 삭제 |
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1220,7 +1174,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/guidebooks/{guidebook_id}/exports` | Bearer 필수 |
+| POST | `/guidebooks/{guidebook_id}/exports` | 세션 쿠키 필수 |
 
 - format: 필수, PDF만 허용
 - 성공 Content-Type: application/pdf
@@ -1242,7 +1196,7 @@ PDF 바이너리 (JSON 아님)
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1255,7 +1209,7 @@ PDF 바이너리 (JSON 아님)
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebooks/{guidebook_id}/viewer` | Bearer 필수 |
+| GET | `/guidebooks/{guidebook_id}/viewer` | 세션 쿠키 필수 |
 
 - 응답 content_html: String|null; version: Integer; updated_at: ISO8601
 - Content-Type: application/json
@@ -1281,7 +1235,7 @@ PDF 바이너리 (JSON 아님)
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1290,7 +1244,7 @@ PDF 바이너리 (JSON 아님)
 
 | Method | URL | 인증 |
 |---|---|---|
-| DELETE | `/guidebooks/{guidebook_id}` | Bearer 필수 |
+| DELETE | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
 - Path guidebook_id: 필수 String ≤50자
 - Body 없음; 소유자만 삭제
@@ -1306,7 +1260,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1319,7 +1273,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebook-evaluations` | Bearer 필수 |
+| GET | `/guidebook-evaluations` | 세션 쿠키 필수 |
 
 - Query status: 선택 PENDING|SUBMITTED, 기본 PENDING
 - cursor,size: 공통 규칙
@@ -1345,14 +1299,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-RNK-02 평가 시작·재개
 
 | Method | URL | 인증 |
 |---|---|---|
-| PUT | `/guidebooks/{guidebook_id}/evaluation` | Bearer 필수 |
+| PUT | `/guidebooks/{guidebook_id}/evaluation` | 세션 쿠키 필수 |
 
 - Body 없음; 소유 가이드북·종료 다음 날 이후
 - 최초 행 생성 201; 기존 평가 반환 200
@@ -1390,7 +1344,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1400,7 +1354,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/guidebook-evaluations/{evaluation_id}` | Bearer 필수 |
+| GET | `/guidebook-evaluations/{evaluation_id}` | 세션 쿠키 필수 |
 
 - Path evaluation_id: 필수 ID 문자열
 - places[].content_id: ID; current_score: Integer 0~5|null
@@ -1429,7 +1383,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1440,7 +1394,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| PATCH | `/guidebook-evaluations/{evaluation_id}` | Bearer 필수 |
+| PATCH | `/guidebook-evaluations/{evaluation_id}` | 세션 쿠키 필수 |
 
 - prompt_dismissed: 필수 Boolean, true만 허용
 - status는 PENDING 유지; 이후 자동 모달 재표시 안 함
@@ -1469,7 +1423,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1480,7 +1434,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/guidebook-evaluations/{evaluation_id}/submit` | Bearer 필수 |
+| POST | `/guidebook-evaluations/{evaluation_id}/submit` | 세션 쿠키 필수 |
 
 - ratings: 필수 Array; content_id 필수 ID 문자열·중복 불가
 - score: 필수 Integer 0~5 또는 null(건너뛰기)
@@ -1518,7 +1472,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1532,7 +1486,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/rankings` | Bearer 필수 |
+| GET | `/rankings` | 세션 쿠키 필수 |
 
 - Query period_type: 필수 DAILY|WEEKLY|MONTHLY
 - period_start: 필수 YYYY-MM-DD; region_code 선택, 생략=전국
@@ -1568,7 +1522,7 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** DEC-03/04: 기간 경계·점수 귀속 시각·공식·동점 규칙·갱신 지연 목표.
@@ -1579,7 +1533,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/credits/wallet` | Bearer 필수 |
+| GET | `/credits/wallet` | 세션 쿠키 필수 |
 
 - credit_balance: Integer ≥0
 - active_job_id: String|null, PENDING/PROCESSING 작업
@@ -1605,14 +1559,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-PAY-02 생성권 원장 조회
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/credits/transactions` | Bearer 필수 |
+| GET | `/credits/transactions` | 세션 쿠키 필수 |
 
 - Query cursor,size: 공통 규칙
 - type 선택 FREE_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
@@ -1639,14 +1593,14 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-PAY-03 생성권 상품 목록
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/credit-products` | Bearer 필수 |
+| GET | `/credit-products` | 세션 쿠키 필수 |
 
 - Body 없음; 서버가 ACTIVE 및 deleted_at IS NULL 필터
 - price: Integer ≥0, KRW 최소 화폐단위
@@ -1670,14 +1624,14 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-PAY-04 주문 생성
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/orders` | Bearer 필수 |
+| POST | `/orders` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
 - product_id: 필수 ID 문자열
@@ -1727,7 +1681,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
@@ -1738,7 +1692,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/orders/{merchant_order_id}` | Bearer 필수 |
+| GET | `/orders/{merchant_order_id}` | 세션 쿠키 필수 |
 
 - Path merchant_order_id: 필수 String ≤100자
 - status: CREATED|PAYMENT_PENDING|PAID|FAILED|CANCELED
@@ -1769,7 +1723,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1778,7 +1732,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/orders/{merchant_order_id}/payment-attempts` | Bearer 필수 |
+| POST | `/orders/{merchant_order_id}/payment-attempts` | 세션 쿠키 필수 |
 
 - Path merchant_order_id: 필수 String ≤100자
 - Body 필드·PG 공급자·checkout 응답·재시도 키는 미확정
@@ -1803,7 +1757,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
@@ -1816,7 +1770,7 @@ Body 없음.
 
 | Method | URL | 인증 |
 |---|---|---|
-| POST | `/payments/webhooks/{provider}` | PG 서명 검증; Bearer 사용 안 함 |
+| POST | `/payments/webhooks/{provider}` | PG 서명 검증; 세션 쿠키 사용 안 함 |
 
 - PG 원문 요청·서명 헤더·응답 규격은 공급자별로 확정
 - 임의의 공통 JSON Body를 PG 실제 요청으로 사용하지 않음
@@ -1864,8 +1818,8 @@ Body 없음.
 | error.code | HTTP | message | 사용 조건 |
 |---|---|---|---|
 | COMMON_VALIDATION_ERROR | 400 | invalid_request | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| AUTH_TOKEN_REQUIRED | 401 | authentication_required | 인증 토큰 누락·유효하지 않음 |
-| AUTH_TOKEN_EXPIRED | 401 | token_expired | 토큰 만료·폐기 |
+| AUTH_SESSION_REQUIRED | 401 | authentication_required | 세션 쿠키 누락·유효하지 않음 |
+| AUTH_SESSION_EXPIRED | 401 | session_expired | 세션 만료·폐기 |
 | RESOURCE_FORBIDDEN | 403 | forbidden | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | RESOURCE_NOT_FOUND | 404 | resource_not_found | 없거나 삭제된 리소스 |
 | SHARE_LINK_UNAVAILABLE | 404 | share_link_unavailable | 공유 토큰 미존재·만료·대상 삭제 |
@@ -1888,6 +1842,7 @@ Body 없음.
 
 | API ID | 이전 URL | 현재 처리 |
 |---|---|---|
+| API-MEM-02 | POST /auth/token/refresh | 서버 세션 방식에서는 별도 토큰 갱신이 필요하지 않아 제외. ID는 재사용하지 않음. |
 | API-MEM-05 | PATCH /members/me | 프로필 직접 수정은 제공하지 않는 것으로 확정. OAuth 프로필은 로그인 시 동기화하고 언어는 MEM-11에서 변경. |
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
 | API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
@@ -1914,7 +1869,7 @@ Body 없음.
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지. |
-| API-DEC-01 | MEM-01~03 | 지원 공급자는 V1 KAKAO, V2 이상 KAKAO·GOOGLE로 확정. 남은 결정은 실행 플랫폼/SDK, 시작·콜백 주체, state 브라우저 결속·TTL·일회성, 공급자별 PKCE S256 적용·verifier 보관, OIDC 검증, 쿠키/Body·토큰 TTL·회전·동시 갱신. 상세는 API-MEM-01의 OAuth 검증 결정표. |
+| API-DEC-01 | MEM-01/03 | 서버 세션 방식과 지원 공급자는 확정. 서비스 액세스·리프레시 토큰과 갱신 API는 사용하지 않음. 남은 결정은 실행 플랫폼/SDK, 시작·콜백 주체, state 결속·TTL·일회성, PKCE/OIDC 검증, 세션 쿠키 수명·SameSite·동시 로그인 수. |
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |

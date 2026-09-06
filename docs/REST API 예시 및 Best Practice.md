@@ -82,7 +82,7 @@ POST 생성 작업은 `Idempotency-Key`와 generation_jobs 저장값으로 중�
 
 ```http
 POST /api/v1/guidebook-generations
-Authorization: Bearer access_token
+Cookie: KGB_SESSION=opaque_session_id
 Content-Type: application/json
 Idempotency-Key: request_unique_key
 ```
@@ -125,7 +125,7 @@ Idempotency-Key: request_unique_key
 
 인증은 “누구인가”, 인가는 “이 작업을 해도 되는가”다. 유효 토큰만 확인하고 `/guidebooks/{id}`를 반환하면 ID를 아는 타인의 가이드북을 볼 수 있다. 조회·편집·삭제·PDF 모두 소유권을 검사한다.
 
-회원 ID를 Body에서 받지 않고 인증 세션에서 결정한다. 추측하기 어려운 gb/job ID도 인가를 대체하지 않는다. 탈퇴 시 세션을 폐기하고, 삭제된 회원의 기존 액세스 토큰이 남아 있더라도 보호 API를 사용할 수 없도록 검증해야 한다.
+회원 ID를 Body에서 받지 않고 인증 세션에서 결정한다. 추측하기 어려운 gb/job ID도 인가를 대체하지 않는다. 탈퇴 시 세션을 폐기하고, 삭제된 회원의 기존 세션 쿠키가 남아 있더라도 보호 API를 사용할 수 없도록 검증해야 한다.
 
 OAuth 지원 범위는 **V1 KAKAO만, V2 이상(V3 포함) KAKAO·GOOGLE 모두**로 확정됐다. 이는 서비스 출시 단계이며 /api/v1이라는 URL 버전과 별개다. 회원당 하나의 소셜 계정 연결을 유지하므로 두 공급자를 지원한다고 social_accounts 테이블이 반드시 필요한 것은 아니다. 공급자+subject로 식별하고 이메일만으로 자동 병합하지 않는다.
 
@@ -138,7 +138,7 @@ OAuth 동의는 우리 서비스의 별도 동의 이력 저장과 동일하지 
 - 로그인 시작과 콜백을 프론트/백엔드 중 누가 처리할지.
 - state를 요청 전에 누가 만들고, 원래 브라우저·공급자와 어떻게 연결하며, 어디에 얼마나 보관하고 한 번만 소비할지.
 - 공급자/SDK별 PKCE S256 지원과 code_verifier 생성·보관·토큰 교환 담당.
-- 리다이렉트 주소·OIDC 검증·실패 처리·쿠키/Body 전달·서비스 토큰 TTL과 회전.
+- 리다이렉트 주소·OIDC 검증·실패 처리·쿠키/Body 전달·서비스 세션 TTL과 회전.
 
 state는 ‘내가 시작한 로그인 응답인가’를 연결하고, PKCE는 ‘이 코드를 교환하는 쪽이 최초 요청의 verifier를 아는가’를 확인한다. challenge는 인가 요청에 보내고 verifier는 토큰 교환에 사용한다. 둘을 같은 기능으로 설명하지 않는다. [PKCE 규격](https://www.rfc-editor.org/rfc/rfc7636.html)
 
@@ -148,7 +148,7 @@ state는 ‘내가 시작한 로그인 응답인가’를 연결하고, PKCE는 
 
 **꼬리 질문: auth_sessions에 저장하면 되나요?**
 
-현재 auth_sessions는 로그인 후 refresh 세션이며 가입 전 임시 인가 요청 저장소가 아니다. 단기 저장 위치·TTL·다중 서버·일회 소비를 별도 설계하고 실패 시 서비스 토큰을 발급하지 않는다.
+현재 `auth_sessions`는 로그인 후 서비스 세션이며 가입 전 임시 인가 요청 저장소가 아니다. 로그인 시도용 state/verifier의 단기 저장 위치·TTL·다중 서버·일회 소비를 별도 설계하고 검증 실패 시 서비스 세션을 발급하지 않는다.
 
 ## 7. 오류와 빈 결과
 

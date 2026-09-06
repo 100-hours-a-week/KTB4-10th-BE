@@ -120,7 +120,7 @@ erDiagram
     AUTH_SESSIONS {
         bigint id PK
         bigint member_id FK
-        varchar refresh_token_hash UK
+        binary session_id_hash UK
     }
     MEMBER_PREFERENCES {
         bigint id PK
@@ -365,7 +365,7 @@ erDiagram
 
 ### auth_sessions
 
-리프레시 토큰별 만료·폐기 상태를 저장한다.
+서버 세션 ID의 해시와 만료·폐기 상태를 저장한다. 원문 세션 ID는 쿠키에만 존재한다.
 
 - 원문 대신 해시를 저장해 DB 유출 위험을 낮춘다.
 - 해시 UNIQUE는 중복 연결 방지와 조회를 함께 지원한다.
