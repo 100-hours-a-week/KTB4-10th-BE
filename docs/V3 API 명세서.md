@@ -1,6 +1,6 @@
 # V3 API 명세서
 
-> 기준일: 2026-09-04 · MySQL 스키마 연동 API 설계안
+> 기준일: 2026-09-06 · MySQL 스키마 연동 V3 확정 API 명세
 > 기준: [요구사항정의서](./요구사항정의서.md), [테이블정의서](./테이블정의서.md), [ERDCloud SQL](./ERDCloud_schema.sql)
 > 구현 이유·요구사항 추적: [API 설계 근거](./API%20설계%20근거.md) · 학습: [REST API 예시 및 Best Practice](./REST%20API%20예시%20및%20Best%20Practice.md)
 
@@ -8,25 +8,25 @@
 
 | 항목 | 규약 |
 |---|---|
-| 기준 | 2026-09-04 · 로컬 repo 85f4083의 요구사항/테이블/ERDCloud SQL. 구현 완료 문서가 아닌 최신 스키마 연동 설계안. |
+| 기준 | 2026-09-06 · 요구사항정의서/테이블정의서/ERDCloud SQL과 동기화한 V3 구현 계약. 명시적 MVP 제외 항목은 별도 표기. |
 | API Prefix | /api/v1. URL 칼럼에서는 prefix 생략. |
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
 | 인증 | 별도 공개/PG 표시 외 Bearer 필수. 회원 ID는 인증 세션에서 결정하며 Body로 받지 않음. 소유권·탈퇴 여부를 매 요청 검증. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
 | 응답 예외 | 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
-| ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일하는 설계안. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
+| ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
 | 날짜·시각 | 사건 시각 ISO8601 오프셋 포함, 예시 UTC Z. DB DATETIME(6)에 UTC 저장. 여행 날짜 YYYY-MM-DD, 일정 시각 HH:mm:ss. 일간 경계 등 정책은 DEC-03. |
 | 좌표 | API latitude/longitude는 WGS84 도 단위 Number. DB location POINT SRID4326과 변환. X/Y 순서를 임의로 위도·경도라고 가정하지 않음. |
 | 문자열·URL | 필드별 최대 길이 검증. DB 외부 URL은 ≤2048자, 초과값 자르지 않음. nullable 명시 외 null 불가. 예시 URL은 실제 연동 주소 아님. |
-| 커서 목록 | cursor 선택 불투명 문자열, size 기본20·1~100(설계안). 최신 created_at DESC,id DESC. 응답 items,next_cursor,has_more. 알림은 기본4·최대20 우선. |
-| 번호 페이지 | 콘텐츠 page 기본1,size 기본5·최대20. 랭킹 page 기본1,size 기본20·최대100(설계안). items,page,size,total_items,total_pages. 빈 목록은 200,items=[]. |
+| 커서 목록 | cursor 선택 불투명 문자열, size 기본20·1~100. 최신 created_at DESC,id DESC. 응답 items,next_cursor,has_more. 알림은 기본4·최대20 우선. |
+| 번호 페이지 | 콘텐츠 page 기본1,size 기본5·최대20. 랭킹 page 기본1,size 기본20·최대100. items,page,size,total_items,total_pages. 빈 목록은 200,items=[]. |
 | 멱등 키 | 필수 대상 GDE-02/GDE-09/PAY-04만. String≤100자. 키를 회원·요청 내용과 비교. 다른 내용이면409. 기존 작업/주문 반환 시 부작용 반복 금지. |
 | 공통 오류 | 인증401·소유권403·삭제/미존재404·형식400·상태충돌409·업무조건422·호출제한429·내부500. 실제 한도와 Retry-After는 운영 합의 필요. |
-| 제공 범위 | 회원5개 도메인 구조 유지. 제외된 ID는 재사용하지 않음. PG 2개 API와 각 미확정 항목은 구현 전 동결 필요. Figma/실행 서버/실 DB 테스트는 이번 검증 범위 밖. |
+| 제공 범위 | 회원5개 도메인 구조 유지. 제외된 ID는 재사용하지 않음. PG 2개 API와 각 미확정 항목은 구현 전 동결 필요. 실행 서버/실 DB 테스트는 이번 검증 범위 밖. |
 
 ### 읽는 방법
 
-각 API의 Request Body와 응답 예시는 이 문서의 최신 계약 초안을 따른다. 엑셀은 다음 일괄 갱신 전까지 이 문서와 다를 수 있다. `미확정`은 팀 결정이 필요한 계약이며 예시 숫자나 Enum을 최종 정책으로 간주하지 않는다. URL·HTTP 동작·검증 조건은 명세에 남기고, 테이블 선택 이유·FR/BR 연결은 별도 근거 문서로 분리한다.
+각 API의 Request Body와 응답 예시는 이 문서의 V3 구현 계약을 따른다. 엑셀은 다음 일괄 갱신 전까지 이 문서와 다를 수 있다. PG·PDF 한도 등 명시적으로 보류한 항목은 현재 구현 범위에서 제외하며 예시를 최종 정책으로 간주하지 않는다. URL·HTTP 동작·검증 조건은 명세에 남기고, 테이블 선택 이유·FR/BR 연결은 별도 근거 문서로 분리한다.
 
 ## 2. 엔드포인트 목록
 
@@ -273,6 +273,9 @@ Body 없음.
 
 - Body 없음. 확인 모달은 프론트 처리
 - 완료 후 현재 세션 포함 모든 세션 사용 불가
+- 회원은 소프트 삭제하고 서비스 데이터는 30일 보관 후 삭제·비식별화. 결제·원장은 법정 보존 정책 따름
+- 동일 소셜 계정의 재가입은 기존 회원 복구가 아닌 새 회원 생성으로 처리
+- 진행 중인 AI 생성 작업은 취소 요청하고 늦은 완료 결과를 반영하지 않음
 
 **Request Body**
 
@@ -287,7 +290,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-11: 보존·파기 및 재가입 정책; API-DEC-02: 진행 중 생성/결제와 탈퇴 경합 처리.
+**구현 전 확인:** DEC-11/API-DEC-02 확정: 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
 
 ### API-MEM-07 취향 옵션 조회
 
@@ -298,7 +301,7 @@ Body 없음.
 - Query language_code: 선택 String ≤10자
 - 응답 preference_type: THEME|DETAIL|TRAVEL_STYLE
 - code ≤50자; label String; parent_code String|null; sort_order Integer
-- 옵션 코드 예시는 테이블 정의서의 예시이며 전체 목록은 확정 필요
+- 허용 코드·부모 관계·표시명·선택 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 사용
 
 **Request Body**
 
@@ -320,7 +323,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-03: 허용 코드·부모 관계·표시명·언어 목록 확정.
+**구현 전 확인:** API-DEC-03 확정: 현재 승인된 화면정의서·기능설계도에 존재하는 허용 코드·부모 관계·표시명·언어만 사용.
 
 ### API-MEM-08 기본 취향 조회
 
@@ -394,7 +397,7 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 
-**구현 전 확인:** API-DEC-03: 중분류·스타일 최소/최대 선택 수 확정.
+**구현 전 확인:** API-DEC-03 확정: 중분류·스타일 최소/최대 선택 수는 현재 승인된 화면정의서·기능설계도의 범위만 사용.
 
 ### API-MEM-10 설정 조회
 
@@ -492,7 +495,7 @@ Body 없음.
 |---|---|---|
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-04: 정적 문서 배포 위치·type 목록. 별도 동의 API는 범위 제외.
+**구현 전 확인:** API-DEC-04 확정: 정책 문서는 서버 API에서 Markdown으로 제공한다. 별도 동의 저장 API와 프로필 직접 수정 API는 범위 제외.
 
 ### API-MEM-13 정책 안내 상세
 
@@ -501,7 +504,7 @@ Body 없음.
 | GET | `/policies/{policy_type}` | 공개 |
 
 - Path policy_type: 필수 String, 목록에 있는 코드
-- 응답 content: String, format: MARKDOWN(설계안)
+- 응답 content: String, format: MARKDOWN 고정
 
 **Request Body**
 
@@ -526,7 +529,7 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-04: 프론트 렌더링 형식 확정.
+**구현 전 확인:** API-DEC-04 확정: 정책 본문은 서버 API에서 `MARKDOWN` 형식으로 제공한다.
 
 ### API-NOT-01 미읽은 알림 목록
 
@@ -536,6 +539,7 @@ Body 없음.
 
 - Query cursor: 선택 불투명 문자열; size: Integer 1~20, 기본 4
 - 최신 created_at DESC,id DESC. 읽은 알림은 없음
+- 회원별 미읽음 알림은 20개만 보관. 새 알림 저장 시 초과분은 가장 오래된 행부터 삭제
 - reference_type/id: 둘 다 값 또는 둘 다 null
 
 **Request Body**
@@ -561,7 +565,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-08: 초기 4/5·보관 기간; API-DEC-03: 알림 3종의 정확한 Enum과 이동 대상 매핑. 응답 type은 예시.
+**구현 전 확인:** DEC-08 확정: 초기 4개, 미읽음 최대 20개, 초과 시 최고령순 삭제. API-DEC-03의 알림 Enum·이동 대상은 승인된 화면정의서·기능설계도에 존재하는 값만 사용.
 
 ### API-NOT-02 알림 개별 삭제(읽기)
 
@@ -618,8 +622,9 @@ Body 없음.
 - Query q: 선택 String, 최대 10자; 빈 값=전체
 - region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
 - category: 선택 EVENT|CULTURAL_HERITAGE|ATTRACTION
-- month: 선택 YYYY-MM(설계안), 행사 기간과 겹침
-- page Integer ≥1 기본1; size 1~20 기본5; sort=title,asc(설계안)
+- month: 선택 YYYY-MM. `EVENT`는 선택 월과 행사 기간이 겹치면 포함하고 `ATTRACTION`·`CULTURAL_HERITAGE`는 기간이 없으므로 항상 포함
+- page Integer ≥1 기본1; size 1~20 기본5
+- 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
 - 조건 AND; 결과 없음 items=[]
 
 **Request Body**
@@ -647,7 +652,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-02: 월 선택 가능 연도·상시 장소 혼합 정책; API-DEC-05: 검색 정렬·검색 방식 확정.
+**구현 전 확인:** DEC-02/API-DEC-05 확정: `month=YYYY-MM`, 행사에만 기간 중첩 조건을 적용하고 상시 장소는 포함. 검색은 `title` 부분 일치이며 `%`, `_`, 이스케이프 문자는 일반 문자로 처리한다. 검색어 유무와 관계없이 DB 등록 최신순이다.
 
 ### API-CON-02 관광 콘텐츠 상세
 
@@ -703,11 +708,13 @@ Body 없음.
 |---|---|---|
 | GET | `/map/contents` | Bearer 필수 |
 
-- Query (latitude,longitude,radius_m) 또는 (south,west,north,east) 중 하나
-- 좌표 Number: 위도 -90~90, 경도 (-180,180]; radius_m >0
-- zoom: Integer; limit: Integer >0; category 선택
+- Query (latitude,longitude,radius_m) 또는 (south,west,north,east) 중 정확히 하나의 조합
+- 좌표 Number: 위도 -90~90, 경도 (-180,180]. radius_m 1~10,000; 최초 진입 기본 반경 3,000m
+- bounds 조합은 south<north, west<east이고 대각선 거리가 20km 이하여야 함
+- zoom: Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100; category 선택
 - 응답 markers[]/clusters[]/has_more; 좌표는 도, 거리 m
-- 필수 조합·최대 반경·마커 수·줌 범위는 미확정
+- 클러스터 표시는 실제 개수 1~9, 10 이상은 `9+`; 클러스터링 시작 기본 줌은 13~14
+- 서버가 요청 범위와 zoom을 기준으로 클러스터링한다. `clusters[]`는 cluster_id, latitude, longitude, count, display_count를 반환하며 markers와 clusters 합계가 limit을 초과하면 has_more=true
 
 **Request Body**
 
@@ -720,7 +727,7 @@ Body 없음.
   "message": "map_content_success",
   "data": {
     "markers": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
-    "clusters": [],
+    "clusters": [{"cluster_id":"cl_example","latitude":35.7890,"longitude":129.3300,"count":12,"display_count":"9+"}],
     "has_more": false
   }
 }
@@ -732,7 +739,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-05: 지도 범위 제한·클러스터 스키마/집계 주체·권한 거부 UX. 미확정 전 계약 동결 불가.
+**구현 전 확인:** API-DEC-05 확정: Figma MAP-01 기준 기본 반경 3km, 줌 6~21(최초 16~17), 클러스터 숫자 10 이상 `9+`. 백엔드 상한은 반경 10km, 마커·클러스터 합계 200개이며 서버가 클러스터를 집계한다.
 
 ### API-CON-04 관심 장소 목록
 
@@ -742,7 +749,7 @@ Body 없음.
 
 - Query cursor, size: 공통 커서 규칙
 - 최신 등록 순; 응답 content와 favorited_at
-- 비활성 콘텐츠 표시 방식은 미확정
+- 비활성·삭제된 콘텐츠는 관심 장소 목록에서 숨김
 
 **Request Body**
 
@@ -766,7 +773,7 @@ Body 없음.
 | 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-06: 비활성 즐겨찾기의 숨김/사용 불가 카드 정책.
+**구현 전 확인:** API-DEC-06 확정: 비활성·삭제 관심 장소는 목록에서 숨김.
 
 ### API-CON-05 관심 장소 등록
 
@@ -832,6 +839,7 @@ Body 없음.
 - Query cursor, size: 공통 커서 규칙
 - sort=created_at,desc 고정; id DESC 보조 정렬
 - 소유자 일치 및 deleted_at IS NULL
+- preference_tags는 각 가이드북 생성 시 AI 결과에서 확정·저장된 표시 태그
 
 **Request Body**
 
@@ -843,7 +851,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":"gb_example","title":"경주 역사 여행","region":{"administrative_code":"47","name":"경상북도"},"start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"guidebook_id":"gb_example","title":"경주 역사 여행","region":{"administrative_code":"47","name":"경상북도"},"start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"preference_tags":["HEALING","NATURE"],"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -864,7 +872,7 @@ Body 없음.
 - Idempotency-Key: 필수 String ≤100자
 - region_code: 필수 String ≤20자, 17개 광역 지역 중 하나
 - start_date/end_date: 필수 YYYY-MM-DD, 양끝 포함 1~7일
-- companion: 필수 Enum 문자열 ≤20자(목록 미확정)
+- companion: 필수 Enum 문자열 ≤20자. 현재 승인된 화면정의서·기능설계도의 허용 코드만 사용
 - people_count: 필수 Integer ≥1
 - 취향은 서버에서 현재값 조회; 세부 지역·개별 취향 Body 없음
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
@@ -907,7 +915,7 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-09 및 API-DEC-03: 총 시도 수/재시도 수·동행 Enum·인원 상한 확정.
+**구현 전 확인:** DEC-09 확정: 개별 시도 300초, 재시도 3회(`attempt_count=0~3`, 최초 포함 최대 4회). API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현.
 
 ### API-GDE-03 생성 상태 조회
 
@@ -916,8 +924,9 @@ Body 없음.
 | GET | `/guidebook-generations/{job_id}` | Bearer 필수 |
 
 - Path job_id: 필수 String ≤50자
-- status: PENDING|PROCESSING|COMPLETED|FAILED
-- attempt_count: Integer 0~3; 최초 생성 완료 전 guidebook_id=null
+- status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
+- attempt_count: Integer 0~3, 재시도 횟수. 최초 시도를 포함하면 최대 4회; 최초 생성 완료 전 guidebook_id=null
+- 개별 시도는 300초 타임아웃. 탈퇴·대상 가이드북 삭제로 취소된 작업의 늦은 완료 결과는 무시
 - error: null 또는 {code,message}; 내부 AI payload 미노출
 
 **Request Body**
@@ -957,7 +966,7 @@ Body 없음.
 - Path guidebook_id: 필수 String ≤50자
 - 응답 companion String; people_count Integer; version Integer ≥1
 - content_html: String|null; region은 광역 정보
-- 삭제본은 404; 생성 당시 취향 카드 값은 기본 응답 제외
+- 삭제본은 404; preference_tags는 현재 회원 취향이 아니라 가이드북 생성 시 AI 결과에서 확정·저장된 표시 태그
 
 **Request Body**
 
@@ -976,6 +985,7 @@ Body 없음.
     "end_date": "2026-10-14",
     "companion": "FRIEND",
     "people_count": 2,
+    "preference_tags": ["HEALING", "NATURE"],
     "version": 1,
     "updated_at": "2026-09-04T00:00:00Z",
     "content_html": "<article>여행 안내</article>"
@@ -990,7 +1000,7 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-01: 기존 카드에 표시할 취향의 기준.
+**구현 전 확인:** DEC-01 확정: 생성 시 AI 결과의 취향 태그를 가이드북에 저장하고 카드·상세·공유 미리보기에 표시. 현재 회원 취향 변경은 기존 가이드북 표시값을 바꾸지 않음.
 
 ### API-GDE-07 일정 조회
 
@@ -1034,8 +1044,10 @@ Body 없음.
 
 - Idempotency-Key: 필수 String ≤100자
 - title: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤15자. 재생성 결과에 적용할 가이드북 제목
-- feedback: 필수 String, 공백만 불가, ≤200자(기존 API 설계안). 사용자가 초안 확인 화면에서 입력한 자연어 수정 요청
+- feedback: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤200자. 사용자가 가이드북 상세 화면에서 입력한 자연어 수정 요청
 - 제목만 또는 일정을 직접 수정하는 별도 API는 제공하지 않으며, 제목 변경은 필수 feedback과 함께 이 재생성으로만 반영
+- 재생성 진입 버튼은 해당 가이드북 페이지에서만 노출하고 다른 화면에서는 재생성 진입을 제공하지 않음
+- 소유자의 삭제되지 않은 가이드북만 허용. 기존 제출 평가는 유지하고 성공한 최신 버전은 상세·공유·HTML/PDF에 사용
 - 현재 기본 취향 사용; feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
 - 새 작업; 성공 시 같은 guidebook_id의 제목·본문·일정을 함께 갱신하고 version 증가
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
@@ -1078,7 +1090,7 @@ Body 없음.
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 
-**구현 전 확인:** DEC-12: 평가 완료/진행 중 재생성, 공유 및 PDF 반영. feedback 상한 최종 합의 필요.
+**구현 전 확인:** DEC-12 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지한다. feedback 상한은 200자다.
 
 ### API-GDE-10 공유 링크 발급
 
@@ -1086,18 +1098,13 @@ Body 없음.
 |---|---|---|
 | POST | `/guidebooks/{guidebook_id}/shares` | Bearer 필수 |
 
-- expires_at: 선택 ISO8601 오프셋 시각; 값이 있으면 미래
-- null/생략의 기본 만료 정책 미확정
-- share_url: String; expires_at: String|null
+- 요청 본문 없음; 만료 시각은 발급 시점부터 24시간 후로 서버가 계산
+- share_url: String; expires_at: String
 - Idempotency-Key 보장 없음; 재요청 시 새 링크 가능
 
 **Request Body**
 
-```json
-{
-  "expires_at": "2026-11-01T00:00:00Z"
-}
-```
+없음.
 
 **응답 201**
 
@@ -1119,17 +1126,19 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 
-**구현 전 확인:** DEC-06/12: 기본 만료·공개 범위·재생성 시 링크 동작.
+**구현 전 확인:** DEC-06/12 확정: 발급 후 24시간 만료하며, 유효 링크는 조회 시점의 동일 가이드북 최신 버전을 표시한다.
 
 ### API-GDE-11 공유 미리보기
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/shares/{share_token}` | 공개 |
+| GET | `/shares/{share_token}` | Bearer 필수 |
 
 - Path share_token: 필수 난수 문자열
 - 미존재·만료·원본 삭제는 모두 404
-- 응답은 개인정보 없는 미리보기; 상세 공개 필드는 미확정
+- 응답은 로그인한 수신자용 최소 미리보기
+- 공유자 닉네임, 가이드북 제목, 시작일·종료일, 장소 수, 생성 시 취향 태그만 포함
+- 상세 일정·HTML 본문·동행·인원·생성 입력·피드백은 제외
 
 **Request Body**
 
@@ -1141,20 +1150,23 @@ Body 없음.
 {
   "message": "share_preview_success",
   "data": {
-    "title": "경주 역사 여행",
-    "region": {"administrative_code":"47","name":"경상북도"},
+    "sharer_nickname": "동원",
+    "title": "강릉 3박 4일",
     "start_date": "2026-10-12",
-    "end_date": "2026-10-14"
+    "end_date": "2026-10-15",
+    "place_count": 12,
+    "preference_tags": ["HEALING", "NATURE"]
   }
 }
 ```
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
+| 401 | AUTH_TOKEN_REQUIRED | 인증 토큰 누락·유효하지 않음 |
 | 404 | SHARE_LINK_UNAVAILABLE | 공유 토큰 미존재·만료·대상 삭제 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-06: 로그인 전 일정·HTML 포함 여부. 현재 예시는 최소 미리보기 설계안.
+**구현 전 확인:** DEC-06 확정: 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수·생성 시 취향 태그만 공개하고 상세 일정·HTML·개인화 입력은 제외.
 
 ### API-GDE-12 공유 가이드북 가져오기
 
@@ -1165,6 +1177,7 @@ Body 없음.
 - Path share_token: 필수 String
 - Body 없음. 최초 원본 기준 같은 회원의 중복 복사 금지
 - 첫 복사 201; 기존 복사본이면 200 및 기존 guidebook_id
+- 기존 복사본이 소프트 삭제되었다면 새 행을 만들지 않고 `deleted_at`을 해제해 복구한 후 200 반환
 
 **Request Body**
 
@@ -1201,7 +1214,7 @@ Body 없음.
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-07: 삭제한 복사본의 재가져오기 처리. Idempotency-Key 없이 자연 유일성으로 중복 복사를 방지.
+**구현 전 확인:** DEC-07 확정: 삭제한 복사본은 기존 행을 복구. 현재 `guidebook_imports(imported_by_member_id, root_guidebook_id)` UNIQUE와 충돌하지 않으며 Idempotency-Key 없이 자연 유일성으로 중복 복사를 방지.
 
 ### API-GDE-13 PDF 다운로드
 
@@ -1236,7 +1249,7 @@ PDF 바이너리 (JSON 아님)
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 503 | SERVICE_UNAVAILABLE | 일시적 서비스 이용 불가 |
 
-**구현 전 확인:** API-DEC-08: PDF 응답 시간·최대 크기·동시 처리 한도.
+**구현 전 확인:** API-DEC-08 부분 확정: MVP는 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정.
 
 ### API-GDE-15 HTML 뷰어 데이터
 
@@ -1392,8 +1405,9 @@ Body 없음.
 - Path evaluation_id: 필수 ID 문자열
 - places[].content_id: ID; current_score: Integer 0~5|null
 - current_score는 회원·장소의 기존 최종값이지 작성 중 초안이 아님
-- 반복 장소는 content_id 기준 중복 제거(설계안)
-- 미매핑 content_id=null 장소의 평가 처리 미확정
+- 다른 여행에서 같은 장소를 제출하면 기존 점수를 덮어쓰고, 최종 `score:null`이면 기존 평가 행을 삭제
+- 유효 content_id가 있는 장소만 최초 등장 순으로 중복 제거해 평가 대상으로 제공
+- content_id=null인 미매핑 일정 항목은 평가 대상에서 제외
 
 **Request Body**
 
@@ -1420,7 +1434,7 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-05 및 API-DEC-09: 대상 중복·미매핑·기존 최종값 제시/덮어쓰기.
+**구현 전 확인:** API-DEC-09 확정: 기존 최종 점수는 덮어쓰고 `null`은 기존 행 삭제. 대상은 유효 content_id 기준 최초 등장 순으로 중복 제거하며 미매핑 항목은 제외한다.
 
 ### API-RNK-05 평가 다음에 하기
 
@@ -1471,7 +1485,11 @@ Body 없음.
 - ratings: 필수 Array; content_id 필수 ID 문자열·중복 불가
 - score: 필수 Integer 0~5 또는 null(건너뛰기)
 - Body에 최종 점수 전체 전달; 초안 저장 API 없음
+- 평가 대상 전체를 ratings에 포함해야 하며 대상 누락은 허용하지 않음. 건너뛴 장소도 `score:null`로 전달
+- 마지막 장소 화면의 `완료하기`를 누를 때 최종 제출하고, 제출 후 수정은 허용하지 않음
+- 기존 회원·장소 평가가 있으면 0~5는 덮어쓰고 `null`은 기존 행을 삭제. 기존 행이 없는 `null`은 새 행을 만들지 않음
 - 제출 시 place_ratings 반영 및 SUBMITTED를 원자적으로 처리
+- 이미 `SUBMITTED`인 평가에 대한 재요청은 내용과 관계없이 409
 - 랭킹은 후속 비동기 집계, 즉시 갱신 보장 안 함
 
 **Request Body**
@@ -1506,9 +1524,9 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 422 | EVALUATION_NOT_ELIGIBLE | 여행 종료 다음 날 이전 또는 평가 대상 불일치 |
-| 409 | EVALUATION_ALREADY_SUBMITTED | 이미 제출된 평가의 다른 내용 제출 |
+| 409 | EVALUATION_ALREADY_SUBMITTED | 이미 제출 완료된 평가에 대한 재요청 |
 
-**구현 전 확인:** DEC-05/API-DEC-09: 부분 제출·제출 후 수정·기존 점수의 null 덮어쓰기·재요청 비교 정책. 제출 payload 이력이 없어 정확한 응답 재생은 보장하지 않음.
+**구현 전 확인:** DEC-05/API-DEC-09 확정: 부분 제출·최종 제출 후 수정 불가. 완료 전 입력은 프론트 초안이며 `완료하기` 시 전체 대상을 제출한다. 제출 완료 후 재요청은 내용 비교 없이 409다.
 
 ### API-RNK-07 랭킹 조회
 
@@ -1518,7 +1536,7 @@ Body 없음.
 
 - Query period_type: 필수 DAILY|WEEKLY|MONTHLY
 - period_start: 필수 YYYY-MM-DD; region_code 선택, 생략=전국
-- page Integer≥1 기본1; size Integer1~100 기본20(상한 설계안)
+- page Integer≥1 기본1; size Integer1~100 기본20
 - 응답 calculated_at ISO8601|null; rank_position Integer≥1
 - weighted_score/raw_average: 소수 문자열; rating_count Integer≥0
 - 유효 구간 결과 없음은 200 items=[], 미집계 calculated_at=null
@@ -1870,7 +1888,7 @@ Body 없음.
 
 | API ID | 이전 URL | 현재 처리 |
 |---|---|---|
-| API-MEM-05 | PATCH /members/me | 직접 프로필 수정 보류. FR-MEM-04와 테이블의 닉네임 직접 수정 미제공을 팀에서 정리해야 함. 언어는 MEM-11. |
+| API-MEM-05 | PATCH /members/me | 프로필 직접 수정은 제공하지 않는 것으로 확정. OAuth 프로필은 로그인 시 동기화하고 언어는 MEM-11에서 변경. |
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
 | API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | 푸시 설정 변경은 MEM-11 회원 설정 부분 수정으로 통합. |
@@ -1881,29 +1899,29 @@ Body 없음.
 | API-RNK-04 | PUT /guidebook-evaluations/{evaluation_id}/places/{content_id} | 서버 초안 저장 API 미제공. 최종 ratings를 RNK-06 Body로 제출. |
 | API-PAY-08 | POST /orders/{merchant_order_id}/refund | 환불은 MVP 이후. 현재 구현 대상 아님. |
 
-## 10. 구현 전 확인 항목
+## 10. 결정 현황 및 명시적 보류 항목
 
 | 결정 ID | 영향 | 확인할 내용 |
 |---|---|---|
-| DEC-01 | GDE-01/05 | 생성 당시/현재 취향 카드 표시는 미확정. 기본 응답에 취향 필드 없음. |
-| DEC-02 | CON-01 | 월 필터 연도와 비행사 혼합 처리. month=YYYY-MM은 제안 계약. |
-| DEC-03/04 | RNK-07 | 랭킹 기간 경계·귀속 시각·C/m·동점·배치 주기·최대 지연. updated_at 변경 탐지와 점수의 기간 귀속은 구분. |
-| DEC-05 | RNK-03/06 | 부분 제출·제출 후 수정. 현재 확정은 정수 0~5, null 건너뛰기, 프론트 초안. |
-| DEC-06 | GDE-10/11 | 기본 만료·미리보기 공개 범위. |
-| DEC-07 | GDE-12 | 원본 보존 및 삭제된 복사본 재가져오기 처리. |
-| DEC-08 | NOT-01 | 최대20, 초기4를 현 기준으로 반영. 4/5 최종 선택 및 정리 기간. |
-| DEC-09 | GDE-02/03/09 | attempt_count 0~3와 최대 재시도3의 해석, 타임아웃·복구. CANCELED 상태 없는 현재 모델에서 사용자 취소 API 미제공. |
+| DEC-01 | GDE-01/05/11 | 확정: 생성 시 AI 결과의 취향 태그를 가이드북에 저장하고 카드·상세·공유 미리보기에 표시. 현재 회원 취향 변경은 기존 표시값에 영향 없음. |
+| DEC-02 | CON-01 | 확정: `month=YYYY-MM`. `EVENT`는 선택 월과 기간이 겹치면 포함, `ATTRACTION`·`CULTURAL_HERITAGE`는 상시 포함. |
+| DEC-03/04 | RNK-07 | 부분 확정: `Asia/Seoul` 기준, 일간 00시·주간 월요일 00시·월간 1일 00시 시작, 최초 제출 시각 귀속, 베이지안 가중 평균, 동점은 평가 수 내림차순 후 `content_id` 오름차순, 10분 배치·최대 지연 10분. `C` 범위와 `m` 값은 미확정. `updated_at`은 변경 탐지에만 사용. |
+| DEC-05 | RNK-03/06 | 확정: 정수 0~5, `null` 건너뛰기, 완료 전 프론트 초안. 마지막 장소에서 `완료하기` 시 전체 대상을 최종 제출하며 부분 제출·제출 후 수정은 불가. |
+| DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수·생성 시 취향 태그만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
+| DEC-07 | GDE-12 | 확정: 기존 가져온 복사본이 소프트 삭제된 경우 새 복사본을 만들지 않고 `deleted_at`을 해제해 복구. 현재 유일 제약으로 처리 가능. |
+| DEC-08 | NOT-01 | 확정: 초기 4개 노출, 회원별 미읽음 최대 20개 보관. 새 알림이 추가될 때 20개를 초과하면 가장 오래된 행부터 삭제. |
+| DEC-09 | GDE-02/03/09 | 확정: 개별 시도 300초 타임아웃, 재시도 최대 3회. `attempt_count=0~3`은 재시도 횟수이므로 최초 포함 최대 4회 실행. 탈퇴·대상 삭제 시 작업 취소 요청 및 늦은 결과 무시. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
-| DEC-11 | MEM-06 | 탈퇴 보존·파기·재가입. WITHDRAWN enum이 아닌 deleted_at 사용. |
-| DEC-12 | GDE-09~16/RNK | 재생성 가능 시점·공유/PDF/평가 영향·HTML 일관성. |
+| DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
+| DEC-12 | GDE-09~16/RNK | 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지. |
 | API-DEC-01 | MEM-01~03 | 지원 공급자는 V1 KAKAO, V2 이상 KAKAO·GOOGLE로 확정. 남은 결정은 실행 플랫폼/SDK, 시작·콜백 주체, state 브라우저 결속·TTL·일회성, 공급자별 PKCE S256 적용·verifier 보관, OIDC 검증, 쿠키/Body·토큰 TTL·회전·동시 갱신. 상세는 API-MEM-01의 OAuth 검증 결정표. |
-| API-DEC-02 | MEM-06/GDE-16 | 탈퇴·삭제와 진행 중 작업의 경합. 즉시 삭제/완료 거절/작업 종료 중 선택 필요. |
-| API-DEC-03 | MEM-07~11/NOT/GDE | 취향·부모 관계·동행·언어·알림 Enum 및 선택/인원 상한. |
-| API-DEC-04 | MEM-05/12/13 | 직접 프로필 수정 요구 충돌; 정적 정책 배포 위치와 형식. |
-| API-DEC-05 | CON-01/03 | 검색 정렬·월 형식·지도 최대 반경/마커/줌·클러스터 DTO. |
-| API-DEC-06 | CON-04 | 비활성 관심 장소 표시 정책. |
-| API-DEC-08 | GDE-13 | 동기 PDF 한도·타임아웃·비동기 전환 기준. |
-| API-DEC-09 | RNK-03/06 | 다른 여행의 기존 최종 평가 덮어쓰기, null 의미, 미매핑 장소, 중복 제출 비교 및 오류/재응답 정책. |
+| API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
+| API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
+| API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |
+| API-DEC-05 | CON-01/03 | 확정: 검색은 title 부분 일치 후 DB 등록 최신순. 지도 기본 반경 3km, 최대 10km, 줌 6~21, 응답 기본 100·최대 200, 서버 클러스터링, 10개 이상 `9+`. |
+| API-DEC-06 | CON-04 | 확정: 비활성·삭제된 관심 장소는 목록에서 숨김. |
+| API-DEC-08 | GDE-13 | 부분 확정: MVP는 기존 설계대로 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정. |
+| API-DEC-09 | RNK-03/06 | 확정: 기존 최종 평가는 덮어쓰고 null은 삭제. 유효 content_id를 최초 등장 순으로 중복 제거하고 미매핑 항목은 제외. 제출 완료 후 모든 재요청은 409. |
 | API-DEC-10 | PAY-06/07 | PG 원문 계약·서명·승인 API·결제 시도/이벤트 멱등 저장. |
-| API-DEC-11 | NOT 내부 처리 | 알림 실패 원본 비롤백과 동일 트랜잭션 생성 요구의 양립 방식·재시도 누락/중복 처리. |
-| API-DEC-12 | 공통 | 페이지/커서 한도·ID 문자열 직렬화·URL 변경·호환 경로를 프론트와 합의. 이는 DB만으로 확정되는 값이 아님. |
+| API-DEC-11 | NOT 내부 처리 | 확정: 별도 아웃박스 테이블 없음. 원본 업무 커밋 후 알림을 별도 트랜잭션으로 생성하고 제한적 재시도 후 최종 실패를 로그·모니터링에 기록. 장애 후 누락 복구는 보장하지 않음. |
+| API-DEC-12 | 공통 | 확정: 공통 계약은 백엔드 API 명세를 기준으로 하고 프론트가 따른다. 현재 명세의 페이지/커서 한도와 ID 문자열 직렬화를 적용하며, URL 변경·호환 정책도 백엔드 명세에서 버전별로 정의한다. |

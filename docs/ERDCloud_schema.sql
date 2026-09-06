@@ -89,6 +89,7 @@ CREATE TABLE tourism_contents (
     CONSTRAINT uq_tourism_contents_source UNIQUE (source_provider, source_content_id),
     CONSTRAINT fk_tourism_contents_region FOREIGN KEY (region_id) REFERENCES regions (id),
     INDEX ix_tourism_contents_region_category (region_id, category),
+    INDEX ix_tourism_contents_active_created (status, deleted_at, created_at DESC, id DESC),
     SPATIAL INDEX ix_tourism_contents_location (location)
 ) COMMENT = '관광 콘텐츠 공통 원본';
 
@@ -165,6 +166,7 @@ CREATE TABLE generation_jobs (
     attempt_count SMALLINT NOT NULL DEFAULT 0,
     idempotency_key VARCHAR(100) NOT NULL,
     started_at DATETIME(6) NULL,
+    cancel_requested_at DATETIME(6) NULL,
     completed_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
@@ -249,6 +251,7 @@ CREATE TABLE guidebook_evaluations (
     CONSTRAINT uq_guidebook_evaluations_target UNIQUE (guidebook_id, member_id),
     CONSTRAINT fk_guidebook_evaluations_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT fk_guidebook_evaluations_member FOREIGN KEY (member_id) REFERENCES members (id),
+    CONSTRAINT ck_guidebook_evaluations_submission CHECK ((status = 'SUBMITTED' AND submitted_at IS NOT NULL) OR (status = 'PENDING' AND submitted_at IS NULL)),
     INDEX ix_guidebook_evaluations_member_state (member_id, status)
 ) COMMENT = '가이드북 단위 평가 안내와 제출 상태';
 
@@ -256,16 +259,16 @@ CREATE TABLE place_ratings (
     id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
     tourism_content_id BIGINT NOT NULL,
-    score SMALLINT NULL,
+    score SMALLINT NOT NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uq_place_ratings_member_content UNIQUE (member_id, tourism_content_id),
     CONSTRAINT fk_place_ratings_member FOREIGN KEY (member_id) REFERENCES members (id),
     CONSTRAINT fk_place_ratings_content FOREIGN KEY (tourism_content_id) REFERENCES tourism_contents (id),
-    CONSTRAINT ck_place_ratings_score CHECK (score IS NULL OR score BETWEEN 0 AND 5),
+    CONSTRAINT ck_place_ratings_score CHECK (score BETWEEN 0 AND 5),
     INDEX ix_place_ratings_content_created (tourism_content_id, created_at)
-) COMMENT = '회원과 관광 콘텐츠별 최신 정수 별점';
+) COMMENT = '회원과 관광 콘텐츠별 최신 유효 정수 별점; 건너뛰기는 행 미저장';
 
 CREATE TABLE ranking_snapshots (
     id BIGINT NOT NULL AUTO_INCREMENT,
