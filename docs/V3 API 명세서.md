@@ -9,7 +9,7 @@
 | 항목 | 규약 |
 |---|---|
 | 기준 | 2026-09-06 · 요구사항정의서/테이블정의서/ERDCloud SQL과 동기화한 V3 구현 계약. 명시적 MVP 제외 항목은 별도 표기. |
-| API Prefix | /api/v1. URL 칼럼에서는 prefix 생략. |
+| API Prefix | 업무 API는 /api/v1. URL 칼럼에서는 prefix 생략. Actuator 운영 엔드포인트는 prefix 적용 제외. |
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
 | 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
@@ -78,6 +78,26 @@
 | API-PAY-05 | 주문 조회 | GET | `/orders/{merchant_order_id}` |
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` |
+| API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` |
+
+### 2.1 운영 헬스체크
+
+### API-OPS-01 로드밸런서 헬스체크
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
+
+- 애플리케이션과 MySQL 연결 같은 필수 의존성의 요청 처리 가능 상태를 확인한다.
+- AI·관광·PG·푸시 공급자는 헬스체크에서 제외하고 별도로 감시한다.
+- `UP`이면 200, `DOWN`·`OUT_OF_SERVICE`이면 503을 반환한다.
+- 응답은 상태만 공개하고 DB URL, 자격증명, 예외 메시지를 노출하지 않는다.
+
+```json
+{"status":"UP"}
+```
+
+**구현 기준:** Spring Boot Actuator health를 사용한다. 인프라의 검사 주기·timeout·실패 기준은 배포 환경에서 설정하며, 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다. 가능하면 로드밸런서·배포 인프라에서만 접근하도록 제한한다.
 
 ## 3. 회원
 
