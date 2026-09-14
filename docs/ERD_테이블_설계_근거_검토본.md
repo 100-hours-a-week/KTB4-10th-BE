@@ -185,17 +185,13 @@ erDiagram
 ~~~mermaid
 erDiagram
     MEMBERS ||--o{ GENERATION_JOBS : requests
-    MEMBERS ||--o{ GUIDEBOOKS : owns
-    GUIDEBOOKS o|--o{ GUIDEBOOKS : origin_of
+    MEMBERS ||--o{ MEMBER_GUIDEBOOKS : keeps
+    GUIDEBOOKS ||--o{ MEMBER_GUIDEBOOKS : available_to
     GUIDEBOOKS o|--o{ GENERATION_JOBS : result_or_target
     GUIDEBOOKS ||--|{ ITINERARY_DAYS : contains
     ITINERARY_DAYS ||--|{ ITINERARY_ITEMS : contains
     TOURISM_CONTENTS o|--o{ ITINERARY_ITEMS : references
     GUIDEBOOKS ||--o{ SHARE_LINKS : shares
-    SHARE_LINKS ||--o{ GUIDEBOOK_IMPORTS : used_for
-    MEMBERS ||--o{ GUIDEBOOK_IMPORTS : imports
-    GUIDEBOOKS ||--o| GUIDEBOOK_IMPORTS : copied_as
-    GUIDEBOOKS ||--o{ GUIDEBOOK_IMPORTS : root_of
     GENERATION_JOBS {
         varchar id PK
         bigint member_id FK
@@ -208,11 +204,15 @@ erDiagram
     }
     GUIDEBOOKS {
         varchar id PK
-        bigint owner_member_id FK
-        varchar origin_guidebook_id FK
         date start_date
         date end_date
         int version
+    }
+    MEMBER_GUIDEBOOKS {
+        bigint id PK
+        bigint member_id FK,UK
+        varchar guidebook_id FK,UK
+        varchar acquisition_type
         datetime deleted_at
     }
     ITINERARY_DAYS {
@@ -231,14 +231,8 @@ erDiagram
     SHARE_LINKS {
         bigint id PK
         varchar guidebook_id FK
+        bigint issued_by_member_id FK
         varchar token_hash UK
-    }
-    GUIDEBOOK_IMPORTS {
-        bigint id PK
-        bigint share_link_id FK
-        bigint imported_by_member_id FK
-        varchar root_guidebook_id FK,UK
-        varchar imported_guidebook_id FK,UK
     }
     MEMBERS {
         bigint id PK
@@ -467,18 +461,20 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 ### guidebooks
 
-성공 결과의 소유권, 여행 조건, 현재 HTML과 버전을 저장한다.
+성공 결과의 여행 조건, HTML과 재생성 버전을 저장한다. 회원별 보관·삭제는 `member_guidebooks`가 담당한다.
 
 - 최초 생성 성공 전에는 행을 만들지 않는다.
 - 서비스 가이드북 ID는 AI가 아니라 백엔드가 만든다.
 - title 15자는 화면 기획 제한을 DB에서도 보장한다.
-- 날짜·인원·버전 CHECK가 비정상 AI 결과를 막는다.
-- version은 재생성 성공으로 같은 ID의 내용이 바뀐 횟수다.
-- `origin_guidebook_id`는 복사본이 거친 단계와 무관하게 최초 생성 원본을 가리킨다. 직접 생성한 가이드북은 NULL이다.
-- `deleted_at`은 사용자 삭제를 소프트 삭제로 표현한다. 삭제 즉시 목록·상세·공유 링크 접근을 차단하지만, 이미 가져간 독립 복사본과 생성 작업·원장·평가 참조는 유지한다.
+- 날짜·인원 CHECK가 비정상 AI 결과를 막는다.
+- 재생성은 최초 생성 결과 화면에서만 같은 ID의 내용을 갱신하고 version을 증가시킨다. 공유는 이 흐름이 끝난 뒤 제공한다.
 
-**[트레이드오프]** 최신 버전만 남기는 upsert라 이전 내용 복구는 불가능하다.
-**[확장 조건]** 복원이 필요하면 guidebook_versions를 추가한다.
+### member_guidebooks
+
+- 회원과 가이드북의 N:M 보관 관계 및 회원별 소프트 삭제를 관리한다.
+- UNIQUE(member_id, guidebook_id)는 반복 가져오기의 중복 관계를 막는다.
+- 최초 생성 회원이 관계를 삭제해도 다른 회원의 관계와 공유된 가이드북은 유지한다.
+- acquisition_type은 직접 생성과 공유 가져오기를 구분한다.
 
 ### itinerary_days / itinerary_items
 
@@ -491,16 +487,14 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 **[트레이드오프]** 원본과 스냅샷이 달라질 수 있어 화면별 표시 우선순위가 필요하다.
 
-### share_links / guidebook_imports
+### share_links
 
 - 공유 토큰 원문 대신 해시를 저장하고 UNIQUE로 충돌을 막는다.
 - expires_at NULL은 무기한 링크다.
-- `root_guidebook_id`는 공유된 가이드북이 복사본이면 `origin_guidebook_id`를, 원본이면 해당 가이드북 ID를 저장한다.
-- UNIQUE(imported_by_member_id, root_guidebook_id)는 공유 링크가 다르거나 복사본을 다시 공유해도 같은 회원이 같은 최초 원본을 두 번 가져오지 못하게 한다.
-- imported_guidebook_id UNIQUE는 복사본 하나가 여러 사건에 연결되는 것을 막는다.
-- 가져온 가이드북은 독립 복사본이라 원본 변경이 전파되지 않는다.
+- issued_by_member_id는 링크 발급자와 공유자 닉네임을 식별한다.
+- 가져오기는 가이드북·일정을 복제하지 않고 수신 회원의 `member_guidebooks` 관계를 생성하거나 복구한다.
 
-**[트레이드오프]** 최초 원본 자체가 후에 물리 삭제될 경우를 대비해 `root_guidebook_id` 보존 정책이 필요하다.
+**[트레이드오프]** 여러 회원이 같은 가이드북을 참조하므로 실제 가이드북 삭제는 활성 관계와 보존 참조가 모두 없을 때만 가능하다.
 
 ### guidebook_evaluations
 
@@ -580,7 +574,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 
 최초 생성 성공 시 가이드북·일정 저장, 작업 COMPLETED, 지갑 1 감소, CONSUME 원장 삽입을 하나의 DB 트랜잭션으로 처리한다. 하나라도 실패하면 전체 롤백한다. AI 호출은 트랜잭션 밖에서 수행해 DB 잠금을 길게 잡지 않는다.
 
-재생성은 새 결과 검증 후 기존 본문·일정을 교체하고 version을 올린다. 일정 삭제와 재삽입도 같은 트랜잭션 안에서 처리해 실패 시 기존 결과를 유지한다.
+재생성은 새 결과 검증 후 같은 가이드북의 본문·일정을 교체하고 version을 증가시킨다. 생성권 차감과 같은 트랜잭션에서 처리해 실패 시 기존 결과를 유지한다.
 
 생성권 중복 차감은 다음을 함께 사용한다.
 
@@ -622,7 +616,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 | 관리자 취향 편집 | 취향 그룹·옵션 테이블 |
 | 시·군·구 필터 | regions 계층화 |
 | 의미 검색 | 요구와 규모를 확인한 후 별도 검색 저장소 검토 |
-| 가이드북 복원 | guidebook_versions |
+| 삭제한 가이드북 다시 보관 | member_guidebooks 관계 복구 |
 | 평가 임시 저장 | 서버 초안·임시 점수 |
 | 여행별 반복 평가 | 평가 세션/일정 FK |
 | 랭킹 완전 재현 | C·m·공식 버전 저장 |

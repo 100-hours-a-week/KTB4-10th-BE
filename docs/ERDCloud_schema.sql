@@ -132,8 +132,6 @@ CREATE TABLE favorite_contents (
 
 CREATE TABLE guidebooks (
     id VARCHAR(50) NOT NULL,
-    owner_member_id BIGINT NOT NULL,
-    origin_guidebook_id VARCHAR(50) NULL,
     title VARCHAR(15) NOT NULL,
     region_id BIGINT NOT NULL,
     start_date DATE NOT NULL,
@@ -144,16 +142,27 @@ CREATE TABLE guidebooks (
     version INT NOT NULL DEFAULT 1,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
-    deleted_at DATETIME(6) NULL,
     PRIMARY KEY (id),
-    CONSTRAINT fk_guidebooks_owner FOREIGN KEY (owner_member_id) REFERENCES members (id),
-    CONSTRAINT fk_guidebooks_origin FOREIGN KEY (origin_guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT fk_guidebooks_region FOREIGN KEY (region_id) REFERENCES regions (id),
     CONSTRAINT ck_guidebooks_period CHECK (start_date <= end_date),
     CONSTRAINT ck_guidebooks_people CHECK (people_count >= 1),
-    CONSTRAINT ck_guidebooks_version CHECK (version >= 1),
-    INDEX ix_guidebooks_owner_created (owner_member_id, created_at)
-) COMMENT = '성공한 AI 가이드북의 현재 버전';
+    CONSTRAINT ck_guidebooks_version CHECK (version >= 1)
+) COMMENT = '공유 전 결과 확인 단계에서만 재생성 갱신되는 가이드북';
+
+CREATE TABLE member_guidebooks (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    member_id BIGINT NOT NULL,
+    guidebook_id VARCHAR(50) NOT NULL,
+    acquisition_type VARCHAR(20) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    deleted_at DATETIME(6) NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_member_guidebooks_member_guidebook UNIQUE (member_id, guidebook_id),
+    CONSTRAINT fk_member_guidebooks_member FOREIGN KEY (member_id) REFERENCES members (id),
+    CONSTRAINT fk_member_guidebooks_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
+    CONSTRAINT ck_member_guidebooks_acquisition CHECK (acquisition_type IN ('CREATED', 'IMPORTED')),
+    INDEX ix_member_guidebooks_member_created (member_id, deleted_at, created_at)
+) COMMENT = '회원별 가이드북 보관 및 삭제 관계';
 
 CREATE TABLE generation_jobs (
     id VARCHAR(50) NOT NULL,
@@ -214,29 +223,15 @@ CREATE TABLE itinerary_items (
 CREATE TABLE share_links (
     id BIGINT NOT NULL AUTO_INCREMENT,
     guidebook_id VARCHAR(50) NOT NULL,
+    issued_by_member_id BIGINT NOT NULL,
     token_hash VARCHAR(255) NOT NULL,
     expires_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uq_share_links_token UNIQUE (token_hash),
-    CONSTRAINT fk_share_links_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id)
+    CONSTRAINT fk_share_links_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
+    CONSTRAINT fk_share_links_issuer FOREIGN KEY (issued_by_member_id) REFERENCES members (id)
 ) COMMENT = '가이드북 공유 토큰과 만료 정보';
-
-CREATE TABLE guidebook_imports (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    share_link_id BIGINT NOT NULL,
-    imported_by_member_id BIGINT NOT NULL,
-    root_guidebook_id VARCHAR(50) NOT NULL,
-    imported_guidebook_id VARCHAR(50) NOT NULL,
-    created_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT uq_guidebook_imports_member_root UNIQUE (imported_by_member_id, root_guidebook_id),
-    CONSTRAINT uq_guidebook_imports_copy UNIQUE (imported_guidebook_id),
-    CONSTRAINT fk_guidebook_imports_share FOREIGN KEY (share_link_id) REFERENCES share_links (id),
-    CONSTRAINT fk_guidebook_imports_member FOREIGN KEY (imported_by_member_id) REFERENCES members (id),
-    CONSTRAINT fk_guidebook_imports_root FOREIGN KEY (root_guidebook_id) REFERENCES guidebooks (id),
-    CONSTRAINT fk_guidebook_imports_copy FOREIGN KEY (imported_guidebook_id) REFERENCES guidebooks (id)
-) COMMENT = '최초 원본과 회원 기준 가이드북 가져오기';
 
 CREATE TABLE guidebook_evaluations (
     id BIGINT NOT NULL AUTO_INCREMENT,

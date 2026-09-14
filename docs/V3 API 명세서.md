@@ -803,8 +803,8 @@ Body 없음.
 | GET | `/guidebooks` | 세션 쿠키 필수 |
 
 - Query cursor, size: 공통 커서 규칙
-- sort=created_at,desc 고정; id DESC 보조 정렬
-- 소유자 일치 및 deleted_at IS NULL
+- `member_guidebooks.created_at DESC, member_guidebooks.id DESC` 고정. 가져온 시점을 내 목록 정렬 기준으로 사용
+- 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 각 가이드북 생성 시 AI 결과에서 확정·저장된 표시 태그
 
 **Request Body**
@@ -891,7 +891,7 @@ Body 없음.
 
 - Path job_id: 필수 String ≤50자
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
-- attempt_count: Integer 0~3, 재시도 횟수. 최초 시도를 포함하면 최대 4회; 최초 생성 완료 전 guidebook_id=null
+- attempt_count: Integer 0~3, 재시도 횟수. 성공 전 guidebook_id=null
 - 개별 시도는 300초 타임아웃. 탈퇴·대상 가이드북 삭제로 취소된 작업의 늦은 완료 결과는 무시
 - error: null 또는 {code,message}; 내부 AI payload 미노출
 
@@ -932,7 +932,7 @@ Body 없음.
 - Path guidebook_id: 필수 String ≤50자
 - 응답 companion String; people_count Integer; version Integer ≥1
 - content_html: String|null; region은 광역 정보
-- 삭제본은 404; preference_tags는 현재 회원 취향이 아니라 가이드북 생성 시 AI 결과에서 확정·저장된 표시 태그
+- 활성 `member_guidebooks` 관계가 없으면 404; preference_tags는 생성 시 AI 결과에서 확정·저장된 표시 태그
 
 **Request Body**
 
@@ -1012,10 +1012,10 @@ Body 없음.
 - title: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤15자. 재생성 결과에 적용할 가이드북 제목
 - feedback: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤200자. 사용자가 가이드북 상세 화면에서 입력한 자연어 수정 요청
 - 제목만 또는 일정을 직접 수정하는 별도 API는 제공하지 않으며, 제목 변경은 필수 feedback과 함께 이 재생성으로만 반영
-- 재생성 진입 버튼은 해당 가이드북 페이지에서만 노출하고 다른 화면에서는 재생성 진입을 제공하지 않음
-- 소유자의 삭제되지 않은 가이드북만 허용. 기존 제출 평가는 유지하고 성공한 최신 버전은 상세·공유·HTML/PDF에 사용
+- 재생성 진입 버튼은 최초 생성 결과 화면에서만 노출하고 화면 이탈 후에는 제공하지 않음
+- 요청 회원의 활성 보관 관계가 있는 가이드북만 허용
 - 현재 기본 취향 사용; feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
-- 새 작업; 성공 시 같은 guidebook_id의 제목·본문·일정을 함께 갱신하고 version 증가
+- 새 작업; 성공 시 같은 guidebook_id의 제목·본문·일정을 갱신하고 version 증가
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
@@ -1056,7 +1056,7 @@ Body 없음.
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 
-**구현 전 확인:** DEC-12 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지한다. feedback 상한은 200자다.
+**구현 전 확인:** DEC-12 확정: 재생성은 최초 생성 결과 화면에서만 제공하고 같은 가이드북을 갱신한다. 공유는 이 흐름이 끝난 뒤부터 제공하므로 공유된 가이드북은 변경되지 않는다.
 
 ### API-GDE-10 공유 링크 발급
 
@@ -1092,7 +1092,7 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 
-**구현 전 확인:** DEC-06/12 확정: 발급 후 24시간 만료하며, 유효 링크는 조회 시점의 동일 가이드북 최신 버전을 표시한다.
+**구현 전 확인:** DEC-06/12 확정: 발급 후 24시간 만료하며 불변 가이드북을 참조한다. 발급 회원의 보관 관계가 삭제되면 링크 사용을 차단한다.
 
 ### API-GDE-11 공유 미리보기
 
@@ -1141,9 +1141,9 @@ Body 없음.
 | POST | `/shares/{share_token}/imports` | 세션 쿠키 필수 |
 
 - Path share_token: 필수 String
-- Body 없음. 최초 원본 기준 같은 회원의 중복 복사 금지
-- 첫 복사 201; 기존 복사본이면 200 및 기존 guidebook_id
-- 기존 복사본이 소프트 삭제되었다면 새 행을 만들지 않고 `deleted_at`을 해제해 복구한 후 200 반환
+- Body 없음. 회원·가이드북 기준 중복 보관 금지
+- 첫 가져오기는 같은 guidebook_id의 `member_guidebooks` 관계를 만들고 201
+- 기존 관계가 활성 상태면 200, 소프트 삭제 상태면 `deleted_at`을 해제하고 200
 
 **Request Body**
 
@@ -1155,7 +1155,7 @@ Body 없음.
 {
   "message": "guidebook_imported",
   "data": {
-    "guidebook_id": "gb_imported",
+    "guidebook_id": "gb_example",
     "already_imported": false
   }
 }
@@ -1167,7 +1167,7 @@ Body 없음.
 {
   "message": "already_imported",
   "data": {
-    "guidebook_id": "gb_imported",
+    "guidebook_id": "gb_example",
     "already_imported": true
   }
 }
@@ -1180,7 +1180,7 @@ Body 없음.
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-07 확정: 삭제한 복사본은 기존 행을 복구. 현재 `guidebook_imports(imported_by_member_id, root_guidebook_id)` UNIQUE와 충돌하지 않으며 Idempotency-Key 없이 자연 유일성으로 중복 복사를 방지.
+**구현 전 확인:** DEC-07 확정: 가이드북·일정은 복사하지 않는다. `member_guidebooks(member_id, guidebook_id)` UNIQUE로 중복을 막고 삭제된 관계는 복구한다.
 
 ### API-GDE-13 PDF 다운로드
 
@@ -1259,8 +1259,8 @@ PDF 바이너리 (JSON 아님)
 | DELETE | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
 - Path guidebook_id: 필수 String ≤50자
-- Body 없음; 소유자만 삭제
-- 목록·상세·공유 즉시 차단; 다른 회원의 복사본 유지
+- Body 없음; 활성 보관 관계를 가진 회원만 삭제
+- 자신의 `member_guidebooks` 관계만 소프트 삭제하고 자신이 발급한 공유 링크를 차단; 다른 회원 관계는 유지
 
 **Request Body**
 
@@ -1876,12 +1876,12 @@ Body 없음.
 | DEC-03/04 | RNK-07 | 부분 확정: `Asia/Seoul` 기준, 일간 00시·주간 월요일 00시·월간 1일 00시 시작, 최초 제출 시각 귀속, 베이지안 가중 평균, 동점은 평가 수 내림차순 후 `content_id` 오름차순, 10분 배치·최대 지연 10분. `C` 범위와 `m` 값은 미확정. `updated_at`은 변경 탐지에만 사용. |
 | DEC-05 | RNK-03/06 | 확정: 정수 0~5, `null` 건너뛰기, 완료 전 프론트 초안. 마지막 장소에서 `완료하기` 시 전체 대상을 최종 제출하며 부분 제출·제출 후 수정은 불가. |
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수·생성 시 취향 태그만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
-| DEC-07 | GDE-12 | 확정: 기존 가져온 복사본이 소프트 삭제된 경우 새 복사본을 만들지 않고 `deleted_at`을 해제해 복구. 현재 유일 제약으로 처리 가능. |
+| DEC-07 | GDE-12 | 확정: 가이드북을 복제하지 않고 `member_guidebooks` 관계를 생성하며 삭제된 관계는 복구. |
 | DEC-08 | NOT-01 | 확정: 초기 4개 노출, 회원별 미읽음 최대 20개 보관. 새 알림이 추가될 때 20개를 초과하면 가장 오래된 행부터 삭제. |
 | DEC-09 | GDE-02/03/09 | 확정: 개별 시도 300초 타임아웃, 재시도 최대 3회. `attempt_count=0~3`은 재시도 횟수이므로 최초 포함 최대 4회 실행. 탈퇴·대상 삭제 시 작업 취소 요청 및 늦은 결과 무시. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
-| DEC-12 | GDE-09~16/RNK | 확정: 소유자의 삭제되지 않은 가이드북 상세 페이지에서만 재생성 가능. 성공한 최신 버전은 상세·공유·HTML/PDF에 반영하고 기존 제출 평가는 유지. |
+| DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성. 공유는 재생성 흐름 종료 후 제공. |
 | API-DEC-01 | MEM-01/15/03 | 확정: 웹 Authorization Code, Spring Security OAuth2 Login, 백엔드 시작·콜백, state 브라우저 결속·10분 TTL·일회 소비, PKCE S256 및 서버 verifier 보관. 서비스 세션 쿠키 유지, 서비스 액세스·리프레시 토큰과 갱신 API 없음. 별도 운영 결정은 서비스 세션 수명·연장 여부·동시 로그인 수와 배포 주소이며 PKCE 결정과 구분한다. |
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
