@@ -35,7 +35,7 @@
 2. 최신 `dev`에서 작업 브랜치를 만든다.
 3. 구현, 테스트와 필요한 문서 수정을 진행한다.
 4. 작업 방향을 일찍 공유할 필요가 있으면 Draft PR을 생성한다.
-5. 로컬에서 `./gradlew checkstyleMain spotbugsMain`을 실행한다.
+5. 로컬에서 `./gradlew test checkstyleMain spotbugsMain`을 실행한다. Checkstyle 위반은 경고로 확인하고, SpotBugs Rank 1~4 문제는 해결한 뒤 PR을 올린다.
 6. 작업 브랜치에서 `dev`를 대상으로 Pull Request를 생성한다.
 7. 상대 팀원에게 리뷰를 요청한다.
 8. 승인 1개와 필수 CI 통과를 확인한다.
