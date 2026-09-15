@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <Match><Rank value="5"/></Match>
+    <Match><Rank value="6"/></Match>
+    <Match><Rank value="7"/></Match>
+    <Match><Rank value="8"/></Match>
+    <Match><Rank value="9"/></Match>
+    <Match><Rank value="10"/></Match>
+    <Match><Rank value="11"/></Match>
+    <Match><Rank value="12"/></Match>
+    <Match><Rank value="13"/></Match>
+    <Match><Rank value="14"/></Match>
+    <Match><Rank value="15"/></Match>
+    <Match><Rank value="16"/></Match>
+    <Match><Rank value="17"/></Match>
+    <Match><Rank value="18"/></Match>
+    <Match><Rank value="19"/></Match>
+    <Match><Rank value="20"/></Match>
+</FindBugsFilter>
