@@ -35,7 +35,7 @@
 2. 최신 `dev`에서 작업 브랜치를 만든다.
 3. 구현, 테스트와 필요한 문서 수정을 진행한다.
 4. 작업 방향을 일찍 공유할 필요가 있으면 Draft PR을 생성한다.
-5. 로컬에서 `./gradlew clean check`를 실행한다.
+5. 로컬에서 `./gradlew checkstyleMain spotbugsMain`을 실행한다.
 6. 작업 브랜치에서 `dev`를 대상으로 Pull Request를 생성한다.
 7. 상대 팀원에게 리뷰를 요청한다.
 8. 승인 1개와 필수 CI 통과를 확인한다.
@@ -263,7 +263,7 @@ chore(build): Checkstyle과 SpotBugs 적용
 ## 테스트 결과
 
 ```text
-./gradlew clean check
+./gradlew checkstyleMain spotbugsMain
 ```
 
 ## 영향 범위
@@ -280,7 +280,8 @@ chore(build): Checkstyle과 SpotBugs 적용
 ## 체크리스트
 
 - [ ] 최신 `dev`를 기준으로 작업했습니다.
-- [ ] `./gradlew clean check`가 성공합니다.
+- [ ] V1 필수 CI 검사인 `spotbugsMain`이 성공합니다.
+- [ ] Checkstyle 결과를 확인하고 수정이 필요한 위반을 처리했습니다.
 - [ ] 정상·실패·경계 조건을 검토했습니다.
 - [ ] Checkstyle 예외를 불필요하게 추가하지 않았습니다.
 - [ ] SpotBugs 경고를 근거 없이 제외하지 않았습니다.
@@ -310,18 +311,26 @@ chore(build): Checkstyle과 SpotBugs 적용
 
 ## 6. 정적 분석
 
-정적 분석과 테스트는 `./gradlew clean check`로 실행한다.
+V1에서는 운영 코드에 대해 Checkstyle과 SpotBugs를 실행한다. Checkstyle은 위반 내용을 확인하기 위한 참고 검사로 사용하고, SpotBugs의 중대한 결함은 PR 병합을 차단한다.
+
+| 도구 | V1 검사 대상 | 위반 시 CI | Merge 차단 |
+| --- | --- | --- | --- |
+| Checkstyle | `main` Source Set | 결과 표시 후 Task 성공 유지 | 적용하지 않음 |
+| SpotBugs | `main` Source Set | Bug Rank 1~4 발견 시 Task 실패 | 적용 |
+
+V1에 테스트 코드가 추가되기 전에는 `checkstyleTest`와 `spotbugsTest`를 사용하지 않는다. 테스트 코드가 추가되면 `checkstyleTest` 적용 여부를 먼저 합의하고, `spotbugsTest`는 분석 결과의 유용성과 오탐 수준을 확인한 뒤 도입한다.
 
 ### 6.1 Checkstyle
 
-Checkstyle은 운영 코드와 테스트 코드에 모두 적용한다.
+Checkstyle은 V1의 운영 코드에 적용한다.
 
 ```text
 src/main/java → checkstyleMain
-src/test/java → checkstyleTest
 ```
 
-초기 필수 규칙은 다음과 같다.
+별도 팀 컨벤션이 확정되기 전에는 Google Java Style 기반의 `config/checkstyle/checkstyle.xml`을 사용한다. 팀 규칙이 정해지면 해당 설정 파일을 리뷰를 거쳐 수정한다.
+
+초기 확인 규칙은 다음과 같다.
 
 - 와일드카드 및 사용하지 않는 Import 금지
 - 들여쓰기 4칸, 탭 문자 금지
@@ -334,16 +343,30 @@ src/test/java → checkstyleTest
 
 모든 클래스와 메서드의 Javadoc 작성처럼 의미 없는 문서를 양산하는 규칙은 초기 필수 규칙으로 사용하지 않는다.
 
+- `ignoreFailures = true`로 설정해 위반 내용을 출력하되 Checkstyle Task는 성공 상태를 유지한다.
+- Checkstyle 위반은 V1의 Merge 차단 조건으로 사용하지 않는다.
+- 위반을 무시한다는 의미는 아니며, PR 작성자와 리뷰어가 결과를 확인해 필요한 항목을 수정한다.
+
 ### 6.2 SpotBugs
 
-초기에는 운영 코드인 `spotbugsMain`을 필수 검사하고 `spotbugsTest`는 제외한다. 테스트 코드에서 실제로 유용한 결과를 얻을 수 있다고 판단되면 검사 범위를 확장한다.
+V1에서는 운영 코드인 `spotbugsMain`을 필수 검사하고 `spotbugsTest`는 사용하지 않는다.
 
-- 분석 수준은 `Effort.MAX`를 사용한다.
-- 신뢰도는 `Confidence.MEDIUM` 이상을 PR 차단 대상으로 한다.
+- `config/spotbugs/excludeFilter.xml`에서 Bug Rank 5~20을 제외한다.
+- Bug Rank 1~4 결과가 발견되면 SpotBugs Task와 CI를 실패 처리한다.
+- SpotBugs CI 실패는 PR Merge 차단 조건으로 사용한다.
 - 경고가 발생하면 Suppression보다 코드 수정을 우선한다.
 - 오탐으로 확인되면 가장 좁은 클래스와 Bug Pattern만 제외한다.
 - 제외 사유를 설정 파일의 주석과 PR 본문에 기록한다.
 - 패키지 전체를 정적 분석에서 제외하지 않는다.
+
+### 6.3 실행
+
+```bash
+./gradlew checkstyleMain
+./gradlew spotbugsMain
+```
+
+실제 Gradle 설정은 Kotlin DSL인 `build.gradle.kts`로 작성한다. Groovy DSL로 작성된 예시를 그대로 복사하지 않는다.
 
 ## 7. 테스트 규칙
 
@@ -401,7 +424,8 @@ Fixture 규칙은 다음과 같다.
 
 - [ ] Issue의 완료 조건을 구현했다.
 - [ ] 필요한 성공·실패·경계 테스트를 작성했다.
-- [ ] `./gradlew clean check`가 성공한다.
+- [ ] V1 필수 CI 검사인 `spotbugsMain`이 성공한다.
+- [ ] Checkstyle 결과를 확인하고 필요한 위반을 처리했다.
 - [ ] 상대 팀원 리뷰 승인을 받았다.
 - [ ] 변경된 API, 데이터 또는 사용자 동작을 관련 문서에 반영했다.
 - [ ] 요구사항이 변경됐다면 기준 요구사항 문서와 관련 설계 문서를 갱신했다.
