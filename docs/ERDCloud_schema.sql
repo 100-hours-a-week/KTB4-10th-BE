@@ -8,6 +8,7 @@ CREATE TABLE members (
     oauth_provider VARCHAR(20) NOT NULL,
     oauth_subject VARCHAR(255) NOT NULL,
     nickname VARCHAR(50) NOT NULL,
+    email VARCHAR(254) NULL,
     profile_image_url VARCHAR(2048) NULL,
     language_code VARCHAR(10) NOT NULL DEFAULT 'ko',
     status VARCHAR(20) NOT NULL DEFAULT 'ONBOARDING',
@@ -175,6 +176,11 @@ CREATE TABLE generation_jobs (
     attempt_count SMALLINT NOT NULL DEFAULT 0,
     idempotency_key VARCHAR(100) NOT NULL,
     started_at DATETIME(6) NULL,
+    attempt_started_at DATETIME(6) NULL,
+    next_attempt_at DATETIME(6) NULL,
+    lease_token VARCHAR(36) NULL,
+    lease_expires_at DATETIME(6) NULL,
+    ai_job_id VARCHAR(255) NULL,
     cancel_requested_at DATETIME(6) NULL,
     completed_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
@@ -189,7 +195,9 @@ CREATE TABLE generation_jobs (
     CONSTRAINT fk_generation_jobs_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT ck_generation_jobs_attempt CHECK (attempt_count BETWEEN 0 AND 3),
     INDEX ix_generation_jobs_member_state (member_id, status, created_at),
-    INDEX ix_generation_jobs_guidebook_created (guidebook_id, created_at)
+    INDEX ix_generation_jobs_guidebook_created (guidebook_id, created_at),
+    INDEX ix_generation_jobs_next_attempt (status, next_attempt_at),
+    INDEX ix_generation_jobs_lease (status, lease_expires_at)
 ) COMMENT = '최초 생성과 재생성의 비동기 AI 작업';
 
 CREATE TABLE itinerary_days (
