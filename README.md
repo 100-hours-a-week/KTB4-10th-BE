@@ -30,7 +30,7 @@ SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 기본 헬스 체크는 `GET /actuator/health`에서 확인할 수 있습니다.
 
 - JPA는 스키마를 자동 변경하지 않고 `ddl-auto=validate`로 Flyway 결과만 검증합니다.
-- Flyway migration은 후속 작업에서 `src/main/resources/db/migration/`에 추가합니다.
+- Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
 - MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
 
 ## 검증
