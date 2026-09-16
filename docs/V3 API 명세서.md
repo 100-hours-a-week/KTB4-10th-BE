@@ -892,7 +892,7 @@ Body 없음.
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
+| 409 | IDEMPOTENCY_CONFLICT | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
 | 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
 | 422 | GUIDEBOOK_INVALID_PERIOD | 종료일 역전 또는 양끝 포함 7일 초과 |
@@ -1064,7 +1064,7 @@ Body 없음.
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
+| 409 | IDEMPOTENCY_CONFLICT | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
 | 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
 | 422 | GUIDEBOOK_INVALID_PERIOD | 종료일 역전 또는 양끝 포함 7일 초과 |
@@ -1712,7 +1712,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
-| 409 | IDEMPOTENCY_CONFLICT | 같은 키에 다른 요청 또는 다른 회원 |
+| 409 | IDEMPOTENCY_CONFLICT | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
@@ -1851,7 +1851,7 @@ Body 없음.
 | RESOURCE_FORBIDDEN | 403 | forbidden | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | RESOURCE_NOT_FOUND | 404 | resource_not_found | 없거나 삭제된 리소스 |
 | SHARE_LINK_UNAVAILABLE | 404 | share_link_unavailable | 공유 토큰 미존재·만료·대상 삭제 |
-| IDEMPOTENCY_CONFLICT | 409 | idempotency_conflict | 같은 키에 다른 요청 또는 다른 회원 |
+| IDEMPOTENCY_CONFLICT | 409 | idempotency_conflict | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | GENERATION_IN_PROGRESS | 409 | generation_in_progress | 이미 진행 중인 생성 작업 존재 |
 | RESOURCE_STATE_CONFLICT | 409 | resource_state_conflict | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 | EVALUATION_ALREADY_SUBMITTED | 409 | evaluation_already_submitted | 이미 제출된 평가의 다른 내용 제출 |
