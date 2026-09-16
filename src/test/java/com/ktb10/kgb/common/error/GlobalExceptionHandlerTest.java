@@ -57,7 +57,7 @@ class GlobalExceptionHandlerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("invalid_request"))
+                .andExpect(jsonPath("$.message").value("요청값이 올바르지 않습니다."))
                 .andExpect(jsonPath("$.data").value(nullValue()))
                 .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.error.details[0].field").value("name"))
@@ -74,7 +74,7 @@ class GlobalExceptionHandlerTest {
     void businessExceptionKeepsItsStatusAndCode() throws Exception {
         mockMvc.perform(get("/test/business-error"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("resource_not_found"))
+                .andExpect(jsonPath("$.message").value("요청한 리소스를 찾을 수 없습니다."))
                 .andExpect(jsonPath("$.data").value(nullValue()))
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.error.details").isEmpty())
@@ -103,7 +103,7 @@ class GlobalExceptionHandlerTest {
     void unexpectedExceptionDoesNotExposeOriginalMessage() throws Exception {
         mockMvc.perform(get("/test/unexpected-error"))
                 .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.message").value("internal_server_error"))
+                .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."))
                 .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
                 .andExpect(content().string(not(containsString("sensitive database detail"))));
     }
