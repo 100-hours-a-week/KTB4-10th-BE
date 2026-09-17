@@ -38,7 +38,7 @@ class KakaoOAuthStartTest {
     void redirectsToKakaoWithStateAndPkce() throws Exception {
         MvcResult result = mockMvc.perform(get("/api/v1/auth/oauth/authorize/kakao"))
                 .andExpect(status().isFound())
-                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-cache")))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(header().string(HttpHeaders.LOCATION, not(blankOrNullString())))
                 .andReturn();
 
