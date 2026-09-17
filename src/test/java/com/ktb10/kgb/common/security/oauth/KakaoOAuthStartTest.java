@@ -55,8 +55,7 @@ class KakaoOAuthStartTest {
         org.assertj.core.api.Assertions.assertThat(query.getFirst("state")).isNotBlank();
         org.assertj.core.api.Assertions.assertThat(query.getFirst("code_challenge")).isNotBlank();
         org.assertj.core.api.Assertions.assertThat(query.getFirst("code_challenge_method")).isEqualTo("S256");
-        org.assertj.core.api.Assertions.assertThat(query.getFirst("scope"))
-                .contains("profile_nickname", "profile_image", "account_email");
+        org.assertj.core.api.Assertions.assertThat(query).doesNotContainKey("scope");
         org.assertj.core.api.Assertions.assertThat(result.getRequest().getSession(false)).isNotNull();
     }
 
