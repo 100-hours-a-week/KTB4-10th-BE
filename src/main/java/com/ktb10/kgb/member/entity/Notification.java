@@ -67,14 +67,14 @@ public class Notification {
             NotificationReferenceType referenceType,
             String referenceId,
             LocalDateTime createdAt) {
-        this.recipient = Objects.requireNonNull(recipient, "recipient must not be null");
-        this.type = Objects.requireNonNull(type, "type must not be null");
-        this.title = requireText(title, "title");
-        this.body = requireText(body, "body");
+        this.recipient = Objects.requireNonNull(recipient, "알림 수신 회원은 null일 수 없습니다.");
+        this.type = Objects.requireNonNull(type, "알림 유형은 null일 수 없습니다.");
+        this.title = requireText(title, "알림 제목");
+        this.body = requireText(body, "알림 본문");
         validateReferencePair(referenceType, referenceId);
         this.referenceType = referenceType;
         this.referenceId = referenceId;
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
+        this.createdAt = Objects.requireNonNull(createdAt, "생성 시각은 null일 수 없습니다.");
     }
 
     public static Notification create(
@@ -101,13 +101,13 @@ public class Notification {
         boolean hasType = referenceType != null;
         boolean hasId = referenceId != null && !referenceId.isBlank();
         if (hasType != hasId) {
-            throw new IllegalArgumentException("referenceType and referenceId must both exist or both be null");
+            throw new IllegalArgumentException("알림 참조 유형과 참조 ID는 둘 다 존재하거나 둘 다 없어야 합니다.");
         }
     }
 
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
+            throw new IllegalArgumentException(fieldName + " 값은 비어 있을 수 없습니다.");
         }
         return value;
     }

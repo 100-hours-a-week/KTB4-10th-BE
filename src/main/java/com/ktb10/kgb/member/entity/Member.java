@@ -72,15 +72,15 @@ public class Member {
             String email,
             String profileImageUrl,
             LocalDateTime now) {
-        this.oauthProvider = Objects.requireNonNull(oauthProvider, "oauthProvider must not be null");
-        this.oauthSubject = requireText(oauthSubject, "oauthSubject");
-        this.nickname = requireText(nickname, "nickname");
+        this.oauthProvider = Objects.requireNonNull(oauthProvider, "OAuth 공급자는 null일 수 없습니다.");
+        this.oauthSubject = requireText(oauthSubject, "OAuth 사용자 식별자");
+        this.nickname = requireText(nickname, "닉네임");
         this.email = email;
         this.profileImageUrl = profileImageUrl;
         this.languageCode = "ko";
         this.status = MemberStatus.ONBOARDING;
         this.pushEnabled = true;
-        this.createdAt = Objects.requireNonNull(now, "now must not be null");
+        this.createdAt = Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
         this.updatedAt = now;
     }
 
@@ -97,19 +97,19 @@ public class Member {
     public void activate(LocalDateTime now) {
         ensureNotDeleted();
         status = MemberStatus.ACTIVE;
-        updatedAt = Objects.requireNonNull(now, "now must not be null");
+        updatedAt = Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
     }
 
     public void changePushEnabled(boolean enabled, LocalDateTime now) {
         ensureNotDeleted();
         pushEnabled = enabled;
-        updatedAt = Objects.requireNonNull(now, "now must not be null");
+        updatedAt = Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
     }
 
     public void withdraw(String deidentifiedOauthSubject, LocalDateTime now) {
         ensureNotDeleted();
-        oauthSubject = requireText(deidentifiedOauthSubject, "deidentifiedOauthSubject");
-        deletedAt = Objects.requireNonNull(now, "now must not be null");
+        oauthSubject = requireText(deidentifiedOauthSubject, "비식별화 OAuth 사용자 식별자");
+        deletedAt = Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
         updatedAt = now;
     }
 
@@ -125,7 +125,7 @@ public class Member {
 
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
+            throw new IllegalArgumentException(fieldName + " 값은 비어 있을 수 없습니다.");
         }
         return value;
     }

@@ -65,12 +65,12 @@ public class AuthSession {
             byte[] sessionIdHash,
             LocalDateTime expiresAt,
             LocalDateTime createdAt) {
-        this.member = Objects.requireNonNull(member, "member must not be null");
+        this.member = Objects.requireNonNull(member, "회원은 null일 수 없습니다.");
         this.sessionIdHash = copyHash(sessionIdHash);
-        this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt must not be null");
-        this.createdAt = Objects.requireNonNull(createdAt, "createdAt must not be null");
+        this.expiresAt = Objects.requireNonNull(expiresAt, "만료 시각은 null일 수 없습니다.");
+        this.createdAt = Objects.requireNonNull(createdAt, "생성 시각은 null일 수 없습니다.");
         if (!expiresAt.isAfter(createdAt)) {
-            throw new IllegalArgumentException("expiresAt must be after createdAt");
+            throw new IllegalArgumentException("만료 시각은 생성 시각 이후여야 합니다.");
         }
         this.lastUsedAt = createdAt;
     }
@@ -84,30 +84,30 @@ public class AuthSession {
     }
 
     public boolean isUsable(LocalDateTime now, Duration idleTimeout) {
-        Objects.requireNonNull(now, "now must not be null");
-        Objects.requireNonNull(idleTimeout, "idleTimeout must not be null");
+        Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
+        Objects.requireNonNull(idleTimeout, "유휴 만료 시간은 null일 수 없습니다.");
         LocalDateTime idleExpiresAt = lastUsedAt.plus(idleTimeout);
         return revokedAt == null && now.isBefore(expiresAt) && now.isBefore(idleExpiresAt);
     }
 
     public void recordUse(LocalDateTime usedAt) {
-        LocalDateTime requestedTime = Objects.requireNonNull(usedAt, "usedAt must not be null");
+        LocalDateTime requestedTime = Objects.requireNonNull(usedAt, "사용 시각은 null일 수 없습니다.");
         if (requestedTime.isBefore(lastUsedAt)) {
-            throw new IllegalArgumentException("usedAt must not be before lastUsedAt");
+            throw new IllegalArgumentException("사용 시각은 마지막 사용 시각보다 이전일 수 없습니다.");
         }
         lastUsedAt = requestedTime;
     }
 
     public void revoke(LocalDateTime now) {
         if (revokedAt == null) {
-            revokedAt = Objects.requireNonNull(now, "now must not be null");
+            revokedAt = Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
         }
     }
 
     private static byte[] copyHash(byte[] sessionIdHash) {
-        Objects.requireNonNull(sessionIdHash, "sessionIdHash must not be null");
+        Objects.requireNonNull(sessionIdHash, "세션 ID 해시는 null일 수 없습니다.");
         if (sessionIdHash.length != SHA_256_BYTES) {
-            throw new IllegalArgumentException("sessionIdHash must be 32 bytes");
+            throw new IllegalArgumentException("세션 ID 해시는 32바이트여야 합니다.");
         }
         return Arrays.copyOf(sessionIdHash, sessionIdHash.length);
     }

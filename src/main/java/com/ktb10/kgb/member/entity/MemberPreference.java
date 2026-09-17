@@ -51,8 +51,8 @@ public class MemberPreference {
     }
 
     private MemberPreference(Member member, PreferenceCode preferenceCode) {
-        this.member = Objects.requireNonNull(member, "member must not be null");
-        this.preferenceCode = Objects.requireNonNull(preferenceCode, "preferenceCode must not be null");
+        this.member = Objects.requireNonNull(member, "회원은 null일 수 없습니다.");
+        this.preferenceCode = Objects.requireNonNull(preferenceCode, "취향 코드는 null일 수 없습니다.");
         this.preferenceType = preferenceCode.type();
     }
 
