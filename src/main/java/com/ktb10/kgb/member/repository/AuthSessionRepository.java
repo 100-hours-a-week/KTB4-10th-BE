@@ -1,10 +1,12 @@
 package com.ktb10.kgb.member.repository;
 
 import com.ktb10.kgb.member.entity.AuthSession;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -13,6 +15,12 @@ import org.springframework.data.repository.query.Param;
 public interface AuthSessionRepository extends JpaRepository<AuthSession, Long> {
 
     Optional<AuthSession> findBySessionIdHash(byte[] sessionIdHash);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select session from AuthSession session join fetch session.member "
+            + "where session.sessionIdHash = :sessionIdHash")
+    Optional<AuthSession> findBySessionIdHashForAuthentication(
+            @Param("sessionIdHash") byte[] sessionIdHash);
 
     List<AuthSession> findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(Long memberId);
 
