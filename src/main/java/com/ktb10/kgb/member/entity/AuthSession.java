@@ -86,13 +86,14 @@ public class AuthSession {
     public boolean isUsable(LocalDateTime now, Duration idleTimeout) {
         Objects.requireNonNull(now, "현재 시각은 null일 수 없습니다.");
         Objects.requireNonNull(idleTimeout, "유휴 만료 시간은 null일 수 없습니다.");
-        LocalDateTime idleExpiresAt = lastUsedAt.plus(idleTimeout);
+        LocalDateTime idleBaseTime = lastUsedAt == null ? createdAt : lastUsedAt;
+        LocalDateTime idleExpiresAt = idleBaseTime.plus(idleTimeout);
         return revokedAt == null && now.isBefore(expiresAt) && now.isBefore(idleExpiresAt);
     }
 
     public void recordUse(LocalDateTime usedAt) {
         LocalDateTime requestedTime = Objects.requireNonNull(usedAt, "사용 시각은 null일 수 없습니다.");
-        if (requestedTime.isBefore(lastUsedAt)) {
+        if (lastUsedAt != null && requestedTime.isBefore(lastUsedAt)) {
             throw new IllegalArgumentException("사용 시각은 마지막 사용 시각보다 이전일 수 없습니다.");
         }
         lastUsedAt = requestedTime;
