@@ -6,7 +6,7 @@ import java.util.Objects;
 public record ApiResponse<T>(String message, T data) {
 
     public ApiResponse {
-        Objects.requireNonNull(message, "message must not be null");
+        Objects.requireNonNull(message, "응답 메시지는 null일 수 없습니다.");
     }
 
     public static <T> ApiResponse<T> success(String message, T data) {

@@ -2,16 +2,22 @@ package com.ktb10.kgb.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSourceResolvable;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -80,12 +86,30 @@ public class GlobalExceptionHandler {
         return respond(CommonErrorCode.COMMON_VALIDATION_ERROR, List.of(detail), request);
     }
 
-    @ExceptionHandler({
-        HttpMessageNotReadableException.class,
-        HandlerMethodValidationException.class
-    })
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ErrorResponse> handleHandlerMethodValidationException(
+            HandlerMethodValidationException exception,
+            HttpServletRequest request) {
+        if (exception.isForReturnValue()) {
+            return handleUnexpectedException(exception, request);
+        }
+
+        List<ErrorDetail> details = exception.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> new ErrorDetail(
+                                validationField(result),
+                                validationReason(error))))
+                .sorted(Comparator.comparing(ErrorDetail::field)
+                        .thenComparing(ErrorDetail::reason))
+                .distinct()
+                .toList();
+
+        return respond(CommonErrorCode.COMMON_VALIDATION_ERROR, details, request);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableRequestException(
-            Exception exception,
+            HttpMessageNotReadableException exception,
             HttpServletRequest request) {
         return respond(CommonErrorCode.COMMON_VALIDATION_ERROR, List.of(), request);
     }
@@ -131,5 +155,44 @@ public class GlobalExceptionHandler {
             case "Email" -> "invalid_email";
             default -> "invalid";
         };
+    }
+
+    private String validationReason(MessageSourceResolvable error) {
+        return Arrays.stream(error.getCodes() == null ? new String[0] : error.getCodes())
+                .map(code -> code.contains(".") ? code.substring(0, code.indexOf('.')) : code)
+                .map(this::validationReason)
+                .filter(reason -> !"invalid".equals(reason))
+                .findFirst()
+                .orElse("invalid");
+    }
+
+    private String validationField(ParameterValidationResult result) {
+        MethodParameter parameter = result.getMethodParameter();
+        RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
+        if (requestParam != null) {
+            return annotationName(requestParam.name(), requestParam.value(), parameter);
+        }
+
+        PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
+        if (pathVariable != null) {
+            return annotationName(pathVariable.name(), pathVariable.value(), parameter);
+        }
+
+        return parameterName(parameter);
+    }
+
+    private String annotationName(String name, String value, MethodParameter parameter) {
+        if (!name.isBlank()) {
+            return name;
+        }
+        if (!value.isBlank()) {
+            return value;
+        }
+        return parameterName(parameter);
+    }
+
+    private String parameterName(MethodParameter parameter) {
+        String parameterName = parameter.getParameterName();
+        return parameterName == null ? "arg" + parameter.getParameterIndex() : parameterName;
     }
 }
