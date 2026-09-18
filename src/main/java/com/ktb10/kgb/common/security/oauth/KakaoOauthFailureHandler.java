@@ -7,8 +7,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /** 공급자 원문 오류를 노출하지 않고 허용된 OAuth 실패 코드로 이동합니다. */
@@ -51,7 +54,37 @@ public class KakaoOauthFailureHandler implements AuthenticationFailureHandler {
                     || "invalid_request".equals(providerCode)) {
                 return OauthErrorCode.OAUTH_INVALID_REQUEST;
             }
+            if (isProviderUnavailable(oauthException)) {
+                return OauthErrorCode.OAUTH_PROVIDER_UNAVAILABLE;
+            }
         }
         return OauthErrorCode.OAUTH_AUTHENTICATION_FAILED;
+    }
+
+    private static boolean isProviderUnavailable(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof OAuth2AuthenticationException authenticationException
+                    && isProviderUnavailableCode(
+                            authenticationException.getError().getErrorCode())) {
+                return true;
+            }
+            if (current instanceof ResourceAccessException
+                    || current instanceof HttpServerErrorException) {
+                return true;
+            }
+            if (current instanceof OAuth2AuthorizationException authorizationException
+                    && isProviderUnavailableCode(
+                            authorizationException.getError().getErrorCode())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static boolean isProviderUnavailableCode(String errorCode) {
+        return "server_error".equals(errorCode)
+                || "temporarily_unavailable".equals(errorCode);
     }
 }

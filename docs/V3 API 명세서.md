@@ -166,7 +166,7 @@
 | OAUTH_ACCESS_DENIED | 결속 검증된 공급자 응답의 사용자 취소·거절 | 로그인 화면에서 재시작 |
 | OAUTH_INVALID_REQUEST | state 누락/불일치/만료/재사용, 브라우저·provider 불일치, 필수 Query 오류 | 기존 시도로 재시도하지 않고 새 로그인 시작 |
 | OAUTH_AUTHENTICATION_FAILED | 코드 교환 거절, 잘못된 verifier, ID token 검증 실패 | 새 로그인 시작 |
-| OAUTH_PROVIDER_UNAVAILABLE | 공급자 타임아웃·5xx·통신 장애 | 잠시 후 새 로그인 시작 |
+| OAUTH_PROVIDER_UNAVAILABLE | 공급자 연결 3초·응답 5초 타임아웃, 5xx·통신 장애 | 잠시 후 새 로그인 시작 |
 | OAUTH_INTERNAL_ERROR | 회원/세션 저장 등 내부 처리 실패 | 새 로그인 시작 |
 
 오류 복귀 code는 공통 JSON의 HTTP error.code 표와 구분한다. 공급자가 state를 돌려주지 않으면 임의 오류 문자열을 신뢰하지 않고 OAUTH_INVALID_REQUEST로 처리한다. 실패한 시도에서는 신규 회원·서비스 세션을 발급하지 않는다. 매칭되지 않는 state 요청은 다른 정상 시도를 삭제하지 않는다.

@@ -12,10 +12,15 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 
@@ -38,6 +43,10 @@ public class SecurityConfig {
             ObjectProvider<OAuth2AuthorizationRequestResolver> authorizationRequestResolverProvider,
             ObjectProvider<AuthorizationRequestRepository<OAuth2AuthorizationRequest>>
                     authorizationRequestRepositoryProvider,
+            ObjectProvider<OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest>>
+                    accessTokenResponseClientProvider,
+            ObjectProvider<OAuth2UserService<OAuth2UserRequest, OAuth2User>>
+                    oauth2UserServiceProvider,
             KakaoOauthSuccessHandler successHandler,
             KakaoOauthFailureHandler failureHandler) throws Exception {
         http
@@ -67,6 +76,10 @@ public class SecurityConfig {
                                     authorizationRequestResolverProvider.getObject())
                             .authorizationRequestRepository(
                                     authorizationRequestRepositoryProvider.getObject()))
+                    .tokenEndpoint(endpoint -> endpoint.accessTokenResponseClient(
+                            accessTokenResponseClientProvider.getObject()))
+                    .userInfoEndpoint(endpoint -> endpoint.userService(
+                            oauth2UserServiceProvider.getObject()))
                     .redirectionEndpoint(endpoint -> endpoint
                             .baseUri(KakaoOauthConfig.CALLBACK_BASE_URI + "/*"))
                     .successHandler(successHandler)

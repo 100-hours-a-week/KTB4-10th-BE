@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.security.SessionIdHasher;
+import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -50,6 +51,8 @@ class KakaoOauthCallbackIntegrationTest {
 
     private static final AtomicReference<String> TOKEN_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> USER_AUTHORIZATION = new AtomicReference<>();
+    private static final AtomicReference<FailureMode> FAILURE_MODE =
+            new AtomicReference<>(FailureMode.NONE);
     private static final HttpServer KAKAO_SERVER = startKakaoServer();
 
     @Autowired
@@ -65,6 +68,9 @@ class KakaoOauthCallbackIntegrationTest {
     private CreditWalletRepository creditWalletRepository;
 
     @Autowired
+    private CreditTransactionRepository creditTransactionRepository;
+
+    @Autowired
     private SessionIdHasher sessionIdHasher;
 
     @DynamicPropertySource
@@ -78,10 +84,12 @@ class KakaoOauthCallbackIntegrationTest {
     @BeforeEach
     void cleanUp() {
         authSessionRepository.deleteAll();
+        creditTransactionRepository.deleteAll();
         creditWalletRepository.deleteAll();
         memberRepository.deleteAll();
         TOKEN_REQUEST.set(null);
         USER_AUTHORIZATION.set(null);
+        FAILURE_MODE.set(FailureMode.NONE);
     }
 
     @AfterAll
@@ -91,21 +99,12 @@ class KakaoOauthCallbackIntegrationTest {
 
     @Test
     void callbackCreatesMemberCreditsAndServiceSession() throws Exception {
-        MvcResult start = mockMvc.perform(get("/api/v1/auth/oauth/authorize/kakao"))
-                .andExpect(status().isFound())
-                .andReturn();
-        URI authorizationUri = URI.create(start.getResponse().getHeader(HttpHeaders.LOCATION));
-        String encodedState = UriComponentsBuilder.fromUri(authorizationUri)
-                .build()
-                .getQueryParams()
-                .getFirst("state");
-        String state = URLDecoder.decode(encodedState, StandardCharsets.UTF_8);
-        MockHttpSession session = (MockHttpSession) start.getRequest().getSession(false);
+        CallbackAttempt attempt = startLogin();
 
         MvcResult callback = mockMvc.perform(get("/api/v1/auth/oauth/callback/kakao")
-                        .session(session)
+                        .session(attempt.session())
                         .queryParam("code", "valid-authorization-code")
-                        .queryParam("state", state))
+                        .queryParam("state", attempt.state()))
                 .andExpect(status().isFound())
                 .andExpect(header().string(HttpHeaders.LOCATION, "/api/v1/members/me"))
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
@@ -135,6 +134,61 @@ class KakaoOauthCallbackIntegrationTest {
         assertThat(USER_AUTHORIZATION.get()).isEqualTo("Bearer kakao-access-token");
     }
 
+    @Test
+    void tokenEndpointUnavailableDoesNotCreateLoginData() throws Exception {
+        CallbackAttempt attempt = startLogin();
+        FAILURE_MODE.set(FailureMode.TOKEN_UNAVAILABLE);
+
+        mockMvc.perform(get("/api/v1/auth/oauth/callback/kakao")
+                        .session(attempt.session())
+                        .queryParam("code", "valid-authorization-code")
+                        .queryParam("state", attempt.state()))
+                .andExpect(status().isFound())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "/api/v1/auth/oauth/error?code=OAUTH_PROVIDER_UNAVAILABLE"));
+
+        assertNoLoginDataCreated();
+    }
+
+    @Test
+    void userInfoEndpointUnavailableDoesNotCreateLoginData() throws Exception {
+        CallbackAttempt attempt = startLogin();
+        FAILURE_MODE.set(FailureMode.USER_INFO_UNAVAILABLE);
+
+        mockMvc.perform(get("/api/v1/auth/oauth/callback/kakao")
+                        .session(attempt.session())
+                        .queryParam("code", "valid-authorization-code")
+                        .queryParam("state", attempt.state()))
+                .andExpect(status().isFound())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "/api/v1/auth/oauth/error?code=OAUTH_PROVIDER_UNAVAILABLE"));
+
+        assertNoLoginDataCreated();
+    }
+
+    private CallbackAttempt startLogin() throws Exception {
+        MvcResult start = mockMvc.perform(get("/api/v1/auth/oauth/authorize/kakao"))
+                .andExpect(status().isFound())
+                .andReturn();
+        URI authorizationUri = URI.create(start.getResponse().getHeader(HttpHeaders.LOCATION));
+        String encodedState = UriComponentsBuilder.fromUri(authorizationUri)
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+        String state = URLDecoder.decode(encodedState, StandardCharsets.UTF_8);
+        MockHttpSession session = (MockHttpSession) start.getRequest().getSession(false);
+        return new CallbackAttempt(session, state);
+    }
+
+    private void assertNoLoginDataCreated() {
+        assertThat(memberRepository.count()).isZero();
+        assertThat(authSessionRepository.count()).isZero();
+        assertThat(creditWalletRepository.count()).isZero();
+        assertThat(creditTransactionRepository.count()).isZero();
+    }
+
     private static HttpServer startKakaoServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -149,6 +203,10 @@ class KakaoOauthCallbackIntegrationTest {
 
     private static void tokenResponse(HttpExchange exchange) throws IOException {
         TOKEN_REQUEST.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+        if (FAILURE_MODE.get() == FailureMode.TOKEN_UNAVAILABLE) {
+            respondJson(exchange, 503, "{\"error\":\"temporarily_unavailable\"}");
+            return;
+        }
         respondJson(exchange, """
                 {
                   "token_type": "bearer",
@@ -162,6 +220,10 @@ class KakaoOauthCallbackIntegrationTest {
 
     private static void userResponse(HttpExchange exchange) throws IOException {
         USER_AUTHORIZATION.set(exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION));
+        if (FAILURE_MODE.get() == FailureMode.USER_INFO_UNAVAILABLE) {
+            respondJson(exchange, 503, "{\"error\":\"temporarily_unavailable\"}");
+            return;
+        }
         respondJson(exchange, """
                 {
                   "id": 987654321,
@@ -176,10 +238,24 @@ class KakaoOauthCallbackIntegrationTest {
     }
 
     private static void respondJson(HttpExchange exchange, String body) throws IOException {
+        respondJson(exchange, 200, body);
+    }
+
+    private static void respondJson(HttpExchange exchange, int statusCode, String body)
+            throws IOException {
         byte[] response = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add(HttpHeaders.CONTENT_TYPE, "application/json");
-        exchange.sendResponseHeaders(200, response.length);
+        exchange.sendResponseHeaders(statusCode, response.length);
         exchange.getResponseBody().write(response);
         exchange.close();
+    }
+
+    private record CallbackAttempt(MockHttpSession session, String state) {
+    }
+
+    private enum FailureMode {
+        NONE,
+        TOKEN_UNAVAILABLE,
+        USER_INFO_UNAVAILABLE
     }
 }
