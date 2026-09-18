@@ -46,8 +46,8 @@
 
 | API ID | 기능 | Method | URL | V1 제공 | V1 허용 입력 |
 |---|---|---|---|---|---|
-| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | Path provider=KAKAO; Query/Body 없음 |
-| API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | Path KAKAO; Query code/state 또는 error/state |
+| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음 |
+| API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 예 | Body 없음 |
 | API-MEM-04 | 내 회원 조회 | GET | `/members/me` | 예 | Query/Body 없음; 응답 email 포함 |
 | API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` | 예 | Body 없음 |
@@ -121,7 +121,7 @@
 |---|---|---|
 | GET | `/auth/oauth/authorize/{provider}` | 공개. 브라우저 최상위 페이지 이동으로 호출 |
 
-- Path provider: 필수 String, `KAKAO` 또는 `GOOGLE`. V1 KAKAO, V2 이상(V3 포함) 두 공급자 지원.
+- Path provider: 필수 소문자 String, `kakao` 또는 `google`. V1은 `kakao`, V2 이상(V3 포함)은 두 공급자 지원. DB/Java Enum은 `KAKAO`, `GOOGLE`을 유지한다.
 - 출시 단계 V1/V2/V3와 API Prefix `/api/v1`은 별개다. 위 URL에도 공통 prefix를 적용한다.
 - Query/Body 없음. 프론트는 code, state, verifier, redirect_uri를 만들거나 Body로 전달하지 않는다.
 - 서버가 공급자별 client_id·client_secret·redirect_uri를 설정으로 관리한다. 임의 return URL을 받지 않는다.
@@ -140,9 +140,9 @@
 |---|---|---|
 | GET | `/auth/oauth/callback/{provider}` | 공개 경로지만 기존 로그인 시도·브라우저 결속 검증 필수 |
 
-- Path provider: `KAKAO` 또는 `GOOGLE`. 서버가 저장한 로그인 시도의 provider와 일치해야 한다.
+- Path provider: 소문자 `kakao` 또는 `google`. 서버가 저장한 로그인 시도의 provider와 일치해야 하며 내부에서는 `KAKAO`, `GOOGLE` Enum으로 변환한다.
 - 성공 Query: `code`, `state` 필수 String. 실패 Query: 공급자의 `error`, 가능하면 `state`. Body 없음.
-- 공급자 콘솔에는 prefix를 포함한 실제 HTTPS 백엔드 콜백 주소를 정확히 등록한다. Spring의 등록 redirectUri와 콜백 처리 경로도 일치시킨다.
+- 공급자 콘솔에는 prefix를 포함한 실제 백엔드 콜백 주소를 정확히 등록한다. V1 카카오는 로컬 `http://localhost:8080/api/v1/auth/oauth/callback/kakao`, 배포 `https://kguidebook.site/api/v1/auth/oauth/callback/kakao`다. Spring의 redirectUri, 인가 요청과 토큰 요청에도 환경별 동일 값을 사용한다.
 - state·브라우저·provider·유효기간을 검증하고 시도를 원자적으로 소비한 뒤, 저장한 verifier로 코드를 교환한다. client_secret과 verifier는 백엔드에서만 공급자에 전달한다.
 - 검증된 `(oauth_provider, oauth_subject)`로 회원을 조회·생성한다. 같은 이메일로 계정을 자동 병합하지 않는다. 동시 신규 가입은 DB 유일 제약과 트랜잭션으로 중복 생성을 방지한다.
 - 성공한 회원/세션 저장을 커밋한 뒤 새 불투명 서비스 세션 ID를 쿠키로 발급한다. 로그인 전 임시 세션 ID를 서비스 세션 ID로 재사용하지 않는다.
@@ -151,7 +151,7 @@
 
 - 세션 쿠키 이름 `KGB_SESSION`은 기존 예시를 계약명으로 사용한다(서비스 브랜드 확정을 뜻하지 않음). 운영 속성은 `HttpOnly; Secure; SameSite=Lax; Path=/`, Domain 미지정(host-only).
 - 운영은 같은 사이트 구성을 기준으로 한다. 교차 origin API 호출은 프론트 credentials와 서버의 정확한 허용 origin 설정이 필요하다. 다른 사이트 배포는 별도 보안 검토 없이 쿠키 정책을 바꾸지 않는다.
-- 서비스 세션은 절대 8시간·유휴 30분·최대 3개, 절대 만료 연장 없음. Max-Age=28800. 상세 원자 처리·접근표는 V1-03을 따른다. PKCE 10분과 구분한다.
+- 서비스 세션은 절대 8시간·유휴 30분·회원당 최대 1개, 절대 만료 연장 없음. Max-Age=28800. 로그인 성공 TX에서 회원 행을 잠그고 기존 유효 세션을 모두 폐기한 후 새 세션을 발급한다. 상세 원자 처리·접근표는 V1-03을 따른다. PKCE 10분과 구분한다.
 - 프론트 완료 화면은 세션 쿠키로 `GET /members/me`를 호출한다. `status=ONBOARDING`이면 PREF-01, `ACTIVE`이면 MAP-01. 401이면 로그인 화면으로 복귀한다. `onboarding_required`를 별도 로그인 응답으로 전달하지 않는다.
 - 서비스 액세스·리프레시 토큰은 발급하지 않으며, URL·localStorage에 인증 자격증명을 전달하지 않는다.
 
@@ -176,11 +176,11 @@
 | 임시 보관 | Spring AuthorizationRequestRepository를 HttpSession 기반으로 구성. state별 map에 verifier 원문·필요한 nonce를 보관. 생성부터 10분 후 만료, 연장 없음. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
 | 일회성·다중 탭 | 동일 state의 검증·소비를 원자 처리해 콜백 중복 교환 금지. 각 탭은 별도 state로 관리. 만료 정리 및 브라우저당 최대 5개 시도, 초과 시작은 가장 오래된 시도를 폐기 |
 | PKCE | 두 공급자 로그인에 S256 사용. 서버에서 32바이트 난수를 base64url(no padding)로 인코딩한 verifier 생성. challenge는 BASE64URL(SHA256(verifier)). challenge만 인가 요청에, verifier 원문은 토큰 교환에 전달 |
-| 공급자·OIDC | Google은 OIDC(scope openid)로 ID token 서명·iss·aud·exp·nonce 검증. Kakao는 OAuth 사용자 정보 API의 검증된 id로 식별. Kakao OIDC는 이번 흐름에 추가하지 않음. 공급자별 응답을 공통 회원 식별로 매핑 |
+| 공급자·OIDC | Google은 OIDC(scope openid)로 ID token 서명·iss·aud·exp·nonce 검증. Kakao는 별도 OIDC를 활성화하지 않고 OAuth 사용자 정보 API의 검증된 id로 식별. 공급자별 응답을 공통 회원 식별로 매핑 |
 | 비밀값 | client_secret·verifier·공급자 토큰은 서버에서만 처리, 브라우저와 로그에 노출 금지. 서비스 세션 ID는 DB에 SHA-256 해시만 보관 |
 | 다중 서버 | 로그인 후 세션은 기존 공용 MySQL 사용. 로그인 전 HttpSession 저장소는 별개다. 단일 서버에서는 메모리 사용, 다중 서버 배포 전에 공유 HttpSession 저장소와 원자 소비를 적용·검증해야 함. Redis/새 업무 테이블을 지금 추가하지 않음 |
 | 쿠키·CSRF | 임시 세션 쿠키도 운영 HttpOnly·Secure·SameSite=Lax·host-only 적용. 서비스 세션 인증의 POST/PUT/PATCH/DELETE에는 Spring Security CSRF 토큰 검증 적용. PKCE/state가 일반 API의 CSRF 방어를 대체하지 않음 |
-| 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
+| 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 회원당 유효 세션은 1개이며 새 로그인은 기존 세션을 폐기. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
 
 프레임워크 기본 설정만으로 10분 TTL·다중 시도·원자 소비·현재 auth_sessions 매핑이 자동 구현되는 것은 아니다. AuthorizationRequestRepository 확장, 로그인 성공 처리, 서비스 세션 검증 및 CSRF 연동을 구현한다. 서비스 세션 수치는 V1-03에 정의하며 CSRF 전달·연동은 별도 보안 구현 항목이며 PKCE 설계 미정 항목이 아니다.
 

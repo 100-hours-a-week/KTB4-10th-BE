@@ -163,7 +163,7 @@ deleted_at은 필터링에 쓰는 데이터이며 컬럼이 존재한다고 자�
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: deleted_at 소프 삭제·30일 보관 후 삭제·비식별화, 재가입은 새 회원. 결제·원장 법정 보존은 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성하고 공유는 이후에 제공. |
-| API-DEC-01 | MEM-01/15/03 | 확정: 웹 Authorization Code, Spring Security OAuth2 Login, 백엔드 시작·콜백, state 브라우저 결속·10분 TTL·일회 소비, PKCE S256 및 서버 verifier 보관. 서비스 세션 쿠키 유지, 서비스 액세스·리프레시 토큰과 갱신 API 없음. 서비스 세션은 V1-03에서 절대 8시간·유휴 30분·최대 3개로 구체화. 배포·CSRF 연동 검증은 별도. |
+| API-DEC-01 | MEM-01/15/03 | 확정: 웹 Authorization Code, Spring Security OAuth2 Login, 백엔드 시작·콜백, 외부 provider는 소문자·내부 Enum은 대문자, state 브라우저 결속·10분 TTL·일회 소비, PKCE S256 및 서버 verifier 보관. Kakao는 OAuth 사용자 정보 API를 사용하고 별도 OIDC를 활성화하지 않는다. 서비스 세션 쿠키 유지, 서비스 액세스·리프레시 토큰과 갱신 API 없음. 서비스 세션은 V1-03에서 절대 8시간·유휴 30분·회원당 최대 1개로 구체화하며 새 로그인은 기존 유효 세션을 폐기한다. 배포·CSRF 연동 검증은 별도. |
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: Enum과 선택·인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정 제외, OAuth 프로필 로그인 시 동기화, 정책은 서버 `MARKDOWN` 제공. |
@@ -247,7 +247,7 @@ ea330328은 GDE-06 제목 PATCH와 GDE-08 일정 PUT을 제거하고 GDE-09로 �
 
 **저장 경계:** auth_sessions는 로그인 후 서비스 세션이다. verifier는 공급자에 원문을 제출해야 하므로 세션 ID처럼 해시만 보관하지 않는다. HttpSession의 로그인 전 상태와 MySQL 서비스 세션을 구분하고, 다중 서버 배포 전에 임시 상태 공유와 동시 소비를 검증한다. Spring 설정만으로 현재 auth_sessions 테이블 연결이나 원자 소비가 자동 구현되지 않는다.
 
-**보안 검증:** Google은 OIDC, Kakao는 OAuth 사용자 정보 조회를 사용한다. 두 공급자 S256의 정상 및 잘못된 verifier 거절을 실제 연동으로 확인한다. 실패 시 PKCE를 끄지 않고 배포를 차단한다. 세션 쿠키 HttpOnly·Secure·SameSite=Lax와 일반 변경 API의 CSRF 검증은 별도 방어다. 서비스 세션 수치는 V1-03 확정값을 따르고 CSRF 전달 계약은 브라우저 실연동 전에 검증한다.
+**보안 검증:** Google은 OIDC, Kakao는 별도 OIDC 활성화 없이 OAuth 사용자 정보 조회를 사용한다. 두 공급자 S256의 정상 및 잘못된 verifier 거절을 실제 연동으로 확인한다. 실패 시 PKCE를 끄지 않고 배포를 차단한다. 세션 쿠키 HttpOnly·Secure·SameSite=Lax와 일반 변경 API의 CSRF 검증은 별도 방어다. 서비스 세션 수치는 V1-03 확정값을 따르고 CSRF 전달 계약은 브라우저 실연동 전에 검증한다.
 
 ## V1 개발 결정의 근거 (Issue #9)
 
