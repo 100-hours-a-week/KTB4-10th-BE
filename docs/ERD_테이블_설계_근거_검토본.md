@@ -41,8 +41,7 @@ PL 리뷰에서 다음 질문에 답할 수 있도록 한다.
 
 | 형태 | 사용처 | 근거 | 단점 |
 | --- | --- | --- | --- |
-| BIGINT AUTO_INCREMENT | 내부 회원·콘텐츠·관계 행 | MySQL의 단순한 대리키로 JPA 식별자 매핑과 연관관계 참조가 쉬움 | 외부 노출 시 순차 추측 가능 |
-| VARCHAR(50) ID | 생성 작업, 가이드북 | job_, gb_ 접두사로 종류 구분, 추측 어려운 공개 ID | UUID/ULID 규격 확정 후 길이 재검토 |
+| BIGINT AUTO_INCREMENT | 회원·콘텐츠·가이드북·생성 작업·관계 행 등 내부 기본키 | MySQL의 단순한 대리키로 JPA 식별자 매핑과 연관관계 참조가 쉬움 | 외부 노출 시 순차 추측 가능하므로 모든 조회·변경에서 소유권과 권한을 별도로 검사해야 함 |
 | 대리키 + 복합 UNIQUE | 회원 취향, 관심 장소 | BIGINT PK로 JPA 매핑을 단순화하고 업무 조합 UNIQUE로 중복 차단 | PK와 UNIQUE 인덱스를 모두 유지 |
 
 ### 문자열
@@ -195,7 +194,7 @@ erDiagram
     GENERATION_JOBS {
         varchar id PK
         bigint member_id FK
-        varchar guidebook_id FK
+        bigint guidebook_id FK
         varchar status
         json request_payload
         varchar idempotency_key UK
@@ -211,13 +210,13 @@ erDiagram
     MEMBER_GUIDEBOOKS {
         bigint id PK
         bigint member_id FK,UK
-        varchar guidebook_id FK,UK
+        bigint guidebook_id FK,UK
         varchar acquisition_type
         datetime deleted_at
     }
     ITINERARY_DAYS {
         bigint id PK
-        varchar guidebook_id FK
+        bigint guidebook_id FK
         smallint day_number UK
         date itinerary_date UK
     }
@@ -230,7 +229,7 @@ erDiagram
     }
     SHARE_LINKS {
         bigint id PK
-        varchar guidebook_id FK
+        bigint guidebook_id FK
         bigint issued_by_member_id FK
         varchar token_hash UK
     }
@@ -255,7 +254,7 @@ erDiagram
     TOURISM_CONTENTS ||--o{ RANKING_ENTRIES : ranked
     GUIDEBOOK_EVALUATIONS {
         bigint id PK
-        varchar guidebook_id FK,UK
+        bigint guidebook_id FK,UK
         bigint member_id FK,UK
         varchar status
     }
@@ -311,7 +310,7 @@ erDiagram
         bigint id PK
         bigint wallet_id FK
         bigint order_id FK
-        varchar generation_job_id FK
+        bigint generation_job_id FK
         varchar idempotency_key UK
     }
     CREDIT_PRODUCTS {

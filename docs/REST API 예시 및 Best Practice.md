@@ -101,7 +101,7 @@ Idempotency-Key: request_unique_key
 {
   "message": "guidebook_generation_accepted",
   "data": {
-    "job_id": "job_example",
+    "job_id": 301,
     "job_type": "INITIAL",
     "status": "PENDING",
     "guidebook_id": null
@@ -125,7 +125,7 @@ Idempotency-Key: request_unique_key
 
 인증은 “누구인가”, 인가는 “이 작업을 해도 되는가”다. 유효 서비스 세션만 확인하고 `/guidebooks/{id}`를 반환하면 ID를 아는 타인의 가이드북을 볼 수 있다. 조회·재생성·삭제·PDF 모두 활성 `member_guidebooks` 관계를 검사한다.
 
-회원 ID를 Body에서 받지 않고 인증 세션에서 결정한다. 추측하기 어려운 gb/job ID도 인가를 대체하지 않는다. 탈퇴 시 세션을 폐기하고, 삭제된 회원의 기존 세션 쿠키가 남아 있더라도 보호 API를 사용할 수 없도록 검증해야 한다.
+회원 ID를 Body에서 받지 않고 인증 세션에서 결정한다. 가이드북·생성 작업 ID의 형태와 관계없이 식별자는 인가를 대체하지 않는다. 탈퇴 시 세션을 폐기하고, 삭제된 회원의 기존 세션 쿠키가 남아 있더라도 보호 API를 사용할 수 없도록 검증해야 한다.
 
 OAuth 지원 범위는 **V1 KAKAO만, V2 이상(V3 포함) KAKAO·GOOGLE 모두**로 확정됐다. 이는 서비스 출시 단계이며 /api/v1이라는 URL 버전과 별개다. 회원당 하나의 소셜 계정 연결을 유지하므로 두 공급자를 지원한다고 social_accounts 테이블이 반드시 필요한 것은 아니다. 공급자+subject로 식별하고 이메일만으로 자동 병합하지 않는다.
 
