@@ -149,6 +149,8 @@
 
 **성공 응답 302**: `Set-Cookie`로 서비스 세션을 발급하고, `Location: {FRONTEND_ORIGIN}/auth/complete`. JSON Body 없음. `Cache-Control: no-store`.
 
+- 정식 FE가 없는 V1 개발 단계에는 고정된 동일 서버 경로 `GET /api/v1/members/me`로 이동한다. 이 API의 `status`가 `ONBOARDING`이면 이후 FE가 PREF-01, `ACTIVE`이면 MAP-01로 이동한다. 콜백이 취향 옵션이나 지도 콘텐츠 API로 직접 이동하지 않는다.
+
 - 세션 쿠키 이름 `KGB_SESSION`은 기존 예시를 계약명으로 사용한다(서비스 브랜드 확정을 뜻하지 않음). 운영 속성은 `HttpOnly; Secure; SameSite=Lax; Path=/`, Domain 미지정(host-only).
 - 운영은 같은 사이트 구성을 기준으로 한다. 교차 origin API 호출은 프론트 credentials와 서버의 정확한 허용 origin 설정이 필요하다. 다른 사이트 배포는 별도 보안 검토 없이 쿠키 정책을 바꾸지 않는다.
 - 서비스 세션은 절대 8시간·유휴 30분·회원당 최대 1개, 절대 만료 연장 없음. Max-Age=28800. 로그인 성공 TX에서 회원 행을 잠그고 기존 유효 세션을 모두 폐기한 후 새 세션을 발급한다. 상세 원자 처리·접근표는 V1-03을 따른다. PKCE 10분과 구분한다.
@@ -156,6 +158,8 @@
 - 서비스 액세스·리프레시 토큰은 발급하지 않으며, URL·localStorage에 인증 자격증명을 전달하지 않는다.
 
 **실패 응답 302**: `Location: {FRONTEND_ORIGIN}/auth/error?code={아래의 허용된 코드}`. JSON Body 없음. 프론트는 오류 문구와 로그인 재시작 버튼을 표시한다. 원본 공급자 오류·인가 코드·state·verifier는 URL/응답/로그에 노출하지 않는다.
+
+- 정식 FE가 없는 개발 단계의 기본 실패 경로는 동일 서버의 `/api/v1/auth/oauth/error?code=...`다. 허용된 코드만 공통 JSON 오류로 보여주며, 운영 FE 주소가 준비되면 설정값으로 교체한다.
 
 | 복귀 code | 조건 | 복구 |
 |---|---|---|
