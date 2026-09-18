@@ -2,7 +2,9 @@ package com.ktb10.kgb.common.security;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
-import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthConfig;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthFailureHandler;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthSuccessHandler;
 import java.time.Clock;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -10,11 +12,15 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
+import org.springframework.security.oauth2.client.endpoint.OAuth2AuthorizationCodeGrantRequest;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
+import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 
@@ -33,11 +39,16 @@ public class SecurityConfig {
             SessionAuthenticationFilter sessionAuthenticationFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
-            RestSecurityErrorWriter errorWriter,
             ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider,
             ObjectProvider<OAuth2AuthorizationRequestResolver> authorizationRequestResolverProvider,
             ObjectProvider<AuthorizationRequestRepository<OAuth2AuthorizationRequest>>
-                    authorizationRequestRepositoryProvider) throws Exception {
+                    authorizationRequestRepositoryProvider,
+            ObjectProvider<OAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest>>
+                    accessTokenResponseClientProvider,
+            ObjectProvider<OAuth2UserService<OAuth2UserRequest, OAuth2User>>
+                    oauth2UserServiceProvider,
+            KakaoOauthSuccessHandler successHandler,
+            KakaoOauthFailureHandler failureHandler) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -59,15 +70,20 @@ public class SecurityConfig {
         ClientRegistrationRepository clientRegistrationRepository =
                 clientRegistrationRepositoryProvider.getIfAvailable();
         if (clientRegistrationRepository != null) {
-            OAuth2AuthorizationRequestRedirectFilter authorizationRedirectFilter =
-                    new OAuth2AuthorizationRequestRedirectFilter(
-                            authorizationRequestResolverProvider.getObject());
-            authorizationRedirectFilter.setAuthorizationRequestRepository(
-                    authorizationRequestRepositoryProvider.getObject());
-            authorizationRedirectFilter.setAuthenticationFailureHandler(
-                    (request, response, exception) ->
-                            errorWriter.write(request, response, CommonErrorCode.COMMON_VALIDATION_ERROR));
-            http.addFilterBefore(authorizationRedirectFilter, SessionAuthenticationFilter.class);
+            http.oauth2Login(oauth -> oauth
+                    .authorizationEndpoint(endpoint -> endpoint
+                            .authorizationRequestResolver(
+                                    authorizationRequestResolverProvider.getObject())
+                            .authorizationRequestRepository(
+                                    authorizationRequestRepositoryProvider.getObject()))
+                    .tokenEndpoint(endpoint -> endpoint.accessTokenResponseClient(
+                            accessTokenResponseClientProvider.getObject()))
+                    .userInfoEndpoint(endpoint -> endpoint.userService(
+                            oauth2UserServiceProvider.getObject()))
+                    .redirectionEndpoint(endpoint -> endpoint
+                            .baseUri(KakaoOauthConfig.CALLBACK_BASE_URI + "/*"))
+                    .successHandler(successHandler)
+                    .failureHandler(failureHandler));
         }
 
         return http.build();
