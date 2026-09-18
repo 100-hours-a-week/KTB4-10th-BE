@@ -2,7 +2,9 @@ package com.ktb10.kgb.common.security;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
-import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthConfig;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthFailureHandler;
+import com.ktb10.kgb.common.security.oauth.KakaoOauthSuccessHandler;
 import java.time.Clock;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
@@ -12,7 +14,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.web.SecurityFilterChain;
@@ -33,11 +34,12 @@ public class SecurityConfig {
             SessionAuthenticationFilter sessionAuthenticationFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
-            RestSecurityErrorWriter errorWriter,
             ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider,
             ObjectProvider<OAuth2AuthorizationRequestResolver> authorizationRequestResolverProvider,
             ObjectProvider<AuthorizationRequestRepository<OAuth2AuthorizationRequest>>
-                    authorizationRequestRepositoryProvider) throws Exception {
+                    authorizationRequestRepositoryProvider,
+            KakaoOauthSuccessHandler successHandler,
+            KakaoOauthFailureHandler failureHandler) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
@@ -59,15 +61,16 @@ public class SecurityConfig {
         ClientRegistrationRepository clientRegistrationRepository =
                 clientRegistrationRepositoryProvider.getIfAvailable();
         if (clientRegistrationRepository != null) {
-            OAuth2AuthorizationRequestRedirectFilter authorizationRedirectFilter =
-                    new OAuth2AuthorizationRequestRedirectFilter(
-                            authorizationRequestResolverProvider.getObject());
-            authorizationRedirectFilter.setAuthorizationRequestRepository(
-                    authorizationRequestRepositoryProvider.getObject());
-            authorizationRedirectFilter.setAuthenticationFailureHandler(
-                    (request, response, exception) ->
-                            errorWriter.write(request, response, CommonErrorCode.COMMON_VALIDATION_ERROR));
-            http.addFilterBefore(authorizationRedirectFilter, SessionAuthenticationFilter.class);
+            http.oauth2Login(oauth -> oauth
+                    .authorizationEndpoint(endpoint -> endpoint
+                            .authorizationRequestResolver(
+                                    authorizationRequestResolverProvider.getObject())
+                            .authorizationRequestRepository(
+                                    authorizationRequestRepositoryProvider.getObject()))
+                    .redirectionEndpoint(endpoint -> endpoint
+                            .baseUri(KakaoOauthConfig.CALLBACK_BASE_URI + "/*"))
+                    .successHandler(successHandler)
+                    .failureHandler(failureHandler));
         }
 
         return http.build();

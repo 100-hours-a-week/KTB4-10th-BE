@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -15,6 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.mock.web.MockHttpSession;
 import org.springframework.web.util.UriComponentsBuilder;
 
 @SpringBootTest(properties = {
@@ -63,5 +66,37 @@ class KakaoOAuthStartTest {
     void unsupportedProviderDoesNotStartOAuth() throws Exception {
         mockMvc.perform(get("/api/v1/auth/oauth/authorize/google"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void canceledCallbackConsumesAttemptAndReturnsAllowedFailureCode() throws Exception {
+        MvcResult start = mockMvc.perform(get("/api/v1/auth/oauth/authorize/kakao"))
+                .andReturn();
+        URI location = URI.create(start.getResponse().getHeader(HttpHeaders.LOCATION));
+        String encodedState = UriComponentsBuilder.fromUri(location)
+                .build()
+                .getQueryParams()
+                .getFirst("state");
+        String state = URLDecoder.decode(encodedState, StandardCharsets.UTF_8);
+        MockHttpSession session = (MockHttpSession) start.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/auth/oauth/callback/kakao")
+                        .session(session)
+                        .queryParam("error", "access_denied")
+                        .queryParam("state", state))
+                .andExpect(status().isFound())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "/api/v1/auth/oauth/error?code=OAUTH_ACCESS_DENIED"))
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"));
+
+        mockMvc.perform(get("/api/v1/auth/oauth/callback/kakao")
+                        .session(session)
+                        .queryParam("error", "access_denied")
+                        .queryParam("state", state))
+                .andExpect(status().isFound())
+                .andExpect(header().string(
+                        HttpHeaders.LOCATION,
+                        "/api/v1/auth/oauth/error?code=OAUTH_INVALID_REQUEST"));
     }
 }

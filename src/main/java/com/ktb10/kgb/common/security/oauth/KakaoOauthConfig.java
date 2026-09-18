@@ -29,16 +29,21 @@ public class KakaoOauthConfig {
     public ClientRegistrationRepository clientRegistrationRepository(
             @Value("${KAKAO_REST_API_KEY}") String clientId,
             @Value("${KAKAO_CLIENT_SECRET}") String clientSecret,
-            @Value("${KAKAO_REDIRECT_URI}") String redirectUri) {
+            @Value("${KAKAO_REDIRECT_URI}") String redirectUri,
+            @Value("${KAKAO_AUTHORIZATION_URI:https://kauth.kakao.com/oauth/authorize}")
+                    String authorizationUri,
+            @Value("${KAKAO_TOKEN_URI:https://kauth.kakao.com/oauth/token}") String tokenUri,
+            @Value("${KAKAO_USER_INFO_URI:https://kapi.kakao.com/v2/user/me}")
+                    String userInfoUri) {
         ClientRegistration kakao = ClientRegistration.withRegistrationId(REGISTRATION_ID)
                 .clientId(clientId)
                 .clientSecret(clientSecret)
                 .clientAuthenticationMethod(ClientAuthenticationMethod.CLIENT_SECRET_POST)
                 .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
                 .redirectUri(redirectUri)
-                .authorizationUri("https://kauth.kakao.com/oauth/authorize")
-                .tokenUri("https://kauth.kakao.com/oauth/token")
-                .userInfoUri("https://kapi.kakao.com/v2/user/me")
+                .authorizationUri(authorizationUri)
+                .tokenUri(tokenUri)
+                .userInfoUri(userInfoUri)
                 .userNameAttributeName("id")
                 .clientName("Kakao")
                 .clientSettings(ClientRegistration.ClientSettings.builder()
@@ -57,7 +62,7 @@ public class KakaoOauthConfig {
                         AUTHORIZATION_BASE_URI);
         resolver.setAuthorizationRequestCustomizer(
                 OAuth2AuthorizationRequestCustomizers.withPkce());
-        return resolver;
+        return new KakaoAuthorizationRequestResolver(resolver);
     }
 
     @Bean
