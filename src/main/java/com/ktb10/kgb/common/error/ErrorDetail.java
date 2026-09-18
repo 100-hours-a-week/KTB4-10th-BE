@@ -6,7 +6,7 @@ import java.util.Objects;
 public record ErrorDetail(String field, String reason) {
 
     public ErrorDetail {
-        Objects.requireNonNull(field, "field must not be null");
-        Objects.requireNonNull(reason, "reason must not be null");
+        Objects.requireNonNull(field, "오류 필드는 null일 수 없습니다.");
+        Objects.requireNonNull(reason, "오류 사유는 null일 수 없습니다.");
     }
 }

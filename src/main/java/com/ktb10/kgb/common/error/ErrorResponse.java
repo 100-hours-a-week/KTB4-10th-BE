@@ -7,15 +7,15 @@ import java.util.Objects;
 public record ErrorResponse(String message, Object data, ErrorPayload error) {
 
     public ErrorResponse {
-        Objects.requireNonNull(message, "message must not be null");
-        Objects.requireNonNull(error, "error must not be null");
+        Objects.requireNonNull(message, "오류 메시지는 null일 수 없습니다.");
+        Objects.requireNonNull(error, "오류 정보는 null일 수 없습니다.");
         if (data != null) {
-            throw new IllegalArgumentException("error response data must be null");
+            throw new IllegalArgumentException("오류 응답의 데이터는 null이어야 합니다.");
         }
     }
 
     public static ErrorResponse of(ErrorCode errorCode, List<ErrorDetail> details, String traceId) {
-        Objects.requireNonNull(errorCode, "errorCode must not be null");
+        Objects.requireNonNull(errorCode, "오류 코드는 null일 수 없습니다.");
         return new ErrorResponse(
                 errorCode.message(),
                 null,

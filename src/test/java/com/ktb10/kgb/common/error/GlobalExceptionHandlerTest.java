@@ -13,7 +13,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.response.ApiResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -85,9 +89,10 @@ class GlobalExceptionHandlerTest {
     void malformedJsonBecomesValidationError() throws Exception {
         mockMvc.perform(post("/test/validation")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{"))
+                .content("{"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details").isEmpty());
     }
 
     @Test
@@ -97,6 +102,18 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.error.details[0].field").value("value"))
                 .andExpect(jsonPath("$.error.details[0].reason").value("invalid_type"));
+    }
+
+    @Test
+    void queryAndPathValidationErrorsContainSortedFieldDetails() throws Exception {
+        mockMvc.perform(get("/test/search/x").param("page", "11"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details.length()").value(2))
+                .andExpect(jsonPath("$.error.details[0].field").value("code"))
+                .andExpect(jsonPath("$.error.details[0].reason").value("invalid_size"))
+                .andExpect(jsonPath("$.error.details[1].field").value("page"))
+                .andExpect(jsonPath("$.error.details[1].reason").value("out_of_range"));
     }
 
     @Test
@@ -135,6 +152,13 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/number")
         int number(@RequestParam Integer value) {
             return value;
+        }
+
+        @GetMapping("/search/{code}")
+        int search(
+                @PathVariable(name = "code") @Size(min = 2, max = 5) String code,
+                @RequestParam(name = "page") @Min(1) @Max(10) int page) {
+            return code.length() + page;
         }
     }
 

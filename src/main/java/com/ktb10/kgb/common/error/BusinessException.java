@@ -29,9 +29,11 @@ public class BusinessException extends RuntimeException {
             ErrorCode errorCode,
             List<ErrorDetail> details,
             Throwable cause) {
-        super(Objects.requireNonNull(errorCode, "errorCode must not be null").code(), cause);
+        super(Objects.requireNonNull(errorCode, "오류 코드는 null일 수 없습니다.").code(), cause);
         this.errorCode = errorCode;
-        this.details = List.copyOf(details);
+        this.details = List.copyOf(Objects.requireNonNull(
+                details,
+                "오류 상세 목록은 null일 수 없습니다."));
     }
 
     public ErrorCode errorCode() {

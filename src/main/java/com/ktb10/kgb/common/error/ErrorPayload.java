@@ -11,8 +11,10 @@ public record ErrorPayload(
         @JsonProperty("trace_id") String traceId) {
 
     public ErrorPayload {
-        Objects.requireNonNull(code, "code must not be null");
-        details = List.copyOf(details);
-        Objects.requireNonNull(traceId, "traceId must not be null");
+        Objects.requireNonNull(code, "오류 코드는 null일 수 없습니다.");
+        details = List.copyOf(Objects.requireNonNull(
+                details,
+                "오류 상세 목록은 null일 수 없습니다."));
+        Objects.requireNonNull(traceId, "추적 ID는 null일 수 없습니다.");
     }
 }
