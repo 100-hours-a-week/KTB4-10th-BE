@@ -1,5 +1,6 @@
 package com.ktb10.kgb.common.security.oauth;
 
+import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -26,6 +27,7 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
     private final KakaoOauthUserMapper userMapper;
     private final OauthLoginService loginService;
     private final KakaoOauthFailureHandler failureHandler;
+    private final CsrfTokenLifecycle csrfTokenLifecycle;
     private final String successRedirectUri;
     private final boolean secureCookie;
 
@@ -33,11 +35,13 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
             KakaoOauthUserMapper userMapper,
             OauthLoginService loginService,
             KakaoOauthFailureHandler failureHandler,
+            CsrfTokenLifecycle csrfTokenLifecycle,
             @Value("${OAUTH_SUCCESS_REDIRECT_URI:/api/v1/members/me}") String successRedirectUri,
             @Value("${SESSION_COOKIE_SECURE:true}") boolean secureCookie) {
         this.userMapper = userMapper;
         this.loginService = loginService;
         this.failureHandler = failureHandler;
+        this.csrfTokenLifecycle = csrfTokenLifecycle;
         this.successRedirectUri = successRedirectUri;
         this.secureCookie = secureCookie;
     }
@@ -68,6 +72,7 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
         if (request.getSession(false) != null) {
             request.getSession(false).invalidate();
         }
+        csrfTokenLifecycle.clear(request, response);
         ResponseCookie sessionCookie = ResponseCookie.from(
                         SessionCookieResolver.COOKIE_NAME,
                         result.rawSessionId())

@@ -6,7 +6,10 @@ import com.ktb10.kgb.common.security.oauth.KakaoOauthConfig;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthFailureHandler;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthSuccessHandler;
 import java.time.Clock;
+import java.util.Arrays;
+import java.util.List;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,6 +26,10 @@ import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequ
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 /** 서비스 세션 인증, 공개 경로와 공통 보안 실패 응답을 설정합니다. */
 @Configuration
@@ -47,6 +54,7 @@ public class SecurityConfig {
                     accessTokenResponseClientProvider,
             ObjectProvider<OAuth2UserService<OAuth2UserRequest, OAuth2User>>
                     oauth2UserServiceProvider,
+            CookieCsrfTokenRepository csrfTokenRepository,
             KakaoOauthSuccessHandler successHandler,
             KakaoOauthFailureHandler failureHandler) throws Exception {
         http
@@ -54,6 +62,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/actuator/health").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/oauth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/policies", "/api/v1/policies/**")
                         .permitAll()
                         .anyRequest().authenticated())
@@ -65,6 +74,9 @@ public class SecurityConfig {
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .logout(AbstractHttpConfigurer::disable)
                 .cors(withDefaults())
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(csrfTokenRepository)
+                        .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler()))
                 .addFilterBefore(sessionAuthenticationFilter, AnonymousAuthenticationFilter.class);
 
         ClientRegistrationRepository clientRegistrationRepository =
@@ -87,5 +99,39 @@ public class SecurityConfig {
         }
 
         return http.build();
+    }
+
+    @Bean
+    public CookieCsrfTokenRepository csrfTokenRepository(
+            @Value("${SESSION_COOKIE_SECURE:true}") boolean secureCookie) {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookiePath("/");
+        repository.setCookieCustomizer(cookie -> cookie
+                .secure(secureCookie)
+                .sameSite("Lax"));
+        return repository;
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource(
+            @Value("${CORS_ALLOWED_ORIGINS:}") String allowedOriginsValue) {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(parseAllowedOrigins(allowedOriginsValue));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of("Accept", "Content-Type", "X-XSRF-TOKEN"));
+        configuration.setExposedHeaders(List.of("X-Trace-Id"));
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        return source;
+    }
+
+    private static List<String> parseAllowedOrigins(String allowedOriginsValue) {
+        return Arrays.stream(allowedOriginsValue.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList();
     }
 }

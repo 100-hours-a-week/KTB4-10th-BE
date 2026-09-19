@@ -110,7 +110,10 @@ class KakaoOauthCallbackIntegrationTest {
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andReturn();
 
-        String setCookie = callback.getResponse().getHeader(HttpHeaders.SET_COOKIE);
+        String setCookie = callback.getResponse().getHeaders(HttpHeaders.SET_COOKIE).stream()
+                .filter(cookie -> cookie.startsWith("KGB_SESSION="))
+                .findFirst()
+                .orElseThrow();
         String rawSessionId = setCookie.substring(
                 "KGB_SESSION=".length(),
                 setCookie.indexOf(';'));

@@ -3,8 +3,10 @@ package com.ktb10.kgb.common.security.oauth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import java.util.List;
 import java.util.Map;
@@ -25,10 +27,12 @@ class KakaoOauthSuccessHandlerTest {
                 MemberStatus.ONBOARDING));
         KakaoOauthFailureHandler failureHandler =
                 new KakaoOauthFailureHandler("/api/v1/auth/oauth/error");
+        CsrfTokenLifecycle csrfTokenLifecycle = mock(CsrfTokenLifecycle.class);
         KakaoOauthSuccessHandler handler = new KakaoOauthSuccessHandler(
                 new KakaoOauthUserMapper(),
                 loginService,
                 failureHandler,
+                csrfTokenLifecycle,
                 "/api/v1/members/me",
                 false);
         var principal = new DefaultOAuth2User(
@@ -56,5 +60,6 @@ class KakaoOauthSuccessHandlerTest {
                 .contains("SameSite=Lax")
                 .doesNotContain("Secure");
         assertThat(request.getSession(false)).isNull();
+        verify(csrfTokenLifecycle).clear(request, response);
     }
 }
