@@ -1,5 +1,6 @@
 package com.ktb10.kgb.guidebook.entity;
 
+import com.ktb10.kgb.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -37,8 +38,12 @@ public class MemberGuidebook {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "member_id", nullable = false)
-    private Long memberId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "member_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_member_guidebooks_member"))
+    private Member member;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
@@ -58,12 +63,12 @@ public class MemberGuidebook {
     private LocalDateTime deletedAt;
 
     public static MemberGuidebook create(
-            Long memberId,
+            Member member,
             Guidebook guidebook,
             AcquisitionType acquisitionType,
             LocalDateTime createdAt) {
         MemberGuidebook memberGuidebook = new MemberGuidebook();
-        memberGuidebook.memberId = Objects.requireNonNull(memberId);
+        memberGuidebook.member = Objects.requireNonNull(member);
         memberGuidebook.guidebook = Objects.requireNonNull(guidebook);
         memberGuidebook.acquisitionType = Objects.requireNonNull(acquisitionType);
         memberGuidebook.createdAt = Objects.requireNonNull(createdAt);

@@ -10,6 +10,8 @@ import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
+import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -32,14 +34,17 @@ public class GuidebookGenerationService {
             GenerationStatus.PROCESSING);
 
     private final GenerationJobRepository generationJobRepository;
+    private final MemberRepository memberRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public GuidebookGenerationService(
             GenerationJobRepository generationJobRepository,
+            MemberRepository memberRepository,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
+        this.memberRepository = memberRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -67,9 +72,10 @@ public class GuidebookGenerationService {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
         }
 
+        Member member = memberRepository.getReferenceById(memberId);
         LocalDateTime now = LocalDateTime.now(clock);
         GenerationJob job = GenerationJob.createInitial(
-                memberId,
+                member,
                 requestPayload,
                 idempotencyKey,
                 now);

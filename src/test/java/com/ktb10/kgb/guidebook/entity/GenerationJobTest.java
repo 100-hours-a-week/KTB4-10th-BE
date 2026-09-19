@@ -2,6 +2,8 @@ package com.ktb10.kgb.guidebook.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.OauthProvider;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.Test;
 
@@ -18,11 +20,18 @@ class GenerationJobTest {
         assertThat(job.getGuidebookId()).isNull();
         assertThat(job.getAttemptCount()).isZero();
         assertThat(job.getLeaseVersion()).isZero();
+        assertThat(job.getMember()).isNotNull();
     }
 
     private static GenerationJob initialJob() {
         return GenerationJob.createInitial(
-                1L,
+                Member.register(
+                        OauthProvider.KAKAO,
+                        "generation-job-member",
+                        "여행자",
+                        null,
+                        null,
+                        NOW),
                 "{\"regionId\":1}",
                 "initial-key",
                 NOW);

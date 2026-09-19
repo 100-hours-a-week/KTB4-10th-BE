@@ -15,6 +15,9 @@ import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
+import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.OauthProvider;
+import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,6 +42,9 @@ class GuidebookGenerationServiceTest {
     @Mock
     private GenerationJobRepository generationJobRepository;
 
+    @Mock
+    private MemberRepository memberRepository;
+
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -46,17 +52,23 @@ class GuidebookGenerationServiceTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         objectMapper.findAndRegisterModules();
-        service = new GuidebookGenerationService(generationJobRepository, objectMapper, CLOCK);
+        service = new GuidebookGenerationService(
+                generationJobRepository,
+                memberRepository,
+                objectMapper,
+                CLOCK);
     }
 
     @Test
     void createsPendingInitialJob() {
         GuidebookGenerationRequest request = validRequest();
+        Member member = member();
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
                 MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -72,7 +84,7 @@ class GuidebookGenerationServiceTest {
     void returnsExistingJobForSameIdempotentRequest() throws Exception {
         GuidebookGenerationRequest request = validRequest();
         GenerationJob existingJob = GenerationJob.createInitial(
-                MEMBER_ID,
+                member(),
                 objectMapper.writeValueAsString(request),
                 IDEMPOTENCY_KEY,
                 LocalDate.of(2026, 9, 19).atStartOfDay());
@@ -88,7 +100,7 @@ class GuidebookGenerationServiceTest {
     @Test
     void rejectsDifferentRequestUsingSameIdempotencyKey() throws Exception {
         GenerationJob existingJob = GenerationJob.createInitial(
-                MEMBER_ID,
+                member(),
                 objectMapper.writeValueAsString(validRequest()),
                 IDEMPOTENCY_KEY,
                 LocalDate.of(2026, 9, 19).atStartOfDay());
@@ -164,5 +176,15 @@ class GuidebookGenerationServiceTest {
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,
                 2);
+    }
+
+    private Member member() {
+        return Member.register(
+                OauthProvider.KAKAO,
+                "guidebook-service-member",
+                "여행자",
+                null,
+                null,
+                LocalDate.of(2026, 9, 19).atStartOfDay());
     }
 }

@@ -1,13 +1,18 @@
 package com.ktb10.kgb.guidebook.entity;
 
+import com.ktb10.kgb.member.entity.Member;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.ForeignKey;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
@@ -48,8 +53,12 @@ public class GenerationJob {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "member_id", nullable = false)
-    private Long memberId;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "member_id",
+            nullable = false,
+            foreignKey = @ForeignKey(name = "fk_generation_jobs_member"))
+    private Member member;
 
     @Column(name = "guidebook_id")
     private Long guidebookId;
@@ -111,12 +120,12 @@ public class GenerationJob {
     private Long activeMemberId;
 
     public static GenerationJob createInitial(
-            Long memberId,
+            Member member,
             String requestPayload,
             String idempotencyKey,
             LocalDateTime createdAt) {
         GenerationJob job = new GenerationJob();
-        job.memberId = memberId;
+        job.member = member;
         job.jobType = JobType.INITIAL;
         job.status = GenerationStatus.PENDING;
         job.requestPayload = requestPayload;
