@@ -60,9 +60,9 @@ public class GuidebookGenerationService {
 
         validateTravelCondition(request);
 
-        // TODO: #40 회원 행을 잠근 뒤 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
-        // TODO: #40 멱등 비교용 요청과 취향 스냅샷을 구분해 requestPayload에 저장한다.
-        // TODO: #40 생성권 지갑을 잠근 뒤 잔액을 확인한다.
+        // TODO: #42 회원 행을 잠근 뒤 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
+        // TODO: #42 멱등 비교용 요청과 취향 스냅샷을 구분해 requestPayload에 저장한다.
+        // TODO: #42 생성권 지갑을 잠근 뒤 잔액을 확인한다.
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
         }
@@ -74,7 +74,7 @@ public class GuidebookGenerationService {
                 idempotencyKey,
                 now);
         GenerationJob savedJob = generationJobRepository.save(job);
-        // TODO: #40 UNIQUE 충돌을 기존 작업 조회로 복구하고 커밋 후 AI 생성을 트리거한다.
+        // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구하고 커밋 후 AI 생성을 트리거한다.
         return GuidebookGenerationResponse.from(savedJob);
     }
 
