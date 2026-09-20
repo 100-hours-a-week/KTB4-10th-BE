@@ -948,9 +948,9 @@ Body 없음.
 
 - Path job_id: 필수 양의 정수
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
-- attempt_count: Integer 0~3, 재시도 횟수. 성공 전 guidebook_id=null
+- attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
 - 개별 시도는 300초 타임아웃. 탈퇴·대상 가이드북 삭제로 취소된 작업의 늦은 완료 결과는 무시
-- error: null 또는 {code,message}; 내부 AI payload 미노출
+- error: FAILED이면 {code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다."}, 그 외 상태는 null. 내부 AI error_payload는 반환하지 않는다.
 
 **Request Body**
 
@@ -967,7 +967,6 @@ Body 없음.
     "status": "COMPLETED",
     "guidebook_id": 101,
     "attempt_count": 1,
-    "guidebook_version": 1,
     "error": null
   }
 }
