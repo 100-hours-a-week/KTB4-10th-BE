@@ -11,7 +11,7 @@
 | 기준 | 2026-09-06 · 요구사항정의서/테이블정의서/ERDCloud SQL과 동기화한 V3 구현 계약. 명시적 MVP 제외 항목은 별도 표기. |
 | API Prefix | 업무 API는 /api/v1. URL 칼럼에서는 prefix 생략. Actuator 운영 엔드포인트는 prefix 적용 제외. |
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
-| 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. |
+| 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. POST/PUT/PATCH/DELETE는 XSRF-TOKEN 쿠키와 X-XSRF-TOKEN 헤더가 모두 필요하다. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
 | 응답 예외 | OAuth 시작·콜백은 302 리다이렉트이며 JSON Body 없음. 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
 | ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
@@ -36,7 +36,7 @@
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
 - 공통 cursor: 가이드북은 보관 관계 created_at,id, 관심 장소는 created_at,content_id, 원장은 created_at,id의 DESC 키를 사용한다. size 기본20·1~100, 마지막 반환 행 기반 size+1 조회. 다음이 없으면 next_cursor=null/has_more=false.
 - 커서는 base64url payload+HMAC-SHA256 서명, 최대2048자·24시간. 버전/endpoint/세션 회원/정렬/필터/마지막 키/첫 상한 키/발급시각을 결속한다. 잘못됨·타인·만료는 400. DATETIME(6) 정밀도 유지, 키 행 삭제 후에도 값 비교로 진행한다. 데이터 변경 사이 완전한 snapshot은 보장하지 않는다.
-- 상세 session·cursor·TX·탈퇴 규약과 아직 미정인 CSRF 전달·AI 계약은 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)을 따른다.
+- 상세 session·cursor·TX·탈퇴 규약과 아직 미정인 AI 계약은 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)을 따른다. CSRF 전달 계약은 API-MEM-16을 따른다.
 
 ### 읽는 방법
 
@@ -48,6 +48,7 @@
 |---|---|---|---|---|---|
 | API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음 |
 | API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
+| API-MEM-16 | CSRF 토큰 계약 조회 | GET | `/auth/csrf` | 예 | Query/Body 없음; 공개 |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 예 | Body 없음 |
 | API-MEM-04 | 내 회원 조회 | GET | `/members/me` | 예 | Query/Body 없음; 응답 email 포함 |
 | API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` | 예 | Body 없음 |
@@ -192,6 +193,35 @@
 
 참고: [Spring OAuth 로그인](https://docs.spring.io/spring-security/reference/servlet/oauth2/login/advanced.html), [Spring PKCE 설정](https://docs.spring.io/spring-security/reference/servlet/oauth2/client/authorization-grants.html), [PKCE RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html), [OAuth 보안 RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), [Spring CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html).
 
+### API-MEM-16 CSRF 토큰 계약 조회
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/auth/csrf` | 공개 |
+
+- 서버는 `XSRF-TOKEN` 쿠키를 `HttpOnly=false; SameSite=Lax; Path=/; Domain 미지정`으로 발급한다. 운영에서는 Secure를 적용한다.
+- 운영은 브라우저가 `https://kguidebook.site`에 접속하고 CloudFront가 같은 호스트의 `/api/*`를 백엔드로 전달하는 구성을 전제로 한다. FE는 이 host-only 쿠키 값을 읽어 POST/PUT/PATCH/DELETE 요청의 `X-XSRF-TOKEN` 헤더에 동일하게 넣는다.
+- 로컬에서 FE와 BE의 포트만 다르면 FE origin을 `CORS_ALLOWED_ORIGINS`에 등록하고 `credentials: include`를 사용한다. 쿠키의 host가 같도록 둘 다 `localhost`를 사용하며 `localhost`와 `127.0.0.1`을 섞지 않는다.
+- FE와 BE가 서로 다른 호스트라면 FE JavaScript는 BE의 host-only `XSRF-TOKEN` 쿠키를 읽을 수 없다. `credentials: include`와 CORS 허용만으로 해결되지 않으므로 현재 계약을 사용하지 않고 동일 호스트 프록시 또는 토큰 원문 응답 방식 중 하나를 별도 보안 검토 후 확정한다.
+- CORS preflight는 `Content-Type`, `Idempotency-Key`, `X-XSRF-TOKEN`을 허용한다.
+- 로그인 성공과 로그아웃 성공 시 기존 CSRF 쿠키를 만료한다. 리다이렉트 완료 또는 로그아웃 완료 후 이 API를 호출해 새 토큰을 받는다.
+- 이 쿠키는 서비스 로그인 자격증명이 아니다. `KGB_SESSION`은 계속 HttpOnly이며 JavaScript에 노출하지 않는다.
+- 응답과 쿠키를 캐시하지 않는다.
+
+**응답 200**
+
+```json
+{
+  "message": "CSRF 토큰 조회에 성공했습니다.",
+  "data": {
+    "cookie_name": "XSRF-TOKEN",
+    "header_name": "X-XSRF-TOKEN"
+  }
+}
+```
+
+토큰 원문은 응답 JSON이 아니라 `XSRF-TOKEN` 쿠키에서 읽는다. 토큰이 누락되거나 쿠키와 헤더 값이 다르면 `403 RESOURCE_FORBIDDEN`이며 상태 변경은 수행하지 않는다.
+
 ### API-MEM-03 로그아웃
 
 | Method | URL | 인증 |
@@ -199,6 +229,7 @@
 | POST | `/auth/logout` | 세션 쿠키 필수 |
 
 - 현재 요청의 세션을 폐기하고 세션 쿠키를 만료시킴
+- 성공 시 XSRF-TOKEN도 만료하며, 이후 변경 요청 전 API-MEM-16으로 다시 발급받음
 - 기기별 관리·all_devices 옵션 미제공
 
 **Request Body**

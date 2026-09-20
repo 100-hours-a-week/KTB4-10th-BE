@@ -1,6 +1,9 @@
 package com.ktb10.kgb.common.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,6 +33,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,7 +44,8 @@ import org.springframework.web.bind.annotation.RestController;
         "spring.datasource.username=sa",
         "spring.datasource.password=",
         "spring.flyway.enabled=false",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
+        "spring.jpa.hibernate.ddl-auto=create-drop",
+        "CORS_ALLOWED_ORIGINS=https://frontend.example,http://localhost:3000"
 })
 @AutoConfigureMockMvc
 @Import({SecurityAuthenticationTest.SecurityTestConfiguration.class,
@@ -123,6 +128,97 @@ class SecurityAuthenticationTest {
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_FORBIDDEN"));
+    }
+
+    @Test
+    void csrfEndpointIssuesReadableCookieAndReturnsHeaderContract() throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string(
+                        "Set-Cookie",
+                        containsString("XSRF-TOKEN=")))
+                .andExpect(jsonPath("$.message").value("CSRF 토큰 조회에 성공했습니다."))
+                .andExpect(jsonPath("$.data.cookie_name").value("XSRF-TOKEN"))
+                .andExpect(jsonPath("$.data.header_name").value("X-XSRF-TOKEN"))
+                .andReturn();
+
+        Cookie csrfCookie = result.getResponse().getCookie("XSRF-TOKEN");
+        assertThat(csrfCookie).isNotNull();
+        assertThat(csrfCookie.isHttpOnly()).isFalse();
+        assertThat(csrfCookie.getSecure()).isTrue();
+        assertThat(csrfCookie.getPath()).isEqualTo("/");
+    }
+
+    @Test
+    void stateChangingRequestWithCookieTokenAndHeaderSucceeds() throws Exception {
+        Member member = memberRepository.save(member("valid-csrf-member"));
+        authSessionRepository.saveAndFlush(AuthSession.issue(
+                member,
+                sessionIdHasher.hash("valid-csrf-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf")
+                        .header("Origin", "http://localhost:3000"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andReturn();
+        Cookie csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+
+        mockMvc.perform(post("/api/v1/test/protected-change")
+                        .header("Origin", "http://localhost:3000")
+                        .cookie(
+                                new Cookie(SessionCookieResolver.COOKIE_NAME, "valid-csrf-session"),
+                                csrfCookie)
+                        .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                        .header("Idempotency-Key", "browser-request-1")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(jsonPath("$.status").value("changed"));
+    }
+
+    @Test
+    void stateChangingRequestWithTamperedCsrfTokenReturnsCommonForbiddenResponse() throws Exception {
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andReturn();
+        Cookie csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+
+        mockMvc.perform(post("/api/v1/test/protected-change")
+                        .cookie(csrfCookie)
+                        .header("X-XSRF-TOKEN", "변조된-토큰"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_FORBIDDEN"));
+    }
+
+    @Test
+    void corsAllowsConfiguredCredentialOriginAndRejectsUnknownOrigin() throws Exception {
+        mockMvc.perform(options("/api/v1/test/protected-change")
+                        .header("Origin", "https://frontend.example")
+                        .header("Access-Control-Request-Method", "POST")
+                        .header(
+                                "Access-Control-Request-Headers",
+                                "X-XSRF-TOKEN, Idempotency-Key"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "https://frontend.example"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("X-XSRF-TOKEN")))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("Idempotency-Key")));
+
+        mockMvc.perform(options("/api/v1/test/protected-change")
+                        .header("Origin", "https://unknown.example")
+                        .header("Access-Control-Request-Method", "POST"))
+                .andExpect(status().isForbidden());
     }
 
     private static Member member(String oauthSubject) {
