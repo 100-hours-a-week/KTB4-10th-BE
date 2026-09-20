@@ -45,7 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
         "spring.datasource.password=",
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "CORS_ALLOWED_ORIGINS=https://frontend.example"
+        "CORS_ALLOWED_ORIGINS=https://frontend.example,http://localhost:3000"
 })
 @AutoConfigureMockMvc
 @Import({SecurityAuthenticationTest.SecurityTestConfiguration.class,
@@ -158,17 +158,29 @@ class SecurityAuthenticationTest {
                 sessionIdHasher.hash("valid-csrf-session"),
                 NOW.plusHours(1),
                 NOW.minusMinutes(10)));
-        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
+        MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf")
+                        .header("Origin", "http://localhost:3000"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
                 .andReturn();
         Cookie csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
 
         mockMvc.perform(post("/api/v1/test/protected-change")
+                        .header("Origin", "http://localhost:3000")
                         .cookie(
                                 new Cookie(SessionCookieResolver.COOKIE_NAME, "valid-csrf-session"),
                                 csrfCookie)
                         .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                        .header("Idempotency-Key", "browser-request-1")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
+                .andExpect(header().string(
+                        "Access-Control-Allow-Origin",
+                        "http://localhost:3000"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
                 .andExpect(jsonPath("$.status").value("changed"));
     }
 
@@ -190,13 +202,18 @@ class SecurityAuthenticationTest {
         mockMvc.perform(options("/api/v1/test/protected-change")
                         .header("Origin", "https://frontend.example")
                         .header("Access-Control-Request-Method", "POST")
-                        .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                        .header(
+                                "Access-Control-Request-Headers",
+                                "X-XSRF-TOKEN, Idempotency-Key"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "https://frontend.example"))
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
                 .andExpect(header().string(
                         "Access-Control-Allow-Headers",
-                        containsString("X-XSRF-TOKEN")));
+                        containsString("X-XSRF-TOKEN")))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("Idempotency-Key")));
 
         mockMvc.perform(options("/api/v1/test/protected-change")
                         .header("Origin", "https://unknown.example")

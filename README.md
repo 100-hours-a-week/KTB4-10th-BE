@@ -33,6 +33,20 @@ SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 - Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
 - MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
 
+## 브라우저 CSRF·CORS 전제
+
+- 운영은 브라우저가 `https://kguidebook.site`에 접속하고 CloudFront가 같은 호스트의
+  `/api/*` 요청을 백엔드로 전달하는 구성을 전제로 합니다.
+- 이 구성에서는 FE가 host-only `XSRF-TOKEN` 쿠키를 읽어 상태 변경 요청의
+  `X-XSRF-TOKEN` 헤더로 전달합니다. `KGB_SESSION`은 계속 HttpOnly입니다.
+- 로컬에서 FE와 BE 포트가 다르면 FE origin을 `CORS_ALLOWED_ORIGINS`에 등록하고 두 서버
+  모두 `localhost`를 사용합니다. `localhost`와 `127.0.0.1`을 섞으면 쿠키 호스트가 달라집니다.
+- FE와 BE를 실제로 서로 다른 호스트에 배포하면 FE JavaScript는 백엔드의 host-only
+  쿠키를 읽을 수 없습니다. 이 경우 현재 계약을 그대로 사용하지 말고 동일 호스트 프록시
+  또는 CSRF 토큰 응답 방식 중 하나를 보안 검토 후 확정해야 합니다.
+- 배포 전 실제 브라우저에서 CSRF 조회 → 쿠키 확인 → preflight → 상태 변경 요청 순서를
+  검증합니다.
+
 ## 검증
 
 ```bash

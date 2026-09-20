@@ -200,7 +200,10 @@
 | GET | `/auth/csrf` | 공개 |
 
 - 서버는 `XSRF-TOKEN` 쿠키를 `HttpOnly=false; SameSite=Lax; Path=/; Domain 미지정`으로 발급한다. 운영에서는 Secure를 적용한다.
-- FE는 쿠키 값을 읽어 POST/PUT/PATCH/DELETE 요청의 `X-XSRF-TOKEN` 헤더에 동일하게 넣고, 교차 origin이면 `credentials: include`를 사용한다.
+- 운영은 브라우저가 `https://kguidebook.site`에 접속하고 CloudFront가 같은 호스트의 `/api/*`를 백엔드로 전달하는 구성을 전제로 한다. FE는 이 host-only 쿠키 값을 읽어 POST/PUT/PATCH/DELETE 요청의 `X-XSRF-TOKEN` 헤더에 동일하게 넣는다.
+- 로컬에서 FE와 BE의 포트만 다르면 FE origin을 `CORS_ALLOWED_ORIGINS`에 등록하고 `credentials: include`를 사용한다. 쿠키의 host가 같도록 둘 다 `localhost`를 사용하며 `localhost`와 `127.0.0.1`을 섞지 않는다.
+- FE와 BE가 서로 다른 호스트라면 FE JavaScript는 BE의 host-only `XSRF-TOKEN` 쿠키를 읽을 수 없다. `credentials: include`와 CORS 허용만으로 해결되지 않으므로 현재 계약을 사용하지 않고 동일 호스트 프록시 또는 토큰 원문 응답 방식 중 하나를 별도 보안 검토 후 확정한다.
+- CORS preflight는 `Content-Type`, `Idempotency-Key`, `X-XSRF-TOKEN`을 허용한다.
 - 로그인 성공과 로그아웃 성공 시 기존 CSRF 쿠키를 만료한다. 리다이렉트 완료 또는 로그아웃 완료 후 이 API를 호출해 새 토큰을 받는다.
 - 이 쿠키는 서비스 로그인 자격증명이 아니다. `KGB_SESSION`은 계속 HttpOnly이며 JavaScript에 노출하지 않는다.
 - 응답과 쿠키를 캐시하지 않는다.
