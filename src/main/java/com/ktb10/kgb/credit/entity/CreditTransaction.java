@@ -50,8 +50,8 @@ public class CreditTransaction {
     @Column(name = "credit_balance_after", nullable = false)
     private int creditBalanceAfter;
 
-    @Column(name = "generation_job_id", length = 50)
-    private String generationJobId;
+    @Column(name = "generation_job_id")
+    private Long generationJobId;
 
     @Column(name = "idempotency_key", nullable = false, length = 150)
     private String idempotencyKey;
@@ -125,7 +125,7 @@ public class CreditTransaction {
         return creditBalanceAfter;
     }
 
-    public String getGenerationJobId() {
+    public Long getGenerationJobId() {
         return generationJobId;
     }
 

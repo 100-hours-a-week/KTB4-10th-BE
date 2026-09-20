@@ -538,7 +538,7 @@ Body 없음.
 {
   "message": "notification_list_success",
   "data": {
-    "items": [{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북 완성","body":"가이드북을 확인해 주세요.","reference_type":"GUIDEBOOK","reference_id":"gb_example","created_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북 완성","body":"가이드북을 확인해 주세요.","reference_type":"GUIDEBOOK","reference_id":"101","created_at":"2026-09-04T00:00:00Z"}],
     "page": 1,
     "size": 4,
     "total_items": 1,
@@ -841,7 +841,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":"gb_example","title":"경주 역사 여행","region":{"administrative_code":"47","name":"경상북도"},"start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","region":{"administrative_code":"47","name":"경상북도"},"start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -855,12 +855,14 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
+> 구현 상태: PR #41의 생성 접수 API는 `PENDING` 저장까지만 구현되어 있으며 아직 사용자에게 제공 가능한 생성 API가 아니다. AI 트리거가 없어 작업이 계속 `PENDING`으로 남고 후속 요청이 `GENERATION_IN_PROGRESS`로 차단될 수 있다. #42의 회원·취향·생성권 검증, 동시성 처리와 커밋 후 AI 트리거 연동 및 검증을 마치기 전에는 프론트엔드 사용자 흐름에 연결하거나 운영에 공개하지 않는다. 상태 조회는 #43에서 구현한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/guidebook-generations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
-- region_code: 필수 String ≤20자, 17개 광역 지역 중 하나
+- region_code: 필수 String ≤20자, 광주를 전남에 통합한 16개 서비스 지역 중 하나
 - start_date/end_date: 필수 YYYY-MM-DD, 서울 기준 today <= start_date <= end_date <= today.plusYears(1), 양끝 포함 1~7일
 - companion: ALONE/FRIEND/COUPLE/FAMILY/GROUP 중 하나
 - people_count: 본인 포함 Integer. ALONE=1, FRIEND=2~4, COUPLE=2, FAMILY=2~6, GROUP=2~10. 혼합 구성은 GROUP, 구성 배열 미지원
@@ -886,7 +888,7 @@ Body 없음.
 {
   "message": "guidebook_generation_accepted",
   "data": {
-    "job_id": "job_example",
+    "job_id": 301,
     "job_type": "INITIAL",
     "status": "PENDING",
     "guidebook_id": null
@@ -913,7 +915,7 @@ Body 없음.
 |---|---|---|
 | GET | `/guidebook-generations/{job_id}` | 세션 쿠키 필수 |
 
-- Path job_id: 필수 String ≤50자
+- Path job_id: 필수 양의 정수
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - attempt_count: Integer 0~3, 재시도 횟수. 성공 전 guidebook_id=null
 - 개별 시도는 300초 타임아웃. 탈퇴·대상 가이드북 삭제로 취소된 작업의 늦은 완료 결과는 무시
@@ -929,10 +931,10 @@ Body 없음.
 {
   "message": "generation_job_get_success",
   "data": {
-    "job_id": "job_example",
+    "job_id": 301,
     "job_type": "INITIAL",
     "status": "COMPLETED",
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "attempt_count": 1,
     "guidebook_version": 1,
     "error": null
@@ -953,7 +955,7 @@ Body 없음.
 |---|---|---|
 | GET | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
-- Path guidebook_id: 필수 String ≤50자
+- Path guidebook_id: 필수 양의 정수
 - 응답 companion String; people_count Integer; version Integer ≥1
 - content_html: String|null; region은 광역 정보
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
@@ -968,7 +970,7 @@ Body 없음.
 {
   "message": "guidebook_get_success",
   "data": {
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "title": "경주 역사 여행",
     "region": {"administrative_code":"47","name":"경상북도"},
     "start_date": "2026-10-12",
@@ -1012,7 +1014,7 @@ Body 없음.
 {
   "message": "itinerary_get_success",
   "data": {
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "days": [{"day_number":1,"itinerary_date":"2026-10-12","items":[{"item_id":"501","content_id":"101","sequence":1,"scheduled_time":"10:00:00","place_snapshot":{"title":"불국사","address":"경상북도 경주시","latitude":35.7898,"longitude":129.3321}}]}]
   }
 }
@@ -1057,10 +1059,10 @@ Body 없음.
 {
   "message": "regeneration_accepted",
   "data": {
-    "job_id": "job_regeneration",
+    "job_id": 302,
     "job_type": "REGENERATION",
     "status": "PENDING",
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "current_version": 1
   }
 }
@@ -1177,7 +1179,7 @@ Body 없음.
 {
   "message": "guidebook_imported",
   "data": {
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "already_imported": false
   }
 }
@@ -1189,7 +1191,7 @@ Body 없음.
 {
   "message": "already_imported",
   "data": {
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "already_imported": true
   }
 }
@@ -1259,7 +1261,7 @@ PDF 바이너리 (JSON 아님)
 {
   "message": "viewer_get_success",
   "data": {
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "content_html": "<article>여행 안내</article>",
     "version": 1,
     "updated_at": "2026-09-04T00:00:00Z"
@@ -1280,7 +1282,7 @@ PDF 바이너리 (JSON 아님)
 |---|---|---|
 | DELETE | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
-- Path guidebook_id: 필수 String ≤50자
+- Path guidebook_id: 필수 양의 정수
 - Body 없음; 활성 보관 관계를 가진 회원만 삭제
 - 자신의 `member_guidebooks` 관계만 소프트 삭제하고 자신이 발급한 공유 링크를 차단; 다른 회원 관계는 유지
 
@@ -1324,7 +1326,7 @@ Body 없음.
 {
   "message": "evaluation_list_success",
   "data": {
-    "items": [{"evaluation_id":null,"guidebook_id":"gb_example","status":"PENDING","prompt_dismissed_at":null}],
+    "items": [{"evaluation_id":null,"guidebook_id":101,"status":"PENDING","prompt_dismissed_at":null}],
     "next_cursor": null,
     "has_more": false
   }
@@ -1357,7 +1359,7 @@ Body 없음.
   "message": "evaluation_ready",
   "data": {
     "evaluation_id": "701",
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "status": "PENDING"
   }
 }
@@ -1370,7 +1372,7 @@ Body 없음.
   "message": "evaluation_ready",
   "data": {
     "evaluation_id": "701",
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "status": "PENDING"
   }
 }
@@ -1408,7 +1410,7 @@ Body 없음.
   "message": "evaluation_get_success",
   "data": {
     "evaluation_id": "701",
-    "guidebook_id": "gb_example",
+    "guidebook_id": 101,
     "status": "PENDING",
     "places": [{"content_id":"101","title":"불국사","current_score":0}]
   }
@@ -1570,7 +1572,7 @@ Body 없음.
 | GET | `/credits/wallet` | 세션 쿠키 필수 |
 
 - credit_balance: Integer ≥0
-- active_job_id: String|null, PENDING/PROCESSING 작업
+- active_job_id: Long|null, PENDING/PROCESSING 작업
 - can_generate: Boolean, 잔액≥1·활성 작업 없음·유효 취향·활성 회원
 - 예약 수량·지갑 version 응답 없음
 
@@ -1605,7 +1607,7 @@ Body 없음.
 - Query cursor,size: 공통 규칙
 - type 선택 FREE_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
 - credit_delta: Integer; credit_balance_after: Integer≥0
-- order_id: ID|null; generation_job_id: String|null
+- order_id: ID|null; generation_job_id: Long|null
 
 **Request Body**
 
@@ -1617,7 +1619,7 @@ Body 없음.
 {
   "message": "credit_transaction_list_success",
   "data": {
-    "items": [{"transaction_id":"801","type":"CONSUME","credit_delta":-1,"credit_balance_after":5,"order_id":null,"generation_job_id":"job_example","created_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"transaction_id":"801","type":"CONSUME","credit_delta":-1,"credit_balance_after":5,"order_id":null,"generation_job_id":301,"created_at":"2026-09-04T00:00:00Z"}],
     "next_cursor": null,
     "has_more": false
   }

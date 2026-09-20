@@ -67,7 +67,7 @@ CREATE TABLE regions (
     name VARCHAR(100) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code)
-) COMMENT = '17개 광역 시도 지역 기준 정보';
+) COMMENT = '16개 서비스 지역 기준 정보 (광주는 전남에 통합)';
 
 CREATE TABLE tourism_contents (
     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -132,7 +132,7 @@ CREATE TABLE favorite_contents (
 ) COMMENT = '회원과 관심 관광 콘텐츠의 N:M 관계';
 
 CREATE TABLE guidebooks (
-    id VARCHAR(50) NOT NULL,
+    id BIGINT NOT NULL AUTO_INCREMENT,
     title VARCHAR(15) NOT NULL,
     region_id BIGINT NOT NULL,
     start_date DATE NOT NULL,
@@ -153,7 +153,7 @@ CREATE TABLE guidebooks (
 CREATE TABLE member_guidebooks (
     id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
-    guidebook_id VARCHAR(50) NOT NULL,
+    guidebook_id BIGINT NOT NULL,
     acquisition_type VARCHAR(20) NOT NULL,
     created_at DATETIME(6) NOT NULL,
     deleted_at DATETIME(6) NULL,
@@ -166,9 +166,9 @@ CREATE TABLE member_guidebooks (
 ) COMMENT = '회원별 가이드북 보관 및 삭제 관계';
 
 CREATE TABLE generation_jobs (
-    id VARCHAR(50) NOT NULL,
+    id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
-    guidebook_id VARCHAR(50) NULL,
+    guidebook_id BIGINT NULL,
     job_type VARCHAR(20) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     request_payload JSON NOT NULL,
@@ -203,7 +203,7 @@ CREATE TABLE generation_jobs (
 
 CREATE TABLE itinerary_days (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    guidebook_id VARCHAR(50) NOT NULL,
+    guidebook_id BIGINT NOT NULL,
     day_number SMALLINT NOT NULL,
     itinerary_date DATE NOT NULL,
     PRIMARY KEY (id),
@@ -225,13 +225,13 @@ CREATE TABLE itinerary_items (
     CONSTRAINT uq_itinerary_items_sequence UNIQUE (itinerary_day_id, sequence),
     CONSTRAINT fk_itinerary_items_day FOREIGN KEY (itinerary_day_id) REFERENCES itinerary_days (id),
     CONSTRAINT fk_itinerary_items_content FOREIGN KEY (tourism_content_id) REFERENCES tourism_contents (id),
-    CONSTRAINT ck_itinerary_items_sequence CHECK (sequence >= 1),
+    CONSTRAINT ck_itinerary_items_sequence CHECK (sequence BETWEEN 1 AND 20),
     INDEX ix_itinerary_items_content (tourism_content_id)
 ) COMMENT = '날짜별 방문 장소와 생성 시점 스냅샷';
 
 CREATE TABLE share_links (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    guidebook_id VARCHAR(50) NOT NULL,
+    guidebook_id BIGINT NOT NULL,
     issued_by_member_id BIGINT NOT NULL,
     token_hash VARCHAR(255) NOT NULL,
     expires_at DATETIME(6) NULL,
@@ -244,7 +244,7 @@ CREATE TABLE share_links (
 
 CREATE TABLE guidebook_evaluations (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    guidebook_id VARCHAR(50) NOT NULL,
+    guidebook_id BIGINT NOT NULL,
     member_id BIGINT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     prompt_dismissed_at DATETIME(6) NULL,
@@ -385,7 +385,7 @@ CREATE TABLE credit_transactions (
     credit_delta INT NOT NULL,
     credit_balance_after INT NOT NULL,
     order_id BIGINT NULL,
-    generation_job_id VARCHAR(50) NULL,
+    generation_job_id BIGINT NULL,
     idempotency_key VARCHAR(150) NOT NULL,
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
