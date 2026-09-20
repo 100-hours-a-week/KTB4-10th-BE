@@ -192,7 +192,7 @@ erDiagram
     TOURISM_CONTENTS o|--o{ ITINERARY_ITEMS : references
     GUIDEBOOKS ||--o{ SHARE_LINKS : shares
     GENERATION_JOBS {
-        varchar id PK
+        bigint id PK
         bigint member_id FK
         bigint guidebook_id FK
         varchar status
@@ -202,7 +202,7 @@ erDiagram
         bigint active_member_id UK
     }
     GUIDEBOOKS {
-        varchar id PK
+        bigint id PK
         date start_date
         date end_date
         int version
@@ -280,7 +280,7 @@ erDiagram
         bigint id PK
     }
     GUIDEBOOKS {
-        varchar id PK
+        bigint id PK
     }
     TOURISM_CONTENTS {
         bigint id PK
@@ -336,7 +336,7 @@ erDiagram
         bigint id PK
     }
     GENERATION_JOBS {
-        varchar id PK
+        bigint id PK
     }
 ~~~
 
@@ -396,7 +396,7 @@ erDiagram
 
 ### regions
 
-17개 광역 시·도의 기준정보다.
+광주를 전남에 통합한 16개 서비스 지역의 기준정보다.
 
 - “전체”는 지역이 아니라 필터 미적용 상태라 저장하지 않는다.
 - administrative_code UNIQUE는 기준정보 갱신과 중복 방지에 사용한다.

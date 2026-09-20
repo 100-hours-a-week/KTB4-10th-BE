@@ -67,7 +67,7 @@ CREATE TABLE regions (
     name VARCHAR(100) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code)
-) COMMENT = '17개 광역 시도 지역 기준 정보';
+) COMMENT = '16개 서비스 지역 기준 정보 (광주는 전남에 통합)';
 
 CREATE TABLE tourism_contents (
     id BIGINT NOT NULL AUTO_INCREMENT,

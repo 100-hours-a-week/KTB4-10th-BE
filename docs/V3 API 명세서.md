@@ -853,12 +853,14 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
+> 구현 상태: PR #41의 생성 접수 API는 `PENDING` 저장까지만 구현되어 있으며 아직 사용자에게 제공 가능한 생성 API가 아니다. AI 트리거가 없어 작업이 계속 `PENDING`으로 남고 후속 요청이 `GENERATION_IN_PROGRESS`로 차단될 수 있다. #42의 회원·취향·생성권 검증, 동시성 처리와 커밋 후 AI 트리거 연동 및 검증을 마치기 전에는 프론트엔드 사용자 흐름에 연결하거나 운영에 공개하지 않는다. 상태 조회는 #43에서 구현한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/guidebook-generations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
-- region_code: 필수 String ≤20자, 17개 광역 지역 중 하나
+- region_code: 필수 String ≤20자, 광주를 전남에 통합한 16개 서비스 지역 중 하나
 - start_date/end_date: 필수 YYYY-MM-DD, 서울 기준 today <= start_date <= end_date <= today.plusYears(1), 양끝 포함 1~7일
 - companion: ALONE/FRIEND/COUPLE/FAMILY/GROUP 중 하나
 - people_count: 본인 포함 Integer. ALONE=1, FRIEND=2~4, COUPLE=2, FAMILY=2~6, GROUP=2~10. 혼합 구성은 GROUP, 구성 배열 미지원
