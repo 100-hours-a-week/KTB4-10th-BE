@@ -861,6 +861,7 @@ Body 없음.
 - `member_guidebooks.created_at DESC, member_guidebooks.id DESC` 고정. 가져온 시점을 내 목록 정렬 기준으로 사용
 - 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 제공하지 않음. 현재 회원 취향을 과거 카드 표시값으로 대체하지 않음
+- 지역 정보는 지역 도메인 조회 기능 연동 전까지 응답에서 제외한다. 연동 후 `region.administrative_code`와 `region.name`을 제공한다.
 
 **Request Body**
 
@@ -872,7 +873,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":101,"title":"경주 역사 여행","region":{"administrative_code":"47","name":"경상북도"},"start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
     "next_cursor": null,
     "has_more": false
   }
