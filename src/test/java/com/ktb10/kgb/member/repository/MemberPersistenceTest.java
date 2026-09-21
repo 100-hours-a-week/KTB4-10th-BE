@@ -93,17 +93,17 @@ class MemberPersistenceTest {
     @Test
     void duplicatePreferenceSelectionIsRejectedAndSelectionsCanBeReplaced() {
         Member member = memberRepository.save(member("member-3"));
-        MemberPreference healing = MemberPreference.select(member, PreferenceCode.HEALING);
-        memberPreferenceRepository.saveAndFlush(healing);
+        MemberPreference nature = MemberPreference.select(member, PreferenceCode.NATURE);
+        memberPreferenceRepository.saveAndFlush(nature);
 
         assertThat(memberPreferenceRepository.existsByMemberIdAndPreferenceTypeAndPreferenceCode(
                 member.getId(),
-                PreferenceCode.HEALING.type(),
-                PreferenceCode.HEALING))
+                PreferenceCode.NATURE.type(),
+                PreferenceCode.NATURE))
                 .isTrue();
 
         assertThatThrownBy(() -> memberPreferenceRepository.saveAndFlush(
-                MemberPreference.select(member, PreferenceCode.HEALING)))
+                MemberPreference.select(member, PreferenceCode.NATURE)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
