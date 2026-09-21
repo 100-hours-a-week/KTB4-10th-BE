@@ -1,11 +1,13 @@
+#CI-CD 변경
+#최종 Push때에만 해당 파이프라인 작동, lint 검사또한 진행
 name: KGB Backend CI/CD
 
 on:
- 
   # main Merge 이후 CI/CD 실행
   push:
     branches:
       - main
+
 
 # GitHub Actions 권한
 permissions:
@@ -17,7 +19,8 @@ permissions:
 
 
 jobs:
-  # PR 검증
+
+  # 1. main Merge 이후 CI 검증
   # ==================================================
   ci:
     name: CI
@@ -42,13 +45,13 @@ jobs:
         run: chmod +x gradlew
 
       # Build / Compile 검증
-      # 실패 시 Merge 차단
+      # 실패 시 Image Build / 배포 차단
       - name: Gradle Build
         run: ./gradlew build
 
       # Checkstyle
       # 위반 내용 표시
-      # Merge 차단 X
+      # build.gradle의 ignoreFailures = true 적용 시 CI 차단 X
       - name: Checkstyle
         run: ./gradlew checkstyleMain
 
@@ -58,33 +61,18 @@ jobs:
       - name: SpotBugs
         run: ./gradlew spotbugsMain
 
-      # Dependency Review
-      # 새롭게 추가/변경된 Dependency 대상
-      # High 이상 취약점 발견 시 실패
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
 
-      # Docker Image Build 검증
-      # dev -> main PR에서만 실행
-      # Image Push X
-      - name: Docker Build Test
-        if: github.base_ref == 'main'
-        run: docker build -t backend:ci .
-
-
-  
-  # main Merge 이후 실제 배포 Image 생성
+  # 2. 실제 배포용 Docker Image 생성 및 GHCR Push
   # ==================================================
   build-image:
     name: Build and Push Image
 
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # CI 성공 이후 실행
+    needs: ci
 
     runs-on: ubuntu-latest
 
-    # 생성한 IMAGE_TAG를 deploy Job으로 전달
+    # 생성한 IMAGE_TAG를 CD Job으로 전달
     outputs:
       image_tag: ${{ steps.image.outputs.tag }}
 
@@ -104,7 +92,7 @@ jobs:
 
       # Image Tag 생성
       # 형식: Commit SHA 앞 7자리-생성일
-      # 예: a81c29f-20260918
+      # 예: a81c29f-20260921
       - name: Generate Image Tag
         id: image
         run: |
@@ -113,6 +101,7 @@ jobs:
           echo "tag=${SHORT_SHA}-${DATE}" >> "$GITHUB_OUTPUT"
 
       # 실제 배포용 Docker Image Build
+      # Docker Build 자체가 실패하면 이후 Push / CD 차단
       - name: Build Docker Image
         run: |
           docker build \
@@ -126,28 +115,26 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/ktb4-10-be:${{ steps.image.outputs.tag }}
 
 
-  
-  # Backend EC2 배포
+ 
+  # 3. Backend EC2 배포
   # ==================================================
   deploy:
-    name: Deploy Backend
+    name: CD
 
     # Image Build / Push 성공 이후 실행
     needs: build-image
-
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     runs-on: ubuntu-latest
 
     steps:
 
-      # GitHub OIDC를 통해 AWS IAM Role
-      # credential 직접 저장방식에서 변화
+      # GitHub OIDC를 통해 AWS IAM Role Assume
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ap-northeast-2
+
 
       
       # SSM을 통해 Backend EC2에 배포 명령 전달
@@ -184,6 +171,7 @@ jobs:
 
           echo "command_id=${COMMAND_ID}" >> "$GITHUB_OUTPUT"
 
+
       
       # SSM 명령 완료 대기
       # ==================================================
@@ -193,7 +181,7 @@ jobs:
             --command-id "${{ steps.deploy.outputs.command_id }}" \
             --instance-id "i-0ecb626c01830b39b"
 
-      
+
       # 배포 결과 확인
       # ==================================================
       - name: Check Deploy Result
