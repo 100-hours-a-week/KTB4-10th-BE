@@ -18,6 +18,7 @@ import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.Base64;
@@ -59,7 +60,11 @@ public class GuidebookService {
         } else {
             GuidebookCursor decodedCursor = decodeCursor(cursor);
             relationships = memberGuidebookRepository.findActiveGuidebooksAfter(
-                    memberId, decodedCursor.createdAt(), decodedCursor.id(), limit);
+                    memberId,
+                    decodedCursor.startDate(),
+                    decodedCursor.createdAt(),
+                    decodedCursor.id(),
+                    limit);
         }
 
         boolean hasMore = relationships.size() > size;
@@ -72,7 +77,6 @@ public class GuidebookService {
                 ? encodeCursor(currentPage.get(currentPage.size() - 1))
                 : null;
 
-        // TODO: 지역 도메인 조회 기능이 제공되면 각 항목에 행정 코드와 지역명을 추가한다.
         return new GuidebookListResponse(items, nextCursor, hasMore);
     }
 
@@ -126,7 +130,10 @@ public class GuidebookService {
     }
 
     private String encodeCursor(MemberGuidebook relationship) {
-        String value = relationship.getCreatedAt() + CURSOR_SEPARATOR + relationship.getId();
+        Guidebook guidebook = relationship.getGuidebook();
+        String value = guidebook.getStartDate()
+                + CURSOR_SEPARATOR + guidebook.getCreatedAt()
+                + CURSOR_SEPARATOR + relationship.getId();
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
@@ -136,20 +143,21 @@ public class GuidebookService {
             String value = new String(
                     Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
             String[] parts = value.split("\\|", -1);
-            if (parts.length != 2) {
+            if (parts.length != 3) {
                 throw new IllegalArgumentException("커서 형식이 올바르지 않습니다.");
             }
-            LocalDateTime createdAt = LocalDateTime.parse(parts[0]);
-            long id = Long.parseLong(parts[1]);
+            LocalDate startDate = LocalDate.parse(parts[0]);
+            LocalDateTime createdAt = LocalDateTime.parse(parts[1]);
+            long id = Long.parseLong(parts[2]);
             if (id <= 0) {
                 throw new IllegalArgumentException("커서 ID는 양수여야 합니다.");
             }
-            return new GuidebookCursor(createdAt, id);
+            return new GuidebookCursor(startDate, createdAt, id);
         } catch (IllegalArgumentException | DateTimeParseException exception) {
             throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR, exception);
         }
     }
 
-    private record GuidebookCursor(LocalDateTime createdAt, Long id) {
+    private record GuidebookCursor(LocalDate startDate, LocalDateTime createdAt, Long id) {
     }
 }
