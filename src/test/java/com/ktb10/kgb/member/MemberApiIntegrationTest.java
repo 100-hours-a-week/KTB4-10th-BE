@@ -156,6 +156,54 @@ class MemberApiIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
     }
 
+    @Test
+    void preferenceOptionsFollowApprovedOrderForOnboardingMember() throws Exception {
+        Member member = memberRepository.save(Member.register(
+                OauthProvider.KAKAO,
+                "preference-options-member",
+                "여행자",
+                null,
+                null,
+                NOW.minusDays(1)));
+        issueSession(member, "preference-options-session");
+
+        mockMvc.perform(get("/api/v1/preference-options")
+                        .cookie(sessionCookie("preference-options-session")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("preference_option_list_success"))
+                .andExpect(jsonPath("$.data.items.length()").value(37))
+                .andExpect(jsonPath("$.data.items[0].preference_type").value("THEME"))
+                .andExpect(jsonPath("$.data.items[0].code").value("NATURE"))
+                .andExpect(jsonPath("$.data.items[0].label").value("자연"))
+                .andExpect(jsonPath("$.data.items[0].parent_code").value((Object) null))
+                .andExpect(jsonPath("$.data.items[0].sort_order").value(10))
+                .andExpect(jsonPath("$.data.items[1].code").value("NATURE_MOUNTAIN"))
+                .andExpect(jsonPath("$.data.items[1].parent_code").value("NATURE"))
+                .andExpect(jsonPath("$.data.items[33].code").value("RELAXING"))
+                .andExpect(jsonPath("$.data.items[36].code").value("CAR_TRAVEL"));
+    }
+
+    @Test
+    void preferenceOptionsAllowActiveMemberAndRejectAnonymousRequest() throws Exception {
+        Member member = Member.register(
+                OauthProvider.KAKAO,
+                "active-preference-member",
+                "여행자",
+                null,
+                null,
+                NOW.minusDays(1));
+        member.activate(NOW.minusHours(1));
+        memberRepository.save(member);
+        issueSession(member, "active-preference-session");
+
+        mockMvc.perform(get("/api/v1/preference-options")
+                        .cookie(sessionCookie("active-preference-session")))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/preference-options"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
+    }
+
     private AuthSession issueSession(Member member, String rawSessionId) {
         return authSessionRepository.saveAndFlush(AuthSession.issue(
                 member,
