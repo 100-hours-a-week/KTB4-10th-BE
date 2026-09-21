@@ -18,7 +18,7 @@
 | 날짜·시각 | 사건 시각 ISO8601 오프셋 포함, 예시 UTC Z. DB DATETIME(6)에 UTC 저장. 여행 날짜 YYYY-MM-DD, 일정 시각 HH:mm:ss. 일간 경계 등 정책은 DEC-03. |
 | 좌표 | API latitude/longitude는 WGS84 도 단위 Number. DB location POINT SRID4326과 변환. X/Y 순서를 임의로 위도·경도라고 가정하지 않음. |
 | 문자열·URL | 필드별 최대 길이 검증. DB 외부 URL은 ≤2048자, 초과값 자르지 않음. nullable 명시 외 null 불가. 예시 URL은 실제 연동 주소 아님. |
-| 커서 목록 | cursor 선택 불투명 문자열, size 기본20·1~100. 최신 created_at DESC,id DESC. 응답 items,next_cursor,has_more. 알림은 커서가 아니라 번호 페이지 사용. |
+| 커서 목록 | cursor 선택 불투명 문자열, size 기본20·1~100. API별 안정 복합 정렬 키 사용. 응답 items,next_cursor,has_more. 알림은 커서가 아니라 번호 페이지 사용. |
 | 번호 페이지 | 알림 page 기본1,size 기본4·1~20. 콘텐츠 page 기본1,size 기본5·최대20. 랭킹 page 기본1,size 기본20·최대100. items,page,size,total_items,total_pages. 빈 목록은 200,items=[]. |
 | 멱등 키 | 필수 대상 GDE-02/GDE-09/PAY-04만. String≤100자. 키를 회원·요청 내용과 비교. 다른 내용이면409. 기존 작업/주문 반환 시 부작용 반복 금지. |
 | 공통 오류 | 인증401·소유권403·삭제/미존재404·형식400·상태충돌409·업무조건422·호출제한429·내부500. 실제 한도와 Retry-After는 운영 합의 필요. |
@@ -34,7 +34,7 @@
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
-- 공통 cursor: 가이드북은 보관 관계 created_at,id, 관심 장소는 created_at,content_id, 원장은 created_at,id의 DESC 키를 사용한다. size 기본20·1~100, 마지막 반환 행 기반 size+1 조회. 다음이 없으면 next_cursor=null/has_more=false.
+- 공통 cursor: 가이드북은 여행 시작일 ASC·가이드북 생성일 DESC·보관 관계 id DESC, 관심 장소는 created_at·content_id, 원장은 created_at·id의 DESC 키를 사용한다. size 기본20·1~100, 마지막 반환 행 기반 size+1 조회. 다음이 없으면 next_cursor=null/has_more=false.
 - 커서는 base64url payload+HMAC-SHA256 서명, 최대2048자·24시간. 버전/endpoint/세션 회원/정렬/필터/마지막 키/첫 상한 키/발급시각을 결속한다. 잘못됨·타인·만료는 400. DATETIME(6) 정밀도 유지, 키 행 삭제 후에도 값 비교로 진행한다. 데이터 변경 사이 완전한 snapshot은 보장하지 않는다.
 - 상세 session·cursor·TX·탈퇴 규약과 아직 미정인 AI 계약은 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)을 따른다. CSRF 전달 계약은 API-MEM-16을 따른다.
 
@@ -858,10 +858,12 @@ Body 없음.
 | GET | `/guidebooks` | 세션 쿠키 필수 |
 
 - Query cursor, size: 공통 커서 규칙
-- `member_guidebooks.created_at DESC, member_guidebooks.id DESC` 고정. 가져온 시점을 내 목록 정렬 기준으로 사용
+- `guidebooks.start_date ASC, guidebooks.created_at DESC, member_guidebooks.id DESC` 고정
 - 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 제공하지 않음. 현재 회원 취향을 과거 카드 표시값으로 대체하지 않음
-- 지역 정보는 지역 도메인 조회 기능 연동 전까지 응답에서 제외한다. 연동 후 `region.administrative_code`와 `region.name`을 제공한다.
+- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- 화면에서 계산 가능한 일정 길이는 별도 필드로 제공하지 않음
+- `people_count`, `version`, `updated_at`, `content_html`은 목록 카드에서 사용하지 않으므로 제외
 
 **Request Body**
 
@@ -873,7 +875,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND","people_count":2,"version":1,"updated_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -990,6 +992,7 @@ Body 없음.
 - itinerary는 일차를 `day_number ASC`, 방문 장소를 `sequence ASC`로 제공
 - 생성 완료 화면의 "첫 장소 외 N곳" 문구는 프론트엔드가 각 일차의 첫 항목과 전체 개수로 계산
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
+- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**

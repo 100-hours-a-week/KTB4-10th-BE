@@ -79,24 +79,29 @@ class GuidebookListApiTest {
     }
 
     @Test
-    void returnsActiveGuidebooksInStoredOrder() throws Exception {
-        Guidebook older = saveGuidebook("오래된 여행");
-        Guidebook newer = saveGuidebook("최근 여행");
+    void returnsActiveGuidebooksByUpcomingStartDate() throws Exception {
+        Guidebook later = saveGuidebook(
+                "나중 여행", LocalDate.of(2026, 10, 20), NOW.minusDays(1));
+        Guidebook sooner = saveGuidebook(
+                "다가오는 여행", LocalDate.of(2026, 10, 12), NOW);
         memberGuidebookRepository.save(MemberGuidebook.create(
-                member, older, AcquisitionType.CREATED, NOW.minusDays(1)));
+                member, later, AcquisitionType.CREATED, NOW));
         memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
-                member, newer, AcquisitionType.IMPORTED, NOW));
+                member, sooner, AcquisitionType.IMPORTED, NOW.minusDays(1)));
         entityManager.clear();
 
         mockMvc.perform(get("/api/v1/guidebooks").cookie(sessionCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("guidebook_list_success"))
                 .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[0].guidebook_id").value(newer.getId()))
-                .andExpect(jsonPath("$.data.items[0].title").value("최근 여행"))
+                .andExpect(jsonPath("$.data.items[0].guidebook_id").value(sooner.getId()))
+                .andExpect(jsonPath("$.data.items[0].title").value("다가오는 여행"))
                 .andExpect(jsonPath("$.data.items[0].region").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.items[0].content_html").doesNotHaveJsonPath())
-                .andExpect(jsonPath("$.data.items[1].guidebook_id").value(older.getId()))
+                .andExpect(jsonPath("$.data.items[0].people_count").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.items[0].version").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.items[0].updated_at").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.items[1].guidebook_id").value(later.getId()))
                 .andExpect(jsonPath("$.data.next_cursor").doesNotExist())
                 .andExpect(jsonPath("$.data.has_more").value(false));
     }
@@ -108,6 +113,23 @@ class GuidebookListApiTest {
                 .andExpect(jsonPath("$.data.items").isEmpty())
                 .andExpect(jsonPath("$.data.next_cursor").doesNotExist())
                 .andExpect(jsonPath("$.data.has_more").value(false));
+    }
+
+    @Test
+    void ordersSameStartDateByRecentGuidebookCreation() throws Exception {
+        LocalDate startDate = LocalDate.of(2026, 10, 12);
+        Guidebook older = saveGuidebook("먼저 생성", startDate, NOW.minusHours(1));
+        Guidebook newer = saveGuidebook("최근 생성", startDate, NOW);
+        memberGuidebookRepository.save(MemberGuidebook.create(
+                member, newer, AcquisitionType.CREATED, NOW.minusDays(1)));
+        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
+                member, older, AcquisitionType.CREATED, NOW));
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks").cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].guidebook_id").value(newer.getId()))
+                .andExpect(jsonPath("$.data.items[1].guidebook_id").value(older.getId()));
     }
 
     @Test
@@ -129,7 +151,7 @@ class GuidebookListApiTest {
     }
 
     @Test
-    void continuesWithCompositeCursorWhenCreatedAtIsSame() throws Exception {
+    void continuesWithCompositeCursorWhenSortKeysAreSame() throws Exception {
         Guidebook first = saveGuidebook("첫 번째 여행");
         Guidebook second = saveGuidebook("두 번째 여행");
         memberGuidebookRepository.save(MemberGuidebook.create(
@@ -200,14 +222,21 @@ class GuidebookListApiTest {
     }
 
     private Guidebook saveGuidebook(String title) {
+        return saveGuidebook(title, LocalDate.of(2026, 10, 12), NOW);
+    }
+
+    private Guidebook saveGuidebook(
+            String title,
+            LocalDate startDate,
+            LocalDateTime createdAt) {
         return guidebookRepository.saveAndFlush(Guidebook.create(
                 title,
                 47L,
-                LocalDate.of(2026, 10, 12),
-                LocalDate.of(2026, 10, 14),
+                startDate,
+                startDate.plusDays(2),
                 Companion.FRIEND,
                 2,
                 "<article>여행 안내</article>",
-                NOW));
+                createdAt));
     }
 }
