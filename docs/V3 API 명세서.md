@@ -1016,8 +1016,8 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
-| 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
+| 403 | RESOURCE_FORBIDDEN | ONBOARDING 등 허용되지 않은 회원 상태. 공통 인가 정책 구현 후 적용 |
+| 404 | RESOURCE_NOT_FOUND | 없는 가이드북, 미보관, 삭제된 관계, 타인 보관 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 **구현 전 확인:** DEC-01 대체: preference_tags 저장·표시를 제거한다. DB 현재 취향은 변경되지만 접수된 작업의 request_payload와 기존 가이드북 결과는 바뀌지 않음.
