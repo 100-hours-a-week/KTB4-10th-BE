@@ -963,7 +963,6 @@ Body 없음.
   "message": "generation_job_get_success",
   "data": {
     "job_id": 301,
-    "job_type": "INITIAL",
     "status": "COMPLETED",
     "guidebook_id": 101,
     "attempt_count": 1,

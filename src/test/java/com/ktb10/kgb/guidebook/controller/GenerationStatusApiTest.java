@@ -87,7 +87,7 @@ class GenerationStatusApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("generation_job_get_success"))
                 .andExpect(jsonPath("$.data.job_id").value(job.getId()))
-                .andExpect(jsonPath("$.data.job_type").value("INITIAL"))
+                .andExpect(jsonPath("$.data.job_type").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.status").value(jobStatus.name()))
                 .andExpect(jsonPath("$.data.attempt_count").value(0))
                 .andExpect(jsonPath("$.data.guidebook_id").value((Object) null))
@@ -146,7 +146,7 @@ class GenerationStatusApiTest {
         mockMvc.perform(get("/api/v1/guidebook-generations/{jobId}", job.getId())
                         .cookie(sessionCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.job_type").value("REGENERATION"))
+                .andExpect(jsonPath("$.data.job_type").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.guidebook_id").value(guidebook.getId()))
                 .andExpect(jsonPath("$.data.guidebook_version").doesNotHaveJsonPath());
     }
