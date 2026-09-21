@@ -180,6 +180,7 @@ class MemberApiIntegrationTest {
                 .andExpect(jsonPath("$.data.items[1].code").value("NATURE_MOUNTAIN"))
                 .andExpect(jsonPath("$.data.items[1].parent_code").value("NATURE"))
                 .andExpect(jsonPath("$.data.items[33].code").value("RELAXING"))
+                .andExpect(jsonPath("$.data.items[33].sort_order").value(10))
                 .andExpect(jsonPath("$.data.items[36].code").value("CAR_TRAVEL"));
     }
 

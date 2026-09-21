@@ -59,6 +59,10 @@ class PreferenceCodeTest {
         assertThat(count(PreferenceType.THEME)).isEqualTo(6);
         assertThat(count(PreferenceType.DETAIL)).isEqualTo(27);
         assertThat(count(PreferenceType.TRAVEL_STYLE)).isEqualTo(4);
+        assertThat(Arrays.stream(PreferenceCode.values())
+                .filter(code -> code.type() == PreferenceType.TRAVEL_STYLE)
+                .map(PreferenceCode::sortOrder))
+                .containsExactly(10, 20, 30, 40);
     }
 
     @Test

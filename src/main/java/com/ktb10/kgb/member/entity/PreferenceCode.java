@@ -45,10 +45,10 @@ public enum PreferenceCode {
     EVENTS_CONCERT(PreferenceType.DETAIL, "공연", EVENTS, 20),
     EVENTS_FAIR(PreferenceType.DETAIL, "행사", EVENTS, 30),
 
-    RELAXING(PreferenceType.TRAVEL_STYLE, "여유롭게", null, 20),
-    TIME_EFFICIENCY(PreferenceType.TRAVEL_STYLE, "효율적으로", null, 30),
-    WALK_FRIENDLY(PreferenceType.TRAVEL_STYLE, "걷는거 좋아요", null, 40),
-    CAR_TRAVEL(PreferenceType.TRAVEL_STYLE, "차로 이동", null, 50);
+    RELAXING(PreferenceType.TRAVEL_STYLE, "여유롭게", null, 10),
+    TIME_EFFICIENCY(PreferenceType.TRAVEL_STYLE, "효율적으로", null, 20),
+    WALK_FRIENDLY(PreferenceType.TRAVEL_STYLE, "걷는거 좋아요", null, 30),
+    CAR_TRAVEL(PreferenceType.TRAVEL_STYLE, "차로 이동", null, 40);
 
     private final PreferenceType type;
     private final String label;

@@ -329,7 +329,7 @@ Body 없음.
 {
   "message": "preference_option_list_success",
   "data": {
-    "items": [{"preference_type":"THEME","code":"NATURE","label":"자연","parent_code":null,"sort_order":10},{"preference_type":"DETAIL","code":"NATURE_MOUNTAIN","label":"산","parent_code":"NATURE","sort_order":10},{"preference_type":"TRAVEL_STYLE","code":"RELAXING","label":"여유롭게","parent_code":null,"sort_order":20}]
+    "items": [{"preference_type":"THEME","code":"NATURE","label":"자연","parent_code":null,"sort_order":10},{"preference_type":"DETAIL","code":"NATURE_MOUNTAIN","label":"산","parent_code":"NATURE","sort_order":10},{"preference_type":"TRAVEL_STYLE","code":"RELAXING","label":"여유롭게","parent_code":null,"sort_order":10}]
   }
 }
 ```

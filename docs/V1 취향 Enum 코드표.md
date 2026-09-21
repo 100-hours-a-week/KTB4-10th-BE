@@ -38,10 +38,10 @@
 | DETAIL | EVENTS_FESTIVAL | 축제 | EVENTS | 10 |
 | DETAIL | EVENTS_CONCERT | 공연 | EVENTS | 20 |
 | DETAIL | EVENTS_FAIR | 행사 | EVENTS | 30 |
-| TRAVEL_STYLE | RELAXING | 여유롭게 | null | 20 |
-| TRAVEL_STYLE | TIME_EFFICIENCY | 효율적으로 | null | 30 |
-| TRAVEL_STYLE | WALK_FRIENDLY | 걷는거 좋아요 | null | 40 |
-| TRAVEL_STYLE | CAR_TRAVEL | 차로 이동 | null | 50 |
+| TRAVEL_STYLE | RELAXING | 여유롭게 | null | 10 |
+| TRAVEL_STYLE | TIME_EFFICIENCY | 효율적으로 | null | 20 |
+| TRAVEL_STYLE | WALK_FRIENDLY | 걷는거 좋아요 | null | 30 |
+| TRAVEL_STYLE | CAR_TRAVEL | 차로 이동 | null | 40 |
 
 ## 검증과 변경 주의사항
 
