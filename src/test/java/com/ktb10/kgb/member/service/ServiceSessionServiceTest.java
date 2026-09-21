@@ -1,9 +1,11 @@
 package com.ktb10.kgb.member.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.SessionIdHasher;
+import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -137,6 +139,46 @@ class ServiceSessionServiceTest {
         assertThat(serviceSessionService.authenticate("legacy-session")).isPresent();
         assertThat(authSessionRepository.findById(session.getId()).orElseThrow().getLastUsedAt())
                 .isEqualTo(NOW);
+    }
+
+    @Test
+    void revokeCurrentRevokesOnlyMatchedMemberSession() {
+        Member member = memberRepository.save(member("logout-member"));
+        Member otherMember = memberRepository.save(member("other-member"));
+        AuthSession currentSession = authSessionRepository.save(AuthSession.issue(
+                member,
+                sessionIdHasher.hash("current-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+        AuthSession otherSession = authSessionRepository.saveAndFlush(AuthSession.issue(
+                otherMember,
+                sessionIdHasher.hash("other-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+        entityManager.clear();
+
+        serviceSessionService.revokeCurrent(member.getId(), currentSession.getId());
+
+        assertThat(authSessionRepository.findById(currentSession.getId()).orElseThrow()
+                .getRevokedAt()).isEqualTo(NOW);
+        assertThat(authSessionRepository.findById(otherSession.getId()).orElseThrow()
+                .getRevokedAt()).isNull();
+    }
+
+    @Test
+    void revokeCurrentRejectsSessionOwnedByAnotherMember() {
+        Member member = memberRepository.save(member("logout-owner"));
+        Member otherMember = memberRepository.save(member("logout-attacker"));
+        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
+                member,
+                sessionIdHasher.hash("owned-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+
+        assertThatThrownBy(() -> serviceSessionService.revokeCurrent(
+                otherMember.getId(),
+                session.getId()))
+                .isInstanceOf(BusinessException.class);
     }
 
     private static Member member(String oauthSubject) {

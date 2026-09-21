@@ -1,5 +1,7 @@
 package com.ktb10.kgb.member.service;
 
+import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.member.entity.AuthSession;
@@ -52,5 +54,13 @@ public class ServiceSessionService {
                 member.getId(),
                 member.getStatus(),
                 session.getId()));
+    }
+
+    @Transactional
+    public void revokeCurrent(Long memberId, Long sessionId) {
+        AuthSession session = authSessionRepository
+                .findByIdAndMemberIdAndRevokedAtIsNull(sessionId, memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        session.revoke(LocalDateTime.now(clock));
     }
 }

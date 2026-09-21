@@ -1,17 +1,15 @@
 package com.ktb10.kgb.common.security.oauth;
 
 import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
-import com.ktb10.kgb.common.security.SessionCookieResolver;
+import com.ktb10.kgb.common.security.SessionCookieManager;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -21,29 +19,28 @@ import org.springframework.stereotype.Component;
 @Component
 public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
 
-    private static final Duration COOKIE_MAX_AGE = Duration.ofHours(8);
     private static final Logger LOGGER = LoggerFactory.getLogger(KakaoOauthSuccessHandler.class);
 
     private final KakaoOauthUserMapper userMapper;
     private final OauthLoginService loginService;
     private final KakaoOauthFailureHandler failureHandler;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
+    private final SessionCookieManager sessionCookieManager;
     private final String successRedirectUri;
-    private final boolean secureCookie;
 
     public KakaoOauthSuccessHandler(
             KakaoOauthUserMapper userMapper,
             OauthLoginService loginService,
             KakaoOauthFailureHandler failureHandler,
             CsrfTokenLifecycle csrfTokenLifecycle,
-            @Value("${OAUTH_SUCCESS_REDIRECT_URI:/api/v1/members/me}") String successRedirectUri,
-            @Value("${SESSION_COOKIE_SECURE:true}") boolean secureCookie) {
+            SessionCookieManager sessionCookieManager,
+            @Value("${OAUTH_SUCCESS_REDIRECT_URI:/api/v1/members/me}") String successRedirectUri) {
         this.userMapper = userMapper;
         this.loginService = loginService;
         this.failureHandler = failureHandler;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
+        this.sessionCookieManager = sessionCookieManager;
         this.successRedirectUri = successRedirectUri;
-        this.secureCookie = secureCookie;
     }
 
     @Override
@@ -73,16 +70,9 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
             request.getSession(false).invalidate();
         }
         csrfTokenLifecycle.clear(request, response);
-        ResponseCookie sessionCookie = ResponseCookie.from(
-                        SessionCookieResolver.COOKIE_NAME,
-                        result.rawSessionId())
-                .httpOnly(true)
-                .secure(secureCookie)
-                .sameSite("Lax")
-                .path("/")
-                .maxAge(COOKIE_MAX_AGE)
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, sessionCookie.toString());
+        response.addHeader(
+                HttpHeaders.SET_COOKIE,
+                sessionCookieManager.issue(result.rawSessionId()).toString());
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store");
         response.setHeader(HttpHeaders.PRAGMA, "no-cache");
         response.sendRedirect(successRedirectUri);

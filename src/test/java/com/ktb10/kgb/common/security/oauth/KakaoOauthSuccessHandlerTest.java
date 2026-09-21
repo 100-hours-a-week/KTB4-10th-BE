@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
+import com.ktb10.kgb.common.security.SessionCookieManager;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +34,8 @@ class KakaoOauthSuccessHandlerTest {
                 loginService,
                 failureHandler,
                 csrfTokenLifecycle,
-                "/api/v1/members/me",
-                false);
+                new SessionCookieManager(false),
+                "/api/v1/members/me");
         var principal = new DefaultOAuth2User(
                 List.of(),
                 Map.of(
