@@ -28,7 +28,7 @@
 
 - 미지원 Body/Query 필드는 400 COMMON_VALIDATION_ERROR. V1 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
-- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). THEME 1~3, 각 THEME의 DETAIL 1~3, 스타일 0~8. 중복/부모/코드/개수 오류 422 PREFERENCE_INVALID.
+- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일 0~4. THEME:DETAIL은 1:N이며 중복/부모/코드/개수 오류는 422 PREFERENCE_INVALID.
 - 가입월 포함 월 3회 누적 지급, 이월 가능, 탈퇴 소멸·재가입 3회. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
 - GDE-03에는 progress/retryable을 아직 추가하지 않는다. AI와 단계 계약 확정 후 별도 변경한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
@@ -314,7 +314,7 @@ Body 없음.
 |---|---|---|
 | GET | `/preference-options` | 세션 쿠키 필수 |
 
-- Query language_code: 선택 String ≤10자
+- V1 Query/Body 없음. label은 한국어(ko) 고정
 - 응답 preference_type: THEME|DETAIL|TRAVEL_STYLE
 - code ≤50자; label String; parent_code String|null; sort_order Integer
 - 허용 코드·부모 관계·표시명·선택 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 사용
@@ -329,7 +329,7 @@ Body 없음.
 {
   "message": "preference_option_list_success",
   "data": {
-    "items": [{"preference_type":"THEME","code":"HEALING","label":"힐링","parent_code":null,"sort_order":1},{"preference_type":"DETAIL","code":"QUIET_PLACE","label":"조용한 곳","parent_code":"HEALING","sort_order":1},{"preference_type":"TRAVEL_STYLE","code":"RELAXED","label":"여유롭게","parent_code":null,"sort_order":1}]
+    "items": [{"preference_type":"THEME","code":"NATURE","label":"자연","parent_code":null,"sort_order":10},{"preference_type":"DETAIL","code":"NATURE_MOUNTAIN","label":"산","parent_code":"NATURE","sort_order":10},{"preference_type":"TRAVEL_STYLE","code":"RELAXING","label":"여유롭게","parent_code":null,"sort_order":20}]
   }
 }
 ```
@@ -339,7 +339,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-03 확정: 현재 승인된 화면정의서·기능설계도에 존재하는 허용 코드·부모 관계·표시명·언어만 사용.
+**구현 기준:** API-DEC-03 확정: [V1 취향 Enum 코드표](./V1%20취향%20Enum%20코드표.md)의 허용 코드·부모 관계·표시 순서를 그대로 사용한다. `THEME`·`DETAIL`은 TourAPI 기반 관광 분류와 매핑하고 `TRAVEL_STYLE`은 별도 성향으로 사용한다.
 
 ### API-MEM-08 기본 취향 조회
 
@@ -360,7 +360,7 @@ Body 없음.
 {
   "message": "preference_get_success",
   "data": {
-    "selections": [{"preference_type":"THEME","preference_code":"HEALING"},{"preference_type":"DETAIL","preference_code":"QUIET_PLACE"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXED"}]
+    "selections": [{"preference_type":"THEME","preference_code":"NATURE"},{"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"}]
   }
 }
 ```
@@ -379,7 +379,7 @@ Body 없음.
 - selections: 필수 Array, 전체 선택 집합
 - preference_type: 필수 THEME|DETAIL|TRAVEL_STYLE
 - preference_code: 필수 String ≤50자, 허용 Enum
-- THEME 1~3개; 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE 0~8개; 부모 없는 중분류·중복 조합 불가
+- THEME 1~3개; 선택한 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE 0~4개; THEME:DETAIL은 1:N이며 부모 없는 중분류·중복 조합 불가
 - 누락 선택 제거; 최초 유효 저장 후 ACTIVE
 
 **Request Body**
@@ -387,9 +387,9 @@ Body 없음.
 ```json
 {
   "selections": [
-    {"preference_type":"THEME","preference_code":"HEALING"},
-    {"preference_type":"DETAIL","preference_code":"QUIET_PLACE"},
-    {"preference_type":"TRAVEL_STYLE","preference_code":"RELAXED"}
+    {"preference_type":"THEME","preference_code":"NATURE"},
+    {"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},
+    {"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"}
   ]
 }
 ```
@@ -400,7 +400,7 @@ Body 없음.
 {
   "message": "preference_update_success",
   "data": {
-    "selections": [{"preference_type":"THEME","preference_code":"HEALING"},{"preference_type":"DETAIL","preference_code":"QUIET_PLACE"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXED"}],
+    "selections": [{"preference_type":"THEME","preference_code":"NATURE"},{"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"}],
     "status": "ACTIVE"
   }
 }
@@ -413,7 +413,7 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 
-**구현 전 확인:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 부모별 DETAIL 1~3, 스타일 0~8을 적용. FE/AI 매핑 검증은 별도.
+**구현 기준:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 선택한 부모별 DETAIL 1~3, 스타일 0~4를 적용한다. THEME·DETAIL은 TourAPI 기반 관광 분류와 동일한 안정 코드로 매핑한다.
 
 ### API-MEM-10 설정 조회
 
@@ -731,7 +731,7 @@ Body 없음.
 - 좌표 Number: 위도 -90~90, 경도 (-180,180]. radius_m 1~10,000; 최초 진입 기본 반경 3,000m
 - bounds 조합은 south<north, west<east이고 대각선 거리가 20km 이하여야 함
 - zoom: Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100; category 선택
-- category의 정확한 6개 허용 코드와 TourAPI 원본 분류 매핑은 샘플 검증 후 확정한다. 회원 취향 코드와는 별개다.
+- category는 TourAPI 원본 분류를 V1 취향 코드표의 THEME·DETAIL 안정 코드에 매핑한다. TRAVEL_STYLE은 관광 category에 포함하지 않는다.
 - 응답 markers[]/clusters[]/has_more; 좌표는 도, 거리 m
 - 클러스터 표시는 실제 개수 1~9, 10 이상은 `9+`; 클러스터링 시작 기본 줌은 13~14
 - 서버가 요청 범위와 zoom을 기준으로 클러스터링한다. `clusters[]`는 cluster_id, latitude, longitude, count, display_count를 반환하며 markers와 clusters 합계가 limit을 초과하면 has_more=true
@@ -1925,7 +1925,7 @@ Body 없음.
 | 결정 ID | 영향 | 확인할 내용 |
 |---|---|---|
 | DEC-01 | GDE-01/05/11 | 확정: preference_tags 저장·표시 제거. 현재 취향은 DB, 생성 입력은 request_payload snapshot으로 구분. |
-| DEC-02 | CON-01 | 확정: `month=YYYY-MM`. 행사 기간이 있는 콘텐츠는 선택 월과 기간이 겹치면 포함하고, 행사 기간이 없는 콘텐츠는 상시 포함. 관광 분류 6개 코드표는 TourAPI 샘플 검증 후 확정. |
+| DEC-02 | CON-01 | 확정: `month=YYYY-MM`. 행사 기간이 있는 콘텐츠는 선택 월과 기간이 겹치면 포함하고, 행사 기간이 없는 콘텐츠는 상시 포함. 관광 분류는 V1 취향 코드표의 THEME·DETAIL 안정 코드와 매핑. |
 | DEC-03/04 | RNK-07 | 부분 확정: `Asia/Seoul` 기준, 일간 00시·주간 월요일 00시·월간 1일 00시 시작, 최초 제출 시각 귀속, 베이지안 가중 평균, 동점은 평가 수 내림차순 후 `content_id` 오름차순, 10분 배치·최대 지연 10분. `C` 범위와 `m` 값은 미확정. `updated_at`은 변경 탐지에만 사용. |
 | DEC-05 | RNK-03/06 | 확정: 정수 0~5, `null` 건너뛰기, 완료 전 프론트 초안. 마지막 장소에서 `완료하기` 시 전체 대상을 최종 제출하며 부분 제출·제출 후 수정은 불가. |
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
