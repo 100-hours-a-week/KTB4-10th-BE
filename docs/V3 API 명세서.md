@@ -985,9 +985,9 @@ Body 없음.
 | GET | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
 - Path guidebook_id: 필수 양의 정수
-- 응답 companion String; people_count Integer; version Integer ≥1
-- content_html: String|null
-- 지역 정보는 지역 도메인 조회 기능 연동 전까지 응답에서 제외한다. 연동 후 `region.administrative_code`와 `region.name`을 제공한다.
+- 생성 완료·재생성 완료 화면에서 사용하는 결과 요약을 반환
+- itinerary_summary는 일차별 첫 방문 장소명과 나머지 장소 수를 `day_number ASC`로 제공
+- HTML 본문은 API-GDE-15 뷰어에서만 제공
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**
@@ -1004,11 +1004,11 @@ Body 없음.
     "title": "경주 역사 여행",
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
-    "companion": "FRIEND",
     "people_count": 2,
-    "version": 1,
-    "updated_at": "2026-09-04T00:00:00Z",
-    "content_html": "<article>여행 안내</article>"
+    "itinerary_summary": [
+      {"day_number":1,"first_place_name":"첨성대","remaining_place_count":3},
+      {"day_number":2,"first_place_name":"감은사지","remaining_place_count":2}
+    ]
   }
 }
 ```

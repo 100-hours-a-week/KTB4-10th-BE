@@ -8,8 +8,12 @@ import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.guidebook.entity.AcquisitionType;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
+import com.ktb10.kgb.guidebook.entity.ItineraryDay;
+import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.repository.GuidebookRepository;
+import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
+import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
@@ -21,6 +25,7 @@ import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,6 +63,10 @@ class GuidebookDetailApiTest {
     @Autowired
     private MemberGuidebookRepository memberGuidebookRepository;
     @Autowired
+    private ItineraryDayRepository itineraryDayRepository;
+    @Autowired
+    private ItineraryItemRepository itineraryItemRepository;
+    @Autowired
     private SessionIdHasher sessionIdHasher;
     @Autowired
     private EntityManager entityManager;
@@ -78,6 +87,14 @@ class GuidebookDetailApiTest {
         Guidebook guidebook = saveGuidebook();
         memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
                 member, guidebook, AcquisitionType.CREATED, NOW));
+        ItineraryDay firstDay = itineraryDayRepository.save(ItineraryDay.create(
+                guidebook, 1, LocalDate.of(2026, 10, 12)));
+        itineraryItemRepository.save(ItineraryItem.create(
+                firstDay, 101L, 1, LocalTime.of(10, 0),
+                "{\"title\":\"첨성대\"}", NOW));
+        itineraryItemRepository.saveAndFlush(ItineraryItem.create(
+                firstDay, 102L, 2, LocalTime.of(13, 0),
+                "{\"title\":\"교촌마을\"}", NOW));
         entityManager.clear();
 
         mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}", guidebook.getId())
@@ -90,11 +107,16 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.data.region").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.start_date").value("2026-10-12"))
                 .andExpect(jsonPath("$.data.end_date").value("2026-10-14"))
-                .andExpect(jsonPath("$.data.companion").value("FRIEND"))
                 .andExpect(jsonPath("$.data.people_count").value(2))
-                .andExpect(jsonPath("$.data.version").value(1))
-                .andExpect(jsonPath("$.data.updated_at").value("2026-09-21T03:00:00Z"))
-                .andExpect(jsonPath("$.data.content_html").value("<article>여행 안내</article>"));
+                .andExpect(jsonPath("$.data.companion").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.version").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.updated_at").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.content_html").doesNotHaveJsonPath())
+                .andExpect(jsonPath("$.data.itinerary_summary[0].day_number").value(1))
+                .andExpect(jsonPath("$.data.itinerary_summary[0].first_place_name")
+                        .value("첨성대"))
+                .andExpect(jsonPath("$.data.itinerary_summary[0].remaining_place_count")
+                        .value(1));
     }
 
     @Test
