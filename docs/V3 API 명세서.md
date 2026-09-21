@@ -986,7 +986,8 @@ Body 없음.
 
 - Path guidebook_id: 필수 양의 정수
 - 응답 companion String; people_count Integer; version Integer ≥1
-- content_html: String|null; region은 광역 정보
+- content_html: String|null
+- 지역 정보는 지역 도메인 조회 기능 연동 전까지 응답에서 제외한다. 연동 후 `region.administrative_code`와 `region.name`을 제공한다.
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**
@@ -1001,7 +1002,6 @@ Body 없음.
   "data": {
     "guidebook_id": 101,
     "title": "경주 역사 여행",
-    "region": {"administrative_code":"47","name":"경상북도"},
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
     "companion": "FRIEND",
