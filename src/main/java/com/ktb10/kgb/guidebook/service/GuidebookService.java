@@ -6,7 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
-import com.ktb10.kgb.guidebook.dto.response.ItineraryDaySummaryResponse;
+import com.ktb10.kgb.guidebook.dto.response.ItineraryDayResponse;
+import com.ktb10.kgb.guidebook.dto.response.ItineraryItemResponse;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryDay;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
@@ -56,35 +57,33 @@ public class GuidebookService {
                         .stream()
                         .collect(Collectors.groupingBy(item -> item.getItineraryDay().getId()));
 
-        List<ItineraryDaySummaryResponse> itinerarySummary = days.stream()
-                .map(day -> toSummary(day, itemsByDayId.getOrDefault(day.getId(), List.of())))
+        List<ItineraryDayResponse> itinerary = days.stream()
+                .map(day -> toItineraryDay(
+                        day, itemsByDayId.getOrDefault(day.getId(), List.of())))
                 .toList();
-        return GuidebookDetailResponse.from(guidebook, itinerarySummary);
+        return GuidebookDetailResponse.from(guidebook, itinerary);
     }
 
-    private ItineraryDaySummaryResponse toSummary(
+    private ItineraryDayResponse toItineraryDay(
             ItineraryDay day,
             List<ItineraryItem> items) {
-        if (items.isEmpty()) {
-            return new ItineraryDaySummaryResponse(day.getDayNumber(), null, 0);
-        }
-        return new ItineraryDaySummaryResponse(
+        List<ItineraryItemResponse> itemResponses = items.stream()
+                .map(item -> ItineraryItemResponse.from(
+                        item, parsePlaceSnapshot(item.getPlaceSnapshot())))
+                .toList();
+        return new ItineraryDayResponse(
                 day.getDayNumber(),
-                extractPlaceName(items.get(0).getPlaceSnapshot()),
-                items.size() - 1);
+                day.getItineraryDate(),
+                itemResponses);
     }
 
-    private String extractPlaceName(String placeSnapshot) {
+    private JsonNode parsePlaceSnapshot(String placeSnapshot) {
         try {
             JsonNode snapshot = objectMapper.readTree(placeSnapshot);
             if (snapshot.isTextual()) {
                 snapshot = objectMapper.readTree(snapshot.asText());
             }
-            String title = snapshot.path("title").asText();
-            if (title.isBlank()) {
-                throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR);
-            }
-            return title;
+            return snapshot;
         } catch (JsonProcessingException exception) {
             throw new BusinessException(CommonErrorCode.INTERNAL_SERVER_ERROR, exception);
         }

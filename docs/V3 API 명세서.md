@@ -72,7 +72,7 @@
 | API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body region_code,start_date,end_date,companion,people_count |
 | API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` | 예 | Path job_id; Body 없음 |
 | API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` | 예 | Path guidebook_id; Body 없음 |
-| API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 예 | Path guidebook_id; Body 없음 |
+| API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 아니오 | API-GDE-05의 itinerary 재사용; 독립 소비처 확정 후 분리 검토 |
 | API-GDE-09 | 가이드북 재생성 접수 | POST | `/guidebooks/{guidebook_id}/regenerations` | 아니오 | V3 |
 | API-GDE-10 | 공유 링크 발급 | POST | `/guidebooks/{guidebook_id}/shares` | 아니오 | V3 |
 | API-GDE-11 | 공유 미리보기 | GET | `/shares/{share_token}` | 아니오 | V3 |
@@ -985,8 +985,9 @@ Body 없음.
 | GET | `/guidebooks/{guidebook_id}` | 세션 쿠키 필수 |
 
 - Path guidebook_id: 필수 양의 정수
-- 생성 완료·재생성 완료 화면에서 사용하는 결과 요약을 반환
-- itinerary_summary는 일차별 첫 방문 장소명과 나머지 장소 수를 `day_number ASC`로 제공
+- 생성 완료·재생성 완료 화면에서 사용하는 가이드북 기본 정보와 전체 일정을 반환
+- itinerary는 일차를 `day_number ASC`, 방문 장소를 `sequence ASC`로 제공
+- 생성 완료 화면의 "첫 장소 외 N곳" 문구는 프론트엔드가 각 일차의 첫 항목과 전체 개수로 계산
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
@@ -1005,9 +1006,15 @@ Body 없음.
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
     "people_count": 2,
-    "itinerary_summary": [
-      {"day_number":1,"first_place_name":"첨성대","remaining_place_count":3},
-      {"day_number":2,"first_place_name":"감은사지","remaining_place_count":2}
+    "itinerary": [
+      {
+        "day_number": 1,
+        "itinerary_date": "2026-10-12",
+        "items": [
+          {"item_id":501,"content_id":101,"sequence":1,"scheduled_time":"10:00:00","place_snapshot":{"title":"첨성대"}},
+          {"item_id":502,"content_id":102,"sequence":2,"scheduled_time":"13:00:00","place_snapshot":{"title":"교촌마을"}}
+        ]
+      }
     ]
   }
 }
@@ -1023,6 +1030,8 @@ Body 없음.
 **구현 전 확인:** DEC-01 대체: preference_tags 저장·표시를 제거한다. DB 현재 취향은 변경되지만 접수된 작업의 request_payload와 기존 가이드북 결과는 바뀌지 않음.
 
 ### API-GDE-07 일정 조회
+
+> 현재 V1에서는 API-GDE-05가 전체 `itinerary`를 반환하므로 별도 엔드포인트를 구현하지 않는다. 지도·공유·평가에서 독립 일정 조회가 필요해질 때 분리를 검토한다.
 
 | Method | URL | 인증 |
 |---|---|---|

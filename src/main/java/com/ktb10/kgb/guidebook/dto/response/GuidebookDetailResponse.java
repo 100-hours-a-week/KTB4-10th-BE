@@ -20,18 +20,17 @@ public record GuidebookDetailResponse(
         @JsonProperty("people_count")
         Integer peopleCount,
 
-        @JsonProperty("itinerary_summary")
-        List<ItineraryDaySummaryResponse> itinerarySummary) {
+        List<ItineraryDayResponse> itinerary) {
 
     public static GuidebookDetailResponse from(
             Guidebook guidebook,
-            List<ItineraryDaySummaryResponse> itinerarySummary) {
+            List<ItineraryDayResponse> itinerary) {
         return new GuidebookDetailResponse(
                 guidebook.getId(),
                 guidebook.getTitle(),
                 guidebook.getStartDate(),
                 guidebook.getEndDate(),
                 guidebook.getPeopleCount(),
-                List.copyOf(itinerarySummary));
+                List.copyOf(itinerary));
     }
 }

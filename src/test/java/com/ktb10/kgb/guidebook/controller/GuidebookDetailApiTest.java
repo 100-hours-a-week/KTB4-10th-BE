@@ -112,11 +112,19 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.data.version").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.updated_at").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.content_html").doesNotHaveJsonPath())
-                .andExpect(jsonPath("$.data.itinerary_summary[0].day_number").value(1))
-                .andExpect(jsonPath("$.data.itinerary_summary[0].first_place_name")
+                .andExpect(jsonPath("$.data.itinerary[0].day_number").value(1))
+                .andExpect(jsonPath("$.data.itinerary[0].itinerary_date")
+                        .value("2026-10-12"))
+                .andExpect(jsonPath("$.data.itinerary[0].items.length()").value(2))
+                .andExpect(jsonPath("$.data.itinerary[0].items[0].item_id").isNumber())
+                .andExpect(jsonPath("$.data.itinerary[0].items[0].content_id").value(101))
+                .andExpect(jsonPath("$.data.itinerary[0].items[0].sequence").value(1))
+                .andExpect(jsonPath("$.data.itinerary[0].items[0].scheduled_time")
+                        .value("10:00:00"))
+                .andExpect(jsonPath("$.data.itinerary[0].items[0].place_snapshot.title")
                         .value("첨성대"))
-                .andExpect(jsonPath("$.data.itinerary_summary[0].remaining_place_count")
-                        .value(1));
+                .andExpect(jsonPath("$.data.itinerary[0].items[1].place_snapshot.title")
+                        .value("교촌마을"));
     }
 
     @Test
