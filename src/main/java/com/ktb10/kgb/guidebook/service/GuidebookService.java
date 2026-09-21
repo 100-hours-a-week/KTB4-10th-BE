@@ -8,18 +8,18 @@ import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 로그인 회원이 보관 중인 가이드북을 조회합니다. */
+/** 가이드북 조회, 일정, 삭제 등 일반적인 비즈니스 로직을 담당합니다. */
 @Service
-public class GuidebookQueryService {
+public class GuidebookService {
 
     private final MemberGuidebookRepository memberGuidebookRepository;
 
-    public GuidebookQueryService(MemberGuidebookRepository memberGuidebookRepository) {
+    public GuidebookService(MemberGuidebookRepository memberGuidebookRepository) {
         this.memberGuidebookRepository = memberGuidebookRepository;
     }
 
     @Transactional(readOnly = true)
-    public GuidebookDetailResponse getDetail(Long memberId, Long guidebookId) {
+    public GuidebookDetailResponse getGuidebookDetail(Long memberId, Long guidebookId) {
         Guidebook guidebook = memberGuidebookRepository
                 .findActiveWithGuidebook(memberId, guidebookId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))

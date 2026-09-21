@@ -3,7 +3,7 @@ package com.ktb10.kgb.guidebook.controller;
 import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
-import com.ktb10.kgb.guidebook.service.GuidebookQueryService;
+import com.ktb10.kgb.guidebook.service.GuidebookService;
 import jakarta.validation.constraints.Positive;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,18 +21,18 @@ public class GuidebookController {
 
     private static final String DETAIL_SUCCESS_MESSAGE = "guidebook_get_success";
 
-    private final GuidebookQueryService guidebookQueryService;
+    private final GuidebookService guidebookService;
 
-    public GuidebookController(GuidebookQueryService guidebookQueryService) {
-        this.guidebookQueryService = guidebookQueryService;
+    public GuidebookController(GuidebookService guidebookService) {
+        this.guidebookService = guidebookService;
     }
 
     @GetMapping("/{guidebookId}")
-    public ResponseEntity<ApiResponse<GuidebookDetailResponse>> getDetail(
+    public ResponseEntity<ApiResponse<GuidebookDetailResponse>> getGuidebookDetail(
             @AuthenticationPrincipal AuthenticatedMember member,
             @PathVariable @Positive Long guidebookId) {
         // TODO: 회원 도메인의 보호 API 공통 정책이 제공되면 ACTIVE 상태 검증을 그 경계로 이동한다.
-        GuidebookDetailResponse response = guidebookQueryService.getDetail(
+        GuidebookDetailResponse response = guidebookService.getGuidebookDetail(
                 member.memberId(), guidebookId);
         return ResponseEntity.ok(ApiResponse.success(DETAIL_SUCCESS_MESSAGE, response));
     }
