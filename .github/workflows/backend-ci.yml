@@ -7,14 +7,9 @@ on:
       - dev
       - main
 
-  # main Merge 이후 발생하는 push
-  push:
-    branches:
-      - main
-
 permissions:
   contents: read
-  packages: write
+  # packages: write
 
 jobs:
 
@@ -76,47 +71,4 @@ jobs:
         run: docker build -t backend:ci .
 
 
-  # ==================================================
-  # main Merge 이후 실제 배포 Image 생성
-  # ==================================================
-  build-image:
-    name: Build and Push Image
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    steps:
-
-      # Merge 완료된 main Checkout
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # GHCR Login
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Image Tag 생성
-      # 형식: Commit SHA 앞 7자리-생성일
-      # 예: a81c29f-20260905
-      - name: Generate Image Tag
-        id: image
-        run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          DATE=$(date -u +%Y%m%d)
-          echo "tag=${SHORT_SHA}-${DATE}" >> "$GITHUB_OUTPUT"
-
-      # 실제 배포용 Docker Image Build
-      - name: Build Docker Image
-        run: |
-          docker build \
-            -t ghcr.io/${{ github.repository_owner }}/ktb4-10-be:${{ steps.image.outputs.tag }} \
-            .
-
-      # GHCR Push
-      - name: Push Docker Image
-        run: |
-          docker push \
-            ghcr.io/${{ github.repository_owner }}/ktb4-10-be:${{ steps.image.outputs.tag }}
+  

@@ -1,12 +1,7 @@
 name: KGB Backend CI/CD
 
 on:
-  # feature -> dev / dev -> main PR
-  pull_request:
-    branches:
-      - dev
-      - main
-
+ 
   # main Merge 이후 CI/CD 실행
   push:
     branches:
@@ -24,10 +19,8 @@ permissions:
 jobs:
   # PR 검증
   # ==================================================
-  pr-ci:
-    name: PR CI
-
-    if: github.event_name == 'pull_request'
+  ci:
+    name: CI
 
     runs-on: ubuntu-latest
 
