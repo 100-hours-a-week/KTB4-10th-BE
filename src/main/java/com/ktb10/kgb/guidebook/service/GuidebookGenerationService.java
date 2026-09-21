@@ -3,7 +3,9 @@ package com.ktb10.kgb.guidebook.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
+import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookGenerationResponse;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
@@ -23,7 +25,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 최초 가이드북 생성 요청을 작업으로 접수합니다. */
+/** 가이드북 생성 요청 접수와 회원 본인의 생성 작업 조회를 처리합니다. */
 @Service
 public class GuidebookGenerationService {
 
@@ -82,6 +84,21 @@ public class GuidebookGenerationService {
         GenerationJob savedJob = generationJobRepository.save(job);
         // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구하고 커밋 후 AI 생성을 트리거한다.
         return GuidebookGenerationResponse.from(savedJob);
+    }
+
+    @Transactional(readOnly = true)
+    public GenerationStatusResponse getGenerationJobStatus(Long memberId, Long jobId) {
+        GenerationJob job = generationJobRepository.findById(jobId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (!job.getMember().getId().equals(memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_FORBIDDEN);
+        }
+
+        GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
+                ? new GenerationStatusResponse.GenerationError(
+                        "GENERATION_FAILED", "가이드북 생성에 실패했습니다.")
+                : null;
+        return GenerationStatusResponse.from(job, error);
     }
 
     private GuidebookGenerationResponse handleRepeatedRequest(
