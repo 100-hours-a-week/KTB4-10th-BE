@@ -1,0 +1,19 @@
+# Git 및 설정 파일
+.git
+.gitignore
+.dockerignore
+
+# 의존성 및 빌드 결과물
+node_modules
+dist
+build
+coverage
+
+# 환경 변수 및 로그
+.env
+*.log
+
+# 문서 및 IDE 설정
+README.md
+.vscode
+.idea
