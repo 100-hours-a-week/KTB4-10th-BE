@@ -18,6 +18,7 @@ import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
@@ -39,16 +40,19 @@ public class GuidebookService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final ItineraryItemRepository itineraryItemRepository;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
     public GuidebookService(
             MemberGuidebookRepository memberGuidebookRepository,
             ItineraryDayRepository itineraryDayRepository,
             ItineraryItemRepository itineraryItemRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            Clock clock) {
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.itineraryDayRepository = itineraryDayRepository;
         this.itineraryItemRepository = itineraryItemRepository;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
@@ -102,6 +106,13 @@ public class GuidebookService {
                         day, itemsByDayId.getOrDefault(day.getId(), List.of())))
                 .toList();
         return GuidebookDetailResponse.from(guidebook, itinerary);
+    }
+
+    @Transactional
+    public void deleteGuidebook(Long memberId, Long guidebookId) {
+        memberGuidebookRepository.findActiveWithGuidebook(memberId, guidebookId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .softDelete(LocalDateTime.now(clock));
     }
 
     private ItineraryDayResponse toItineraryDay(

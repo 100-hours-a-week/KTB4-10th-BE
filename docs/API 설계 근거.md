@@ -17,7 +17,7 @@
 | PDF | 202 작업 접수/상태 조회 → 200 동기 PDF 바이너리 | NFR-PERF-03 |
 | 평가 | 서버 장소별 초안 저장 제거 → 프론트 초안 + 최종 ratings 제출 | 테이블 정의서 평가 정책; BR-RNK-03~08 |
 | 랭킹 | 즉시 집계/없는 공식 컬럼 제거 → 커밋 후 변경 지역+전국 집계, calculated_at 응답 | BR-RNK-14~16 |
-| 가이드북 삭제 | API-GDE-16 DELETE → 회원별 보관 관계·발급 링크 차단, 타인 관계 유지 | BR-GDE-14 |
+| 가이드북 삭제 | API-GDE-16 DELETE → V1은 회원별 보관 관계만 소프트 삭제, 원본·타인 관계 유지 | BR-GDE-14 |
 | 결제 | PURCHASE → PURCHASE_GRANT; 환불 API 범위 제외; PG 원문 계약 보류 | credit_transactions, BR-PAY-08 |
 | JSON/오류 | data 필드 이름 문자열 → 실제 객체; 공통 error.code/trace_id 포함 | 프론트가 역직렬화·분기할 수 있는 계약 필요 |
 | API 표현 합의 | BIGINT ID 문자열, category 키, policy_type 경로, DELETE 전환 | DB 변경에서 자동 확정되지 않음. 프론트/AI와 DTO 호환 합의 필요 |
@@ -76,7 +76,7 @@
 | API-GDE-12 | FR-GDE-05; BR-GDE-09~10 | 가이드북·일정을 복제하지 않고 `member_guidebooks` 관계를 생성한다. 회원+가이드북 UNIQUE로 중복을 막고 삭제된 관계는 복구한다. |
 | API-GDE-13 | FR-GDE-06; BR-GDE-11~12; NFR-PERF-03 | MVP의 동기 PDF 생성에 맞춰 200 바이너리를 직접 반환한다. 성능 측정 후 비동기 전환 시 작업 저장소와 API를 함께 추가한다. |
 | API-GDE-15 | FR-GDE-06; BR-GDE-12 | 저장 HTML을 안전한 DTO로 반환한다. guidebook_id+version을 캐시 키로 쓸 수 있지만 회원 관계·공유 만료 확인을 대체하지 않는다. |
-| API-GDE-16 | BR-GDE-14 | deleted_at으로 숨기되 작업·원장·평가 FK를 보존한다. 공유 링크 접근에도 같은 삭제 조건을 적용한다. |
+| API-GDE-16 | BR-GDE-14 | V1은 member_guidebooks.deleted_at으로 요청 회원의 목록·상세 접근만 차단하고 원본·일정·타인 관계를 보존한다. 공유와 생성 작업 취소는 별도 범위다. |
 
 ### 평가랭킹
 

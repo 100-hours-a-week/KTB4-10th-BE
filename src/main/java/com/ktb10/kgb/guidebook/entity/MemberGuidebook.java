@@ -75,4 +75,8 @@ public class MemberGuidebook {
         return memberGuidebook;
     }
 
+    public void softDelete(LocalDateTime deletedAt) {
+        this.deletedAt = Objects.requireNonNull(deletedAt);
+    }
+
 }
