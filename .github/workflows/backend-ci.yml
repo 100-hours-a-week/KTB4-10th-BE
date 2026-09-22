@@ -1,0 +1,76 @@
+#CI변경
+#해당 파이프라인은 pr때만 작동
+name: KGB Backend CI
+
+on:
+  # feature -> dev / dev -> main PR
+  pull_request:
+    branches:
+      - dev
+      
+
+permissions:
+  contents: read
+  # packages: write
+
+jobs:
+
+  # PR 검증
+  # ==================================================
+  pr-ci:
+    name: PR CI
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # Repository Checkout
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # JDK 설정
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Gradle Wrapper 실행 권한
+      - name: Grant Gradle Permission
+        run: chmod +x gradlew
+
+      # Build / Compile 검증
+      # 실패 시 Merge 차단
+      - name: Gradle Build
+        run: ./gradlew build
+
+      # Checkstyle
+      # 위반 내용 표시
+      # build.gradle의 ignoreFailures = true 적용
+      # Merge 차단 X
+      - name: Checkstyle
+        run: ./gradlew checkstyleMain
+
+      # SpotBugs
+      # Rank 5~20 제외
+      # Rank 1~4 발견 시 실패
+      - name: SpotBugs
+        run: ./gradlew spotbugsMain
+
+      # Dependency Review
+      # 새롭게 추가/변경된 Dependency 대상
+      # High 이상 취약점 발견 시 실패
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+      # Docker Image Build 검증
+      # dev -> main PR에서만 실행
+      # Image Push X
+      - name: Docker Build Test
+        if: github.base_ref == 'main'
+        run: docker build -t backend:ci .
+
+
+  
