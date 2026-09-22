@@ -44,6 +44,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SessionAuthenticationFilter sessionAuthenticationFilter,
+            ActiveMemberAuthorizationManager activeMemberAuthorizationManager,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler,
             ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider,
@@ -65,7 +66,22 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/policies", "/api/v1/policies/**")
                         .permitAll()
-                        .anyRequest().authenticated())
+                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout")
+                        .authenticated()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/members/me",
+                                "/api/v1/preference-options",
+                                "/api/v1/members/me/preferences",
+                                "/api/v1/members/me/settings")
+                        .authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/members/me/preferences")
+                        .authenticated()
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/members/me/settings")
+                        .authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/members/me")
+                        .authenticated()
+                        .anyRequest().access(activeMemberAuthorizationManager))
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler))
