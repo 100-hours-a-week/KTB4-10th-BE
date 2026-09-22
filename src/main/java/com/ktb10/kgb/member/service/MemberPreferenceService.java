@@ -69,7 +69,7 @@ public class MemberPreferenceService {
             Long memberId,
             PreferenceUpdateRequest request) {
         List<PreferenceCode> selections = validate(request.selections());
-        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+        Member member = memberRepository.findByIdAndDeletedAtIsNull(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
 
         memberPreferenceRepository.deleteAllByMemberId(memberId);
