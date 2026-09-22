@@ -1326,7 +1326,7 @@ PDF 바이너리 (JSON 아님)
 
 - Path guidebook_id: 필수 양의 정수
 - Body 없음; 활성 보관 관계를 가진 회원만 삭제
-- 자신의 `member_guidebooks` 관계만 소프트 삭제하고 자신이 발급한 공유 링크를 차단; 다른 회원 관계는 유지
+- 자신의 `member_guidebooks` 관계만 소프트 삭제하고 다른 회원 관계와 원본 가이드북·일정은 유지
 
 **Request Body**
 
@@ -1339,11 +1339,10 @@ Body 없음.
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
-| 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
+| 404 | RESOURCE_NOT_FOUND | 없거나 미보관·타인 보관·이미 삭제된 관계 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-02: 진행 중 재생성·PDF와 삭제 경합 정책.
+V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생성·재생성 작업 취소, 원본 물리 삭제는 이 API 범위에 포함하지 않는다.
 
 ## 6. 평가랭킹
 

@@ -11,6 +11,7 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -51,5 +52,14 @@ public class GuidebookController {
         GuidebookDetailResponse response = guidebookService.getGuidebookDetail(
                 member.memberId(), guidebookId);
         return ResponseEntity.ok(ApiResponse.success(DETAIL_SUCCESS_MESSAGE, response));
+    }
+
+    @DeleteMapping("/{guidebookId}")
+    public ResponseEntity<Void> deleteGuidebook(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable @Positive Long guidebookId) {
+        // TODO: 회원 도메인의 보호 API 공통 정책이 제공되면 ACTIVE 상태 검증을 그 경계로 이동한다.
+        guidebookService.deleteGuidebook(member.memberId(), guidebookId);
+        return ResponseEntity.noContent().build();
     }
 }
