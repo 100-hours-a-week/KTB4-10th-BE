@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookGenerationResponse;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
@@ -15,6 +16,8 @@ import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.MemberPreference;
+import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -22,6 +25,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -39,16 +43,19 @@ public class GuidebookGenerationService {
 
     private final GenerationJobRepository generationJobRepository;
     private final MemberRepository memberRepository;
+    private final MemberPreferenceRepository memberPreferenceRepository;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public GuidebookGenerationService(
             GenerationJobRepository generationJobRepository,
             MemberRepository memberRepository,
+            MemberPreferenceRepository memberPreferenceRepository,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
         this.memberRepository = memberRepository;
+        this.memberPreferenceRepository = memberPreferenceRepository;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -58,13 +65,12 @@ public class GuidebookGenerationService {
             Long memberId,
             String idempotencyKey,
             GuidebookGenerationRequest request) {
-        String requestPayload = serialize(request);
         Optional<GenerationJob> existingJob =
                 generationJobRepository.findByMemberIdAndIdempotencyKey(
                         memberId,
                         idempotencyKey);
         if (existingJob.isPresent()) {
-            return handleRepeatedRequest(existingJob.get(), requestPayload);
+            return handleRepeatedRequest(existingJob.get(), request);
         }
 
         validateTravelCondition(request);
@@ -75,6 +81,14 @@ public class GuidebookGenerationService {
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
         }
+
+        List<MemberPreference> memberPreferences = memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(memberId);
+        if (memberPreferences.isEmpty()) {
+            throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
+        }
+        String requestPayload = serialize(
+                InitialGenerationRequestPayload.from(request, memberPreferences));
 
         Member member = memberRepository.getReferenceById(memberId);
         LocalDateTime now = LocalDateTime.now(clock);
@@ -105,8 +119,10 @@ public class GuidebookGenerationService {
 
     private GuidebookGenerationResponse handleRepeatedRequest(
             GenerationJob existingJob,
-            String requestPayload) {
-        if (!existingJob.getRequestPayload().equals(requestPayload)) {
+            GuidebookGenerationRequest request) {
+        InitialGenerationRequestPayload existingPayload = deserialize(
+                existingJob.getRequestPayload());
+        if (!existingPayload.request().equals(request)) {
             throw new BusinessException(GuidebookErrorCode.IDEMPOTENCY_CONFLICT);
         }
         return GuidebookGenerationResponse.from(existingJob);
@@ -156,11 +172,19 @@ public class GuidebookGenerationService {
         };
     }
 
-    private String serialize(GuidebookGenerationRequest request) {
+    private String serialize(InitialGenerationRequestPayload requestPayload) {
         try {
-            return objectMapper.writeValueAsString(request);
+            return objectMapper.writeValueAsString(requestPayload);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("가이드북 생성 요청을 저장할 수 없습니다.", exception);
+        }
+    }
+
+    private InitialGenerationRequestPayload deserialize(String requestPayload) {
+        try {
+            return objectMapper.readValue(requestPayload, InitialGenerationRequestPayload.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("저장된 가이드북 생성 요청을 읽을 수 없습니다.", exception);
         }
     }
 }

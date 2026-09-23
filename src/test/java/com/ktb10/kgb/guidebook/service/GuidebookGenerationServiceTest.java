@@ -10,19 +10,24 @@ import static org.mockito.Mockito.verify;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.OauthProvider;
+import com.ktb10.kgb.member.entity.PreferenceCode;
+import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,6 +50,9 @@ class GuidebookGenerationServiceTest {
     @Mock
     private MemberRepository memberRepository;
 
+    @Mock
+    private MemberPreferenceRepository memberPreferenceRepository;
+
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -55,6 +63,7 @@ class GuidebookGenerationServiceTest {
         service = new GuidebookGenerationService(
                 generationJobRepository,
                 memberRepository,
+                memberPreferenceRepository,
                 objectMapper,
                 CLOCK);
     }
@@ -68,6 +77,9 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
         given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
@@ -81,11 +93,40 @@ class GuidebookGenerationServiceTest {
     }
 
     @Test
+    void storesCurrentMemberPreferencesInRequestPayload() throws Exception {
+        GuidebookGenerationRequest request = validRequest();
+        Member member = member();
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(generationJobRepository.existsByMemberIdAndStatusIn(
+                any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
+                .willReturn(false);
+        given(memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
+        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
+        given(generationJobRepository.save(any(GenerationJob.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, request);
+
+        var jobCaptor = org.mockito.ArgumentCaptor.forClass(GenerationJob.class);
+        verify(generationJobRepository).save(jobCaptor.capture());
+        InitialGenerationRequestPayload payload = objectMapper.readValue(
+                jobCaptor.getValue().getRequestPayload(),
+                InitialGenerationRequestPayload.class);
+        assertThat(payload.request()).isEqualTo(request);
+        assertThat(payload.preferences())
+                .extracting(InitialGenerationRequestPayload.PreferenceSnapshot::preferenceCode)
+                .containsExactly("NATURE", "NATURE_MOUNTAIN", "RELAXING");
+    }
+
+    @Test
     void returnsExistingJobForSameIdempotentRequest() throws Exception {
         GuidebookGenerationRequest request = validRequest();
         GenerationJob existingJob = GenerationJob.createInitial(
                 member(),
-                objectMapper.writeValueAsString(request),
+                requestPayload(request),
                 IDEMPOTENCY_KEY,
                 LocalDate.of(2026, 9, 19).atStartOfDay());
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
@@ -101,7 +142,7 @@ class GuidebookGenerationServiceTest {
     void rejectsDifferentRequestUsingSameIdempotencyKey() throws Exception {
         GenerationJob existingJob = GenerationJob.createInitial(
                 member(),
-                objectMapper.writeValueAsString(validRequest()),
+                requestPayload(validRequest()),
                 IDEMPOTENCY_KEY,
                 LocalDate.of(2026, 9, 19).atStartOfDay());
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
@@ -221,6 +262,19 @@ class GuidebookGenerationServiceTest {
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,
                 2);
+    }
+
+    private String requestPayload(GuidebookGenerationRequest request) throws Exception {
+        Member member = member();
+        return objectMapper.writeValueAsString(
+                InitialGenerationRequestPayload.from(request, preferences(member)));
+    }
+
+    private List<MemberPreference> preferences(Member member) {
+        return List.of(
+                MemberPreference.select(member, PreferenceCode.NATURE),
+                MemberPreference.select(member, PreferenceCode.NATURE_MOUNTAIN),
+                MemberPreference.select(member, PreferenceCode.RELAXING));
     }
 
     private Member member() {
