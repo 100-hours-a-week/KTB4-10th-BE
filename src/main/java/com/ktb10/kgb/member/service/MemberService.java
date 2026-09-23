@@ -44,8 +44,7 @@ public class MemberService {
 
     @Transactional
     public MemberSettingsResponse updatePushEnabled(Long memberId, boolean pushEnabled) {
-        Member member = memberRepository.findActiveByIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        Member member = requireMember(memberId);
         member.changePushEnabled(pushEnabled, LocalDateTime.now(clock));
         return MemberSettingsResponse.from(member);
     }
