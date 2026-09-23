@@ -157,8 +157,8 @@ class MemberSettingsApiTest {
         return Stream.of(
                 "{}",
                 "{\"push_enabled\":null}",
-                "{\"push_enabled\":\"false\"}",
-                "{\"push_enabled\":false,\"language_code\":\"en\"}");
+                "[]",
+                "{");
     }
 
     private Member saveMember(String oauthSubject, MemberStatus status) {
