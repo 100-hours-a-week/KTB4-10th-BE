@@ -104,27 +104,16 @@ public enum AdministrativeDistrict {
     REGION_31200(AdministrativeProvince.ULSAN, "북구"),
     REGION_31710(AdministrativeProvince.ULSAN, "울주군"),
     REGION_36110(AdministrativeProvince.SEJONG, "세종특별자치시"),
-    REGION_41111(AdministrativeProvince.GYEONGGI, "수원시 장안구"),
-    REGION_41113(AdministrativeProvince.GYEONGGI, "수원시 권선구"),
-    REGION_41115(AdministrativeProvince.GYEONGGI, "수원시 팔달구"),
-    REGION_41117(AdministrativeProvince.GYEONGGI, "수원시 영통구"),
-    REGION_41131(AdministrativeProvince.GYEONGGI, "성남시 수정구"),
-    REGION_41133(AdministrativeProvince.GYEONGGI, "성남시 중원구"),
-    REGION_41135(AdministrativeProvince.GYEONGGI, "성남시 분당구"),
+    REGION_41110(AdministrativeProvince.GYEONGGI, "수원시"),
+    REGION_41130(AdministrativeProvince.GYEONGGI, "성남시"),
     REGION_41150(AdministrativeProvince.GYEONGGI, "의정부시"),
-    REGION_41171(AdministrativeProvince.GYEONGGI, "안양시 만안구"),
-    REGION_41173(AdministrativeProvince.GYEONGGI, "안양시 동안구"),
-    REGION_41192(AdministrativeProvince.GYEONGGI, "부천시 원미구"),
-    REGION_41194(AdministrativeProvince.GYEONGGI, "부천시 소사구"),
-    REGION_41196(AdministrativeProvince.GYEONGGI, "부천시 오정구"),
+    REGION_41170(AdministrativeProvince.GYEONGGI, "안양시"),
+    REGION_41190(AdministrativeProvince.GYEONGGI, "부천시"),
     REGION_41210(AdministrativeProvince.GYEONGGI, "광명시"),
     REGION_41220(AdministrativeProvince.GYEONGGI, "평택시"),
     REGION_41250(AdministrativeProvince.GYEONGGI, "동두천시"),
-    REGION_41271(AdministrativeProvince.GYEONGGI, "안산시 상록구"),
-    REGION_41273(AdministrativeProvince.GYEONGGI, "안산시 단원구"),
-    REGION_41281(AdministrativeProvince.GYEONGGI, "고양시 덕양구"),
-    REGION_41285(AdministrativeProvince.GYEONGGI, "고양시 일산동구"),
-    REGION_41287(AdministrativeProvince.GYEONGGI, "고양시 일산서구"),
+    REGION_41270(AdministrativeProvince.GYEONGGI, "안산시"),
+    REGION_41280(AdministrativeProvince.GYEONGGI, "고양시"),
     REGION_41290(AdministrativeProvince.GYEONGGI, "과천시"),
     REGION_41310(AdministrativeProvince.GYEONGGI, "구리시"),
     REGION_41360(AdministrativeProvince.GYEONGGI, "남양주시"),
@@ -133,17 +122,12 @@ public enum AdministrativeDistrict {
     REGION_41410(AdministrativeProvince.GYEONGGI, "군포시"),
     REGION_41430(AdministrativeProvince.GYEONGGI, "의왕시"),
     REGION_41450(AdministrativeProvince.GYEONGGI, "하남시"),
-    REGION_41461(AdministrativeProvince.GYEONGGI, "용인시 처인구"),
-    REGION_41463(AdministrativeProvince.GYEONGGI, "용인시 기흥구"),
-    REGION_41465(AdministrativeProvince.GYEONGGI, "용인시 수지구"),
+    REGION_41460(AdministrativeProvince.GYEONGGI, "용인시"),
     REGION_41480(AdministrativeProvince.GYEONGGI, "파주시"),
     REGION_41500(AdministrativeProvince.GYEONGGI, "이천시"),
     REGION_41550(AdministrativeProvince.GYEONGGI, "안성시"),
     REGION_41570(AdministrativeProvince.GYEONGGI, "김포시"),
-    REGION_41591(AdministrativeProvince.GYEONGGI, "화성시 만세구"),
-    REGION_41593(AdministrativeProvince.GYEONGGI, "화성시 효행구"),
-    REGION_41595(AdministrativeProvince.GYEONGGI, "화성시 병점구"),
-    REGION_41597(AdministrativeProvince.GYEONGGI, "화성시 동탄구"),
+    REGION_41590(AdministrativeProvince.GYEONGGI, "화성시"),
     REGION_41610(AdministrativeProvince.GYEONGGI, "광주시"),
     REGION_41630(AdministrativeProvince.GYEONGGI, "양주시"),
     REGION_41650(AdministrativeProvince.GYEONGGI, "포천시"),
@@ -151,10 +135,6 @@ public enum AdministrativeDistrict {
     REGION_41800(AdministrativeProvince.GYEONGGI, "연천군"),
     REGION_41820(AdministrativeProvince.GYEONGGI, "가평군"),
     REGION_41830(AdministrativeProvince.GYEONGGI, "양평군"),
-    REGION_43111(AdministrativeProvince.CHUNGBUK, "청주시 상당구"),
-    REGION_43112(AdministrativeProvince.CHUNGBUK, "청주시 서원구"),
-    REGION_43113(AdministrativeProvince.CHUNGBUK, "청주시 흥덕구"),
-    REGION_43114(AdministrativeProvince.CHUNGBUK, "청주시 청원구"),
     REGION_43130(AdministrativeProvince.CHUNGBUK, "충주시"),
     REGION_43150(AdministrativeProvince.CHUNGBUK, "제천시"),
     REGION_43720(AdministrativeProvince.CHUNGBUK, "보은군"),
@@ -165,8 +145,8 @@ public enum AdministrativeDistrict {
     REGION_43760(AdministrativeProvince.CHUNGBUK, "괴산군"),
     REGION_43770(AdministrativeProvince.CHUNGBUK, "음성군"),
     REGION_43800(AdministrativeProvince.CHUNGBUK, "단양군"),
-    REGION_44131(AdministrativeProvince.CHUNGNAM, "천안시 동남구"),
-    REGION_44133(AdministrativeProvince.CHUNGNAM, "천안시 서북구"),
+    REGION_43110(AdministrativeProvince.CHUNGBUK, "청주시"),
+    REGION_44130(AdministrativeProvince.CHUNGNAM, "천안시"),
     REGION_44150(AdministrativeProvince.CHUNGNAM, "공주시"),
     REGION_44180(AdministrativeProvince.CHUNGNAM, "보령시"),
     REGION_44200(AdministrativeProvince.CHUNGNAM, "아산시"),
@@ -181,8 +161,7 @@ public enum AdministrativeDistrict {
     REGION_44800(AdministrativeProvince.CHUNGNAM, "홍성군"),
     REGION_44810(AdministrativeProvince.CHUNGNAM, "예산군"),
     REGION_44825(AdministrativeProvince.CHUNGNAM, "태안군"),
-    REGION_47111(AdministrativeProvince.GYEONGBUK, "포항시 남구"),
-    REGION_47113(AdministrativeProvince.GYEONGBUK, "포항시 북구"),
+    REGION_47110(AdministrativeProvince.GYEONGBUK, "포항시"),
     REGION_47130(AdministrativeProvince.GYEONGBUK, "경주시"),
     REGION_47150(AdministrativeProvince.GYEONGBUK, "김천시"),
     REGION_47170(AdministrativeProvince.GYEONGBUK, "안동시"),
@@ -204,11 +183,7 @@ public enum AdministrativeDistrict {
     REGION_47920(AdministrativeProvince.GYEONGBUK, "봉화군"),
     REGION_47930(AdministrativeProvince.GYEONGBUK, "울진군"),
     REGION_47940(AdministrativeProvince.GYEONGBUK, "울릉군"),
-    REGION_48121(AdministrativeProvince.GYEONGNAM, "창원시 의창구"),
-    REGION_48123(AdministrativeProvince.GYEONGNAM, "창원시 성산구"),
-    REGION_48125(AdministrativeProvince.GYEONGNAM, "창원시 마산합포구"),
-    REGION_48127(AdministrativeProvince.GYEONGNAM, "창원시 마산회원구"),
-    REGION_48129(AdministrativeProvince.GYEONGNAM, "창원시 진해구"),
+    REGION_48120(AdministrativeProvince.GYEONGNAM, "창원시"),
     REGION_48170(AdministrativeProvince.GYEONGNAM, "진주시"),
     REGION_48220(AdministrativeProvince.GYEONGNAM, "통영시"),
     REGION_48240(AdministrativeProvince.GYEONGNAM, "사천시"),
@@ -246,8 +221,7 @@ public enum AdministrativeDistrict {
     REGION_51810(AdministrativeProvince.GANGWON, "인제군"),
     REGION_51820(AdministrativeProvince.GANGWON, "고성군"),
     REGION_51830(AdministrativeProvince.GANGWON, "양양군"),
-    REGION_52111(AdministrativeProvince.JEONBUK, "전주시 완산구"),
-    REGION_52113(AdministrativeProvince.JEONBUK, "전주시 덕진구"),
+    REGION_52110(AdministrativeProvince.JEONBUK, "전주시"),
     REGION_52130(AdministrativeProvince.JEONBUK, "군산시"),
     REGION_52140(AdministrativeProvince.JEONBUK, "익산시"),
     REGION_52180(AdministrativeProvince.JEONBUK, "정읍시"),
@@ -281,20 +255,12 @@ public enum AdministrativeDistrict {
     }
 
     /** 서비스의 2단계 선택값입니다. 일반 시 산하 구는 시 단위로 합칩니다. */
-    public String serviceName() {
-        int nestedDistrictSeparator = displayName.indexOf(' ');
-        if (nestedDistrictSeparator < 0) {
-            return displayName;
-        }
-        return displayName.substring(0, nestedDistrictSeparator);
-    }
-
     public static AdministrativeDistrict fromDisplayName(
             AdministrativeProvince province,
             String displayName) {
         return Arrays.stream(values())
                 .filter(district -> district.province == province)
-                .filter(district -> district.serviceName().equals(displayName))
+                .filter(district -> district.displayName.equals(displayName))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "지원하지 않는 시도·시군구 조합입니다: "
@@ -308,12 +274,4 @@ public enum AdministrativeDistrict {
                 .toList();
     }
 
-    public static List<String> findServiceNamesByProvince(
-            AdministrativeProvince province) {
-        return Arrays.stream(values())
-                .filter(district -> district.province == province)
-                .map(AdministrativeDistrict::serviceName)
-                .distinct()
-                .toList();
-    }
 }

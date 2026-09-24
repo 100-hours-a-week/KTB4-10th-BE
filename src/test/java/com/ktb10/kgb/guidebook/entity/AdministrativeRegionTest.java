@@ -45,15 +45,16 @@ class AdministrativeRegionTest {
     }
 
     @Test
-    void collapsesCityDistrictsToTwoDepthServiceNames() {
-        assertThat(AdministrativeDistrict.findServiceNamesByProvince(
+    void keepsOnlyTwoDepthCityNames() {
+        assertThat(AdministrativeDistrict.findAllByProvince(
                         AdministrativeProvince.GYEONGGI))
+                .extracting(AdministrativeDistrict::displayName)
                 .contains("수원시", "성남시", "연천군")
                 .doesNotContain("수원시 장안구");
         assertThat(AdministrativeDistrict.fromDisplayName(
                         AdministrativeProvince.GYEONGGI,
                         "수원시"))
-                .extracting(AdministrativeDistrict::serviceName)
+                .extracting(AdministrativeDistrict::displayName)
                 .isEqualTo("수원시");
     }
 
