@@ -89,7 +89,8 @@ Idempotency-Key: request_unique_key
 
 ```json
 {
-  "region_code": "47",
+  "province": "경상북도",
+  "city": "경주시",
   "start_date": "2026-10-12",
   "end_date": "2026-10-14",
   "companion": "FRIEND",

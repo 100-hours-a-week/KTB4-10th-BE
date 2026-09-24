@@ -107,7 +107,8 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
                 MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.of(existingJob));
         GuidebookGenerationRequest differentRequest = new GuidebookGenerationRequest(
-                "11",
+                "서울특별시",
+                "종로구",
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,
@@ -138,7 +139,8 @@ class GuidebookGenerationServiceTest {
     @Test
     void rejectsTripLongerThanSevenDays() {
         GuidebookGenerationRequest request = new GuidebookGenerationRequest(
-                "47",
+                "경상북도",
+                "경주시",
                 LocalDate.of(2026, 10, 1),
                 LocalDate.of(2026, 10, 8),
                 Companion.FRIEND,
@@ -155,7 +157,8 @@ class GuidebookGenerationServiceTest {
     @Test
     void rejectsPeopleCountThatDoesNotMatchCompanion() {
         GuidebookGenerationRequest request = new GuidebookGenerationRequest(
-                "47",
+                "경상북도",
+                "경주시",
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14),
                 Companion.ALONE,
@@ -169,9 +172,51 @@ class GuidebookGenerationServiceTest {
                                 .isEqualTo(GuidebookErrorCode.GUIDEBOOK_INVALID_PARTY));
     }
 
+    @Test
+    void rejectsCityThatDoesNotBelongToProvince() {
+        GuidebookGenerationRequest request = new GuidebookGenerationRequest(
+                "경상북도",
+                "종로구",
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                Companion.FRIEND,
+                2);
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, request))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.GUIDEBOOK_INVALID_REGION));
+    }
+
+    @Test
+    void acceptsCityWithoutItsNestedDistrictForProvince() {
+        GuidebookGenerationRequest request = new GuidebookGenerationRequest(
+                "경기도",
+                "수원시",
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                Companion.FRIEND,
+                2);
+        Member member = member();
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(generationJobRepository.existsByMemberIdAndStatusIn(
+                any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
+                .willReturn(false);
+        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
+        given(generationJobRepository.save(any(GenerationJob.class)))
+                .willAnswer(invocation -> invocation.getArgument(0));
+
+        assertThat(service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, request).status())
+                .isEqualTo(GenerationStatus.PENDING);
+    }
+
     private GuidebookGenerationRequest validRequest() {
         return new GuidebookGenerationRequest(
-                "47",
+                "경상북도",
+                "경주시",
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,

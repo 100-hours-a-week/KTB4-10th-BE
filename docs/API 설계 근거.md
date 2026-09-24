@@ -262,6 +262,6 @@ ea330328은 GDE-06 제목 PATCH와 GDE-08 일정 PUT을 제거하고 GDE-09로 �
 | 태그 제거 | DEC-01, GDE-01/05/11 | 저장 근거 없는 preference_tags를 없앤다. 현재 DB 취향으로 과거 생성 결과를 표시하는 오류를 피한다. |
 | 워커 선점/잠금 | BR-GDE-03/16, BR-PAY-04 | DB lease·시도 번호로 오래된 결과 반영을 막고 결과와 차감을 원자 처리한다. AI 계산 중복 방지에는 외부 멱등 계약도 필요하다. |
 
-세부 수치·순서·실패 처리는 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)에 있다. AI 시트의 city 필수·날짜 형식·진행 구조·HTML 부재·재시도 주체는 양 팀 합의 전 확정하지 않는다. 기반 개발과 실제 연동 완료를 구분한다.
+세부 수치·순서·실패 처리는 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)에 있다. 생성 지역은 AI 계약과 동일하게 `province`·`city`를 필수로 받고 행정구역 부모·자식 조합을 검증한다. 날짜 형식·진행 구조·HTML 부재·재시도 주체는 양 팀 합의 전 확정하지 않는다. 기반 개발과 실제 연동 완료를 구분한다.
 
 자료: [OWASP 세션 관리](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [MySQL 잠금 읽기](https://dev.mysql.com/doc/refman/8.4/en/innodb-locking-reads.html). 수치 자체는 문서의 권장값을 복사한 표준이 아니라 이 프로젝트의 초기 선택이다.

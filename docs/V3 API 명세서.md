@@ -69,7 +69,7 @@
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 예 | Query cursor,size |
-| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body region_code,start_date,end_date,companion,people_count |
+| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body province,city,start_date,end_date,companion,people_count |
 | API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` | 예 | Path job_id; Body 없음 |
 | API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` | 예 | Path guidebook_id; Body 없음 |
 | API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 아니오 | API-GDE-05의 itinerary 재사용; 독립 소비처 확정 후 분리 검토 |
@@ -896,11 +896,12 @@ Body 없음.
 | POST | `/guidebook-generations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
-- region_code: 필수 String ≤20자, 광주를 전남에 통합한 16개 서비스 지역 중 하나
+- province: 필수 String ≤20자, 행정구역 시도명
+- city: 필수 String ≤20자. 특별시·광역시는 구·군, 도는 시·군까지만 입력하며 일반 시 산하 구는 제외. 세종은 `세종특별자치시`
 - start_date/end_date: 필수 YYYY-MM-DD, 서울 기준 today <= start_date <= end_date <= today.plusYears(1), 양끝 포함 1~7일
 - companion: ALONE/FRIEND/COUPLE/FAMILY/GROUP 중 하나
 - people_count: 본인 포함 Integer. ALONE=1, FRIEND=2~4, COUPLE=2, FAMILY=2~6, GROUP=2~10. 혼합 구성은 GROUP, 구성 배열 미지원
-- 취향은 서버에서 현재값 조회; 세부 지역·개별 취향 Body 없음
+- 취향은 서버에서 현재값 조회하며 개별 취향 Body는 없음
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
@@ -908,7 +909,8 @@ Body 없음.
 
 ```json
 {
-  "region_code": "47",
+  "province": "경상북도",
+  "city": "경주시",
   "start_date": "2026-10-12",
   "end_date": "2026-10-14",
   "companion": "FRIEND",
@@ -937,6 +939,7 @@ Body 없음.
 | 409 | IDEMPOTENCY_CONFLICT | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
 | 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
+| 422 | GUIDEBOOK_INVALID_REGION | 지원하지 않는 시도·시군구 또는 서로 일치하지 않는 조합 |
 | 422 | GUIDEBOOK_INVALID_PERIOD | 종료일 역전 또는 양끝 포함 7일 초과 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
