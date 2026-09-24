@@ -20,6 +20,9 @@ public enum GuidebookErrorCode implements ErrorCode {
     GUIDEBOOK_INVALID_PARTY(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "동행 유형과 인원수가 올바르지 않습니다."),
+    GUIDEBOOK_INVALID_REGION(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "시도와 시군구 정보가 올바르지 않습니다."),
     PREFERENCE_INVALID(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "회원의 기본 취향 정보가 올바르지 않습니다.");

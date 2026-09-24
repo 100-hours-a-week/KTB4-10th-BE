@@ -7,6 +7,8 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookGenerationResponse;
+import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
+import com.ktb10.kgb.guidebook.entity.AdministrativeProvince;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
@@ -111,6 +113,8 @@ public class GuidebookGenerationService {
     }
 
     private void validateTravelCondition(GuidebookGenerationRequest request) {
+        validateRegion(request.province(), request.city());
+
         LocalDate today = LocalDate.now(clock.withZone(SEOUL_ZONE));
         LocalDate startDate = request.startDate();
         LocalDate endDate = request.endDate();
@@ -126,6 +130,16 @@ public class GuidebookGenerationService {
 
         if (!isValidPeopleCount(request.companion(), request.peopleCount())) {
             throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_INVALID_PARTY);
+        }
+    }
+
+    private void validateRegion(String provinceName, String cityName) {
+        try {
+            AdministrativeProvince province =
+                    AdministrativeProvince.fromDisplayName(provinceName);
+            AdministrativeDistrict.fromDisplayName(province, cityName);
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_INVALID_REGION);
         }
     }
 
