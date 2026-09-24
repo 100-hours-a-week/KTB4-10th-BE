@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
+import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
@@ -266,8 +267,14 @@ class GuidebookGenerationServiceTest {
 
     private String requestPayload(GuidebookGenerationRequest request) throws Exception {
         Member member = member();
-        return objectMapper.writeValueAsString(
-                InitialGenerationRequestPayload.from(request, preferences(member)));
+        List<PreferenceSnapshot> preferenceSnapshots = preferences(member).stream()
+                .map(preference -> new PreferenceSnapshot(
+                        preference.getPreferenceType().name(),
+                        preference.getPreferenceCode().name()))
+                .toList();
+        return objectMapper.writeValueAsString(new InitialGenerationRequestPayload(
+                request,
+                preferenceSnapshots));
     }
 
     private List<MemberPreference> preferences(Member member) {

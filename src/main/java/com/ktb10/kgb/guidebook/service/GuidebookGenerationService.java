@@ -6,6 +6,7 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
+import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
 import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookGenerationResponse;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
@@ -87,8 +88,15 @@ public class GuidebookGenerationService {
         if (memberPreferences.isEmpty()) {
             throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
         }
-        String requestPayload = serialize(
-                InitialGenerationRequestPayload.from(request, memberPreferences));
+        List<PreferenceSnapshot> preferenceSnapshots = memberPreferences.stream()
+                .map(preference -> new PreferenceSnapshot(
+                        preference.getPreferenceType().name(),
+                        preference.getPreferenceCode().name()))
+                .toList();
+        InitialGenerationRequestPayload payload = new InitialGenerationRequestPayload(
+                request,
+                preferenceSnapshots);
+        String requestPayload = serialize(payload);
 
         Member member = memberRepository.getReferenceById(memberId);
         LocalDateTime now = LocalDateTime.now(clock);
