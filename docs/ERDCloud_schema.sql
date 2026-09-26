@@ -63,11 +63,19 @@ CREATE TABLE notifications (
 
 CREATE TABLE regions (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    parent_id BIGINT NULL,
     administrative_code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
+    region_level VARCHAR(20) NOT NULL DEFAULT 'PROVINCE',
     PRIMARY KEY (id),
-    CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code)
-) COMMENT = '16개 서비스 지역 기준 정보 (광주는 전남에 통합)';
+    CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code),
+    CONSTRAINT fk_regions_parent FOREIGN KEY (parent_id) REFERENCES regions (id),
+    CONSTRAINT ck_regions_hierarchy CHECK (
+        (region_level = 'PROVINCE' AND parent_id IS NULL)
+        OR (region_level = 'DISTRICT' AND parent_id IS NOT NULL)
+    ),
+    INDEX ix_regions_parent_name (parent_id, name)
+) COMMENT = '서비스 광역 시도 및 2단계 시군구 기준 정보';
 
 CREATE TABLE tourism_contents (
     id BIGINT NOT NULL AUTO_INCREMENT,

@@ -140,6 +140,7 @@ erDiagram
 
 ~~~mermaid
 erDiagram
+    REGIONS ||--o{ REGIONS : contains
     REGIONS ||--o{ TOURISM_CONTENTS : contains
     TOURISM_CONTENTS ||--o| EVENT_DETAILS : extends
     TOURISM_CONTENTS ||--o{ CONTENT_IMAGES : has
@@ -147,7 +148,9 @@ erDiagram
     TOURISM_CONTENTS ||--o{ FAVORITE_CONTENTS : favorited
     REGIONS {
         bigint id PK
+        bigint parent_id FK
         varchar administrative_code UK
+        varchar region_level
     }
     TOURISM_CONTENTS {
         bigint id PK
@@ -396,13 +399,15 @@ erDiagram
 
 ### regions
 
-광주를 전남에 통합한 16개 서비스 지역의 기준정보다.
+광역 필터·랭킹과 가이드북 생성 후보 조회에서 공유하는 2단계 서비스 지역 기준정보다.
 
 - “전체”는 지역이 아니라 필터 미적용 상태라 저장하지 않는다.
 - administrative_code UNIQUE는 기준정보 갱신과 중복 방지에 사용한다.
-- 콘텐츠·가이드북·랭킹이 같은 지역을 FK로 공유한다.
+- `PROVINCE`는 부모가 없고, `DISTRICT`는 하나의 `PROVINCE`를 부모로 가진다.
+- 특별시·광역시는 구·군, 도는 시·군까지만 `DISTRICT`로 저장하며 일반 시 산하 구는 시 단위로 합친다.
+- 랭킹의 `region_id`는 `PROVINCE`를 계속 참조한다. 관광 콘텐츠의 2단계 지역 연결은 후속 데이터 적재 작업에서 전환한다.
 
-**[확장 조건]** 시·군·구가 필요하면 parent_id와 level을 추가한다.
+**[트레이드오프]** TourAPI 원본 시군구 코드와 서비스 `DISTRICT`가 1:1이 아닐 수 있으므로 외부 코드 매핑은 별도로 관리한다.
 
 ### tourism_contents
 
@@ -613,7 +618,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 | --- | --- |
 | 여러 소셜 계정 | social_accounts 분리 |
 | 관리자 취향 편집 | 취향 그룹·옵션 테이블 |
-| 시·군·구 필터 | regions 계층화 |
+| TourAPI 지역 코드 변경 | 외부 코드와 서비스 `regions` 간 매핑 이력 관리 |
 | 의미 검색 | 요구와 규모를 확인한 후 별도 검색 저장소 검토 |
 | 삭제한 가이드북 다시 보관 | member_guidebooks 관계 복구 |
 | 평가 임시 저장 | 서버 초안·임시 점수 |
