@@ -32,6 +32,9 @@ class GenerationJobTest {
         job.registerAiJob("job_12345", registeredAt);
 
         assertThat(job.getAiJobId()).isEqualTo("job_12345");
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(job.getStartedAt()).isNull();
+        assertThat(job.getAttemptStartedAt()).isNull();
         assertThat(job.getUpdatedAt()).isEqualTo(registeredAt);
         assertThatThrownBy(() -> job.registerAiJob("job_67890", registeredAt.plusSeconds(1)))
                 .isInstanceOf(IllegalStateException.class);
