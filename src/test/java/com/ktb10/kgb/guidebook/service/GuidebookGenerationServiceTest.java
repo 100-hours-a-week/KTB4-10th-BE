@@ -247,6 +247,9 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
         given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
