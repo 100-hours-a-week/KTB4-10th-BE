@@ -17,6 +17,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /** 저장된 생성 입력을 AI 서버에 접수하고 외부 작업 ID를 연결합니다. */
@@ -43,7 +44,7 @@ public class GuidebookAiTriggerService {
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void trigger(Long jobId) {
         GenerationJob job = generationJobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
