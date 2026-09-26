@@ -19,9 +19,46 @@ public record AiGuidebookRequest(
         String companion,
         @JsonProperty("people_count")
         Integer peopleCount,
-        Preferences preferences) {
+        Preferences preferences,
+        List<Content> contents) {
+
+    public AiGuidebookRequest {
+        contents = List.copyOf(contents);
+    }
+
+    public AiGuidebookRequest(
+            Region region,
+            LocalDate startDate,
+            LocalDate endDate,
+            String companion,
+            Integer peopleCount,
+            Preferences preferences) {
+        this(region, startDate, endDate, companion, peopleCount, preferences, List.of());
+    }
 
     public record Region(String province, String city) {
+    }
+
+    public record Content(
+            @JsonProperty("content_id")
+            String contentId,
+            String title,
+            String category,
+            @JsonProperty("classification_code_1")
+            String classificationCode1,
+            @JsonProperty("classification_code_2")
+            String classificationCode2,
+            @JsonProperty("classification_code_3")
+            String classificationCode3,
+            String address,
+            double longitude,
+            double latitude,
+            @JsonProperty("thumbnail_url")
+            String thumbnailUrl,
+            @JsonProperty("event_start_date")
+            LocalDate eventStartDate,
+            @JsonProperty("event_end_date")
+            LocalDate eventEndDate) {
     }
 
     public record Preferences(
