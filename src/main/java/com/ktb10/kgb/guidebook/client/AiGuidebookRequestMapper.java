@@ -16,6 +16,12 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiGuidebookRequestMapper {
 
+    private final AiGuidebookContentQuery contentQuery;
+
+    public AiGuidebookRequestMapper(AiGuidebookContentQuery contentQuery) {
+        this.contentQuery = contentQuery;
+    }
+
     public AiGuidebookRequest map(InitialGenerationRequestPayload payload) {
         GuidebookGenerationRequest request = payload.request();
         List<String> largeCategory = new ArrayList<>();
@@ -47,7 +53,8 @@ public class AiGuidebookRequestMapper {
                 new AiGuidebookRequest.Preferences(
                         largeCategory,
                         midCategory,
-                        travelStyle));
+                        travelStyle),
+                contentQuery.findAll(request.province(), request.city()));
     }
 
     private void validatePreferenceType(PreferenceType snapshotType, PreferenceCode code) {

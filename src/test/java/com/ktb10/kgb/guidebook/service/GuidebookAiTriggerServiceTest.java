@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
+import com.ktb10.kgb.guidebook.client.AiGuidebookContentQuery;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
@@ -45,6 +46,9 @@ class GuidebookAiTriggerServiceTest {
     @Mock
     private GuidebookAiClient guidebookAiClient;
 
+    @Mock
+    private AiGuidebookContentQuery contentQuery;
+
     private ObjectMapper objectMapper;
     private AiGuidebookRequestMapper mapper;
     private GuidebookAiTriggerService service;
@@ -52,7 +56,7 @@ class GuidebookAiTriggerServiceTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper().findAndRegisterModules();
-        mapper = new AiGuidebookRequestMapper();
+        mapper = new AiGuidebookRequestMapper(contentQuery);
         service = new GuidebookAiTriggerService(
                 generationJobRepository,
                 guidebookAiClient,

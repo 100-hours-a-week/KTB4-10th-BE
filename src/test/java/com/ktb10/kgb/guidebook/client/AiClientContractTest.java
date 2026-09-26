@@ -36,6 +36,7 @@ class AiClientContractTest {
         assertThat(json.get("people_count").asInt()).isEqualTo(2);
         assertThat(json.get("preferences").get("large_category").get(0).asText())
                 .isEqualTo("힐링");
+        assertThat(json.get("contents").isArray()).isTrue();
     }
 
     @Test
