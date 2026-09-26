@@ -54,9 +54,11 @@ public class TourApiInitialImportService {
         List<JsonNode> contents = readItems(areaFile);
         Map<SourceRegionKey, ServiceRegionKey> regionNames =
                 extractRegionNames(contents);
-        Map<SourceRegionKey, Long> regionIds = synchronizeRegions(regionNames);
+        Map<AdministrativeProvince, String> provinceCodes =
+                extractProvinceCodes(contents);
+        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
 
-        ContentImportResult contentResult = importContents(contents, regionIds);
+        ContentImportResult contentResult = importContents(contents, regionMappings);
         List<JsonNode> events = readItems(festivalFile);
         EventImportResult eventResult = importEvents(events, contentResult.contentIds());
 
@@ -123,6 +125,9 @@ public class TourApiInitialImportService {
         try {
             AdministrativeProvince province =
                     AdministrativeProvince.fromDisplayName(tokens[0]);
+            if (province == AdministrativeProvince.SEJONG) {
+                return new ServiceRegionKey(province, province.displayName());
+            }
             AdministrativeDistrict.fromDisplayName(province, tokens[1]);
             return new ServiceRegionKey(province, tokens[1]);
         } catch (IllegalArgumentException exception) {
@@ -130,12 +135,35 @@ public class TourApiInitialImportService {
         }
     }
 
-    private Map<SourceRegionKey, Long> synchronizeRegions(
-            Map<SourceRegionKey, ServiceRegionKey> regionNames) {
-        Map<AdministrativeProvince, String> provinceCodes = new HashMap<>();
-        regionNames.forEach((source, service) -> provinceCodes.putIfAbsent(
-                service.province(), source.regionCode()));
+    private Map<AdministrativeProvince, String> extractProvinceCodes(
+            List<JsonNode> contents) {
+        Map<AdministrativeProvince, String> result = new HashMap<>();
+        for (JsonNode content : contents) {
+            String sourceCode = text(content, "lDongRegnCd");
+            String address = text(content, "addr1");
+            if (sourceCode == null || address == null) {
+                continue;
+            }
+            String[] tokens = address.split("\\s+");
+            AdministrativeProvince province = provinceOrNull(tokens[0]);
+            if (province != null) {
+                result.putIfAbsent(province, sourceCode);
+            }
+        }
+        return result;
+    }
 
+    private AdministrativeProvince provinceOrNull(String displayName) {
+        try {
+            return AdministrativeProvince.fromDisplayName(displayName);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private RegionMappings synchronizeRegions(
+            Map<SourceRegionKey, ServiceRegionKey> regionNames,
+            Map<AdministrativeProvince, String> provinceCodes) {
         provinceCodes.forEach(this::upsertProvince);
         Map<AdministrativeProvince, Long> provinceIds = loadProvinceIds(provinceCodes);
         for (AdministrativeDistrict district : AdministrativeDistrict.values()) {
@@ -154,7 +182,7 @@ public class TourApiInitialImportService {
                 mappings.put(source, regionId);
             }
         });
-        return mappings;
+        return new RegionMappings(mappings, districtIds);
     }
 
     private void upsertProvince(
@@ -245,7 +273,7 @@ public class TourApiInitialImportService {
 
     private ContentImportResult importContents(
             List<JsonNode> sourceContents,
-            Map<SourceRegionKey, Long> regionIds) {
+            RegionMappings regionMappings) {
         List<ContentRow> rows = new ArrayList<>();
         Set<String> contentIds = new HashSet<>();
         int missingCoordinates = 0;
@@ -259,7 +287,12 @@ public class TourApiInitialImportService {
                 continue;
             }
             SourceRegionKey sourceRegion = sourceRegionKey(source);
-            Long regionId = regionIds.get(sourceRegion);
+            Long regionId = regionMappings.bySource().get(sourceRegion);
+            if (regionId == null) {
+                ServiceRegionKey serviceRegion =
+                        serviceRegionKey(source.path("addr1").asText());
+                regionId = regionMappings.byService().get(serviceRegion);
+            }
             if (regionId == null) {
                 missingRegionMapping++;
                 continue;
@@ -441,6 +474,11 @@ public class TourApiInitialImportService {
     private record ServiceRegionKey(
             AdministrativeProvince province,
             String districtName) {
+    }
+
+    private record RegionMappings(
+            Map<SourceRegionKey, Long> bySource,
+            Map<ServiceRegionKey, Long> byService) {
     }
 
     private record ContentImportResult(

@@ -9,9 +9,11 @@
 1. `(lDongRegnCd, lDongSignguCd)`별 주소의 최빈 `province`, `city`를 서비스 지역으로 결정한다.
 2. `AdministrativeProvince`, `AdministrativeDistrict`에 존재하는 조합만 허용한다.
 3. 일반 시 산하 구의 여러 TourAPI 코드는 하나의 서비스 `DISTRICT`로 연결한다.
-4. 공통 콘텐츠는 `(source_provider, source_content_id)`로 upsert한다.
-5. 행사는 같은 외부 콘텐츠 ID의 `event_details`를 upsert한다.
-6. 좌표가 없거나 지역을 매핑할 수 없는 콘텐츠는 제외하고 건수를 출력한다.
+4. 원본 지역 코드가 비어 있으면 검증된 주소의 `province`, `city`를 보조 기준으로 사용한다.
+5. 세종특별자치시는 요청 계약과 동일하게 광역·2단계 지역명을 모두 `세종특별자치시`로 사용한다.
+6. 공통 콘텐츠는 `(source_provider, source_content_id)`로 upsert한다.
+7. 행사는 같은 외부 콘텐츠 ID의 `event_details`를 upsert한다.
+8. 좌표가 없거나 코드·주소 모두로 지역을 매핑할 수 없는 콘텐츠는 제외하고 건수를 출력한다.
 
 예를 들어 TourAPI의 충청북도 청주시 구 코드는 모두 서비스의 청주시로 연결된다.
 

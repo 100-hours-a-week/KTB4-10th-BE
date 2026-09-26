@@ -2,8 +2,8 @@ package com.ktb10.kgb.tools.tourapi;
 
 import com.ktb10.kgb.KgbApplication;
 import java.nio.file.Path;
+import java.util.Map;
 import org.springframework.boot.SpringApplication;
-import org.springframework.boot.WebApplicationType;
 import org.springframework.context.ConfigurableApplicationContext;
 
 /** 제공받은 TourAPI JSON을 한 번 적재하고 종료하는 로컬 실행기입니다. */
@@ -16,7 +16,7 @@ public final class TourApiImportApplication {
         ImportArguments arguments = ImportArguments.parse(args);
         SpringApplication application = new SpringApplication(KgbApplication.class);
         application.setAdditionalProfiles("local");
-        application.setWebApplicationType(WebApplicationType.NONE);
+        application.setDefaultProperties(Map.of("server.port", "0"));
 
         try (ConfigurableApplicationContext context = application.run()) {
             TourApiInitialImportService importer =
