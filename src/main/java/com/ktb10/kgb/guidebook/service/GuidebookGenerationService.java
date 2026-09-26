@@ -88,14 +88,9 @@ public class GuidebookGenerationService {
         if (memberPreferences.isEmpty()) {
             throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
         }
-        List<PreferenceSnapshot> preferenceSnapshots = memberPreferences.stream()
-                .map(preference -> new PreferenceSnapshot(
-                        preference.getPreferenceType().name(),
-                        preference.getPreferenceCode().name()))
-                .toList();
-        InitialGenerationRequestPayload payload = new InitialGenerationRequestPayload(
+        InitialGenerationRequestPayload payload = createInitialRequestPayload(
                 request,
-                preferenceSnapshots);
+                memberPreferences);
         String requestPayload = serialize(payload);
 
         Member member = memberRepository.getReferenceById(memberId);
@@ -178,6 +173,17 @@ public class GuidebookGenerationService {
             case FAMILY -> peopleCount >= 2 && peopleCount <= 6;
             case GROUP -> peopleCount >= 2 && peopleCount <= 10;
         };
+    }
+
+    private InitialGenerationRequestPayload createInitialRequestPayload(
+            GuidebookGenerationRequest request,
+            List<MemberPreference> memberPreferences) {
+        List<PreferenceSnapshot> preferenceSnapshots = memberPreferences.stream()
+                .map(preference -> new PreferenceSnapshot(
+                        preference.getPreferenceType().name(),
+                        preference.getPreferenceCode().name()))
+                .toList();
+        return new InitialGenerationRequestPayload(request, preferenceSnapshots);
     }
 
     private String serialize(InitialGenerationRequestPayload requestPayload) {
