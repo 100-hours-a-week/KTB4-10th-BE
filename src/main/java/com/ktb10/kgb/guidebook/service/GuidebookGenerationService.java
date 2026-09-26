@@ -15,6 +15,7 @@ import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
+import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
@@ -29,6 +30,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,7 @@ public class GuidebookGenerationService {
     private final GenerationJobRepository generationJobRepository;
     private final MemberRepository memberRepository;
     private final MemberPreferenceRepository memberPreferenceRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -52,11 +55,13 @@ public class GuidebookGenerationService {
             GenerationJobRepository generationJobRepository,
             MemberRepository memberRepository,
             MemberPreferenceRepository memberPreferenceRepository,
+            ApplicationEventPublisher eventPublisher,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
         this.memberRepository = memberRepository;
         this.memberPreferenceRepository = memberPreferenceRepository;
+        this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -101,7 +106,8 @@ public class GuidebookGenerationService {
                 idempotencyKey,
                 now);
         GenerationJob savedJob = generationJobRepository.save(job);
-        // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구하고 커밋 후 AI 생성을 트리거한다.
+        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(savedJob.getId()));
+        // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구한다.
         return GuidebookGenerationResponse.from(savedJob);
     }
 

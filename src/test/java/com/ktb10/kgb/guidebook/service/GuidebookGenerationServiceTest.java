@@ -16,6 +16,7 @@ import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
+import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
@@ -35,6 +36,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class GuidebookGenerationServiceTest {
@@ -54,6 +57,9 @@ class GuidebookGenerationServiceTest {
     @Mock
     private MemberPreferenceRepository memberPreferenceRepository;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -65,6 +71,7 @@ class GuidebookGenerationServiceTest {
                 generationJobRepository,
                 memberRepository,
                 memberPreferenceRepository,
+                eventPublisher,
                 objectMapper,
                 CLOCK);
     }
@@ -83,7 +90,11 @@ class GuidebookGenerationServiceTest {
                 .willReturn(preferences(member));
         given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
         given(generationJobRepository.save(any(GenerationJob.class)))
-                .willAnswer(invocation -> invocation.getArgument(0));
+                .willAnswer(invocation -> {
+                    GenerationJob job = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(job, "id", 301L);
+                    return job;
+                });
 
         var response = service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, request);
 
@@ -91,6 +102,7 @@ class GuidebookGenerationServiceTest {
         assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
         assertThat(response.guidebookId()).isNull();
         verify(generationJobRepository).save(any(GenerationJob.class));
+        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
     }
 
     @Test

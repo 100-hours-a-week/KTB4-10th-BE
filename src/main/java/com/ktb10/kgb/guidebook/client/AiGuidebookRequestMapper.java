@@ -34,6 +34,7 @@ public class AiGuidebookRequestMapper {
                         .computeIfAbsent(code.parent().label(), ignored -> new ArrayList<>())
                         .add(code.label());
                 case TRAVEL_STYLE -> travelStyle.add(code.label());
+                default -> throw new IllegalStateException("지원하지 않는 취향 타입입니다: " + type);
             }
         }
 
