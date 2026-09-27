@@ -226,6 +226,7 @@ CREATE TABLE generation_jobs (
     PRIMARY KEY (id),
     CONSTRAINT uq_generation_jobs_member_idempotency UNIQUE (member_id, idempotency_key),
     CONSTRAINT uq_generation_jobs_active_member UNIQUE (active_member_id),
+    CONSTRAINT uq_generation_jobs_ai_job_id UNIQUE (ai_job_id),
     CONSTRAINT fk_generation_jobs_member FOREIGN KEY (member_id) REFERENCES members (id),
     CONSTRAINT fk_generation_jobs_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT ck_generation_jobs_attempt CHECK (attempt_count BETWEEN 0 AND 3),
