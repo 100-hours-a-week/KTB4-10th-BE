@@ -64,6 +64,40 @@ GROUP BY province.id, province.name, district.id, district.name
 ORDER BY province.name, district.name;
 ```
 
+## 초기 데이터 덤프와 인스턴스 복원
+
+Flyway가 스키마를 관리하므로 덤프에는 `regions`, `tourism_contents`, `event_details`의 데이터만 포함한다. 회원·세션·생성 작업·생성권 등 사용자 및 운영 데이터는 포함하지 않는다.
+
+로컬 DB에서 덤프를 다시 만들려면 프로젝트 루트에서 실행한다. 기본적으로 `.env`의 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`를 사용한다.
+
+```bash
+./scripts/database/dump-tourism-data.sh
+```
+
+결과 파일은 `data/tourism/tourism-data.sql.gz`이다. 다른 환경 파일이나 출력 경로를 사용하려면 다음처럼 지정한다.
+
+```bash
+ENV_FILE=/absolute/path/db.env \
+  ./scripts/database/dump-tourism-data.sh /absolute/path/tourism-data.sql.gz
+```
+
+인스턴스에서는 애플리케이션을 한 번 실행해 Flyway 최신 스키마를 먼저 만든 다음 복원한다. 복원 스크립트는 세 대상 테이블 중 하나라도 데이터가 있으면 중단하며 기존 데이터를 자동 삭제하지 않는다.
+
+```bash
+ENV_FILE=/absolute/path/instance-db.env \
+  ./scripts/database/restore-tourism-data.sh
+```
+
+복원 후 스크립트가 테이블별 건수, 지역 FK 누락, 행사 FK 누락과 대분류별 건수를 출력한다. FK 누락 건수는 모두 `0`이어야 한다.
+
+현재 저장소 덤프의 기준 건수는 다음과 같다.
+
+| 테이블 | 건수 |
+|---|---:|
+| `regions` | 246 |
+| `tourism_contents` | 48,728 |
+| `event_details` | 905 |
+
 ## 현재 제외 범위
 
 - TourAPI 주기 호출과 `@Scheduled`
