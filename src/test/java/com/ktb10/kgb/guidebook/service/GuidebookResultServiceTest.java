@@ -110,7 +110,8 @@ class GuidebookResultServiceTest {
         wallet.grant(3, NOW.minusDays(1));
 
         given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
-        given(regionRepository.findByName("경상북도")).willReturn(Optional.of(region));
+        given(regionRepository.findProvinceByName("경상북도"))
+                .willReturn(Optional.of(region));
         given(guidebookRepository.save(any(Guidebook.class))).willAnswer(invocation -> {
             Guidebook guidebook = invocation.getArgument(0);
             ReflectionTestUtils.setField(guidebook, "id", 501L);

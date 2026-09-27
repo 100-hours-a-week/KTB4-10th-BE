@@ -107,7 +107,7 @@ public class GuidebookResultService {
         }
         InitialGenerationRequestPayload payload = deserialize(job.getRequestPayload());
         GuidebookGenerationRequest request = payload.request();
-        Region region = regionRepository.findByName(request.province())
+        Region region = regionRepository.findProvinceByName(request.province())
                 .orElseThrow(() -> new IllegalStateException(
                         "가이드북 지역 기준 정보를 찾을 수 없습니다: " + request.province()));
 
