@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.credit.entity.CreditWallet;
+import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
@@ -62,6 +64,9 @@ class GuidebookGenerationServiceTest {
     private MemberPreferenceRepository memberPreferenceRepository;
 
     @Mock
+    private CreditWalletRepository creditWalletRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     @Mock
@@ -81,6 +86,7 @@ class GuidebookGenerationServiceTest {
                 generationJobRepository,
                 memberRepository,
                 memberPreferenceRepository,
+                creditWalletRepository,
                 eventPublisher,
                 guidebookAiClientProvider,
                 guidebookResultService,
@@ -97,6 +103,8 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
@@ -149,6 +157,8 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
@@ -245,6 +255,31 @@ class GuidebookGenerationServiceTest {
     }
 
     @Test
+    void rejectsRequestWhenCreditBalanceIsInsufficient() {
+        Member member = member();
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(member));
+        given(generationJobRepository.existsByMemberIdAndStatusIn(
+                any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
+                .willReturn(false);
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(CreditWallet.open(member, LocalDateTime.now(CLOCK))));
+
+        assertThatThrownBy(() -> service.createInitial(
+                MEMBER_ID, IDEMPOTENCY_KEY, validRequest()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.CREDIT_INSUFFICIENT));
+
+        verify(memberPreferenceRepository, never())
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(any());
+        verify(generationJobRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
     void rejectsTripLongerThanSevenDays() {
         GuidebookGenerationRequest request = new GuidebookGenerationRequest(
                 "경상북도",
@@ -313,6 +348,8 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
@@ -362,5 +399,11 @@ class GuidebookGenerationServiceTest {
                 null,
                 null,
                 LocalDate.of(2026, 9, 19).atStartOfDay());
+    }
+
+    private CreditWallet walletWithBalance(Member member, int balance) {
+        CreditWallet wallet = CreditWallet.open(member, LocalDateTime.now(CLOCK));
+        wallet.grant(balance, LocalDateTime.now(CLOCK));
+        return wallet;
     }
 }

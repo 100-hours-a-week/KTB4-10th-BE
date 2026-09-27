@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.credit.entity.CreditWallet;
+import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
@@ -50,6 +52,7 @@ public class GuidebookGenerationService {
     private final GenerationJobRepository generationJobRepository;
     private final MemberRepository memberRepository;
     private final MemberPreferenceRepository memberPreferenceRepository;
+    private final CreditWalletRepository creditWalletRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
     private final GuidebookResultService guidebookResultService;
@@ -60,6 +63,7 @@ public class GuidebookGenerationService {
             GenerationJobRepository generationJobRepository,
             MemberRepository memberRepository,
             MemberPreferenceRepository memberPreferenceRepository,
+            CreditWalletRepository creditWalletRepository,
             ApplicationEventPublisher eventPublisher,
             ObjectProvider<GuidebookAiClient> guidebookAiClientProvider,
             GuidebookResultService guidebookResultService,
@@ -68,6 +72,7 @@ public class GuidebookGenerationService {
         this.generationJobRepository = generationJobRepository;
         this.memberRepository = memberRepository;
         this.memberPreferenceRepository = memberPreferenceRepository;
+        this.creditWalletRepository = creditWalletRepository;
         this.eventPublisher = eventPublisher;
         this.guidebookAiClientProvider = guidebookAiClientProvider;
         this.guidebookResultService = guidebookResultService;
@@ -95,9 +100,15 @@ public class GuidebookGenerationService {
 
         // TODO: #42 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
         // TODO: #42 멱등 비교용 요청과 취향 스냅샷을 구분해 requestPayload에 저장한다.
-        // TODO: #42 생성권 지갑을 잠근 뒤 잔액을 확인한다.
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
+        }
+
+        CreditWallet wallet = creditWalletRepository.findByMemberIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(
+                        GuidebookErrorCode.CREDIT_INSUFFICIENT));
+        if (wallet.getCreditBalance() < 1) {
+            throw new BusinessException(GuidebookErrorCode.CREDIT_INSUFFICIENT);
         }
 
         List<MemberPreference> memberPreferences = memberPreferenceRepository
