@@ -96,6 +96,7 @@ class AiClientContractTest {
                     "result": {
                       "title": "경주 역사 여행",
                       "summary": "여행 요약",
+                      "content_html": "<article><h1>경주 역사 여행</h1></article>",
                       "itinerary": [{
                         "day": 1,
                         "date": "26.10.12",
@@ -120,6 +121,8 @@ class AiClientContractTest {
         AiGenerationStatusResponse response = envelope.data();
 
         assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
+        assertThat(response.result().contentHtml())
+                .isEqualTo("<article><h1>경주 역사 여행</h1></article>");
         assertThat(response.result().itinerary().get(0).date())
                 .isEqualTo(LocalDate.of(2026, 10, 12));
     }
