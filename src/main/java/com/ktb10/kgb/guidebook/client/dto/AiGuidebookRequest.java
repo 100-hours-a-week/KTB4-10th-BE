@@ -13,10 +13,10 @@ public record AiGuidebookRequest(
         String requestId,
         Region region,
         @JsonProperty("start_date")
-        @JsonFormat(pattern = "yyyyMMdd")
+        @JsonFormat(pattern = "yy.MM.dd")
         LocalDate startDate,
         @JsonProperty("end_date")
-        @JsonFormat(pattern = "yyyyMMdd")
+        @JsonFormat(pattern = "yy.MM.dd")
         LocalDate endDate,
         String companion,
         @JsonProperty("people_count")
@@ -62,10 +62,10 @@ public record AiGuidebookRequest(
 
     public record EventPeriod(
             @JsonProperty("start_date")
-            @JsonFormat(pattern = "yyyyMMdd")
+            @JsonFormat(pattern = "yy.MM.dd")
             LocalDate startDate,
             @JsonProperty("end_date")
-            @JsonFormat(pattern = "yyyyMMdd")
+            @JsonFormat(pattern = "yy.MM.dd")
             LocalDate endDate) {
     }
 

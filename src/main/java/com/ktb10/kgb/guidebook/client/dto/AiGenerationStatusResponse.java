@@ -45,7 +45,7 @@ public record AiGenerationStatusResponse(
 
     public record ItineraryDay(
             int day,
-            @JsonFormat(pattern = "yyyyMMdd")
+            @JsonFormat(pattern = "yy.MM.dd")
             LocalDate date,
             List<Place> places) {
 

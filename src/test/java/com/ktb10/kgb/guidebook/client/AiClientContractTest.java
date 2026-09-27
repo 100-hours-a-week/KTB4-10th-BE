@@ -49,8 +49,8 @@ class AiClientContractTest {
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(request));
 
         assertThat(json.get("request_id").asText()).isEqualTo("301-0");
-        assertThat(json.get("start_date").asText()).isEqualTo("20261012");
-        assertThat(json.get("end_date").asText()).isEqualTo("20261014");
+        assertThat(json.get("start_date").asText()).isEqualTo("26.10.12");
+        assertThat(json.get("end_date").asText()).isEqualTo("26.10.14");
         assertThat(json.get("people_count").asInt()).isEqualTo(2);
         assertThat(json.get("preferences").get("large_category").get(0).asText())
                 .isEqualTo("힐링");
@@ -97,7 +97,7 @@ class AiClientContractTest {
                       "summary": "여행 요약",
                       "itinerary": [{
                         "day": 1,
-                        "date": "20261012",
+                        "date": "26.10.12",
                         "places": [{
                           "order": 1,
                           "time": "09:00",
