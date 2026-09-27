@@ -63,25 +63,40 @@ CREATE TABLE notifications (
 
 CREATE TABLE regions (
     id BIGINT NOT NULL AUTO_INCREMENT,
+    parent_id BIGINT NULL,
     administrative_code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
+    region_level VARCHAR(20) NOT NULL DEFAULT 'PROVINCE',
     PRIMARY KEY (id),
-    CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code)
-) COMMENT = '16개 서비스 지역 기준 정보 (광주는 전남에 통합)';
+    CONSTRAINT uq_regions_administrative_code UNIQUE (administrative_code),
+    CONSTRAINT fk_regions_parent FOREIGN KEY (parent_id) REFERENCES regions (id),
+    CONSTRAINT ck_regions_hierarchy CHECK (
+        (region_level = 'PROVINCE' AND parent_id IS NULL)
+        OR (region_level = 'DISTRICT' AND parent_id IS NOT NULL)
+    ),
+    INDEX ix_regions_parent_name (parent_id, name)
+) COMMENT = '서비스 광역 시도 및 2단계 시군구 기준 정보';
 
 CREATE TABLE tourism_contents (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    category VARCHAR(30) NOT NULL,
     source_provider VARCHAR(30) NOT NULL,
     source_content_id VARCHAR(100) NOT NULL,
+    source_content_type_id VARCHAR(20) NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT NULL,
     region_id BIGINT NOT NULL,
+    source_region_code VARCHAR(20) NULL,
+    source_district_code VARCHAR(20) NULL,
+    classification_code_1 VARCHAR(20) NULL,
+    classification_code_2 VARCHAR(20) NULL,
+    classification_code_3 VARCHAR(20) NULL,
     address VARCHAR(500) NULL,
     location POINT SRID 4326 NOT NULL,
     phone VARCHAR(50) NULL,
     homepage_url VARCHAR(2048) NULL,
     thumbnail_url VARCHAR(2048) NULL,
+    source_created_at DATETIME(6) NULL,
+    source_modified_at DATETIME(6) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     deleted_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
@@ -89,10 +104,28 @@ CREATE TABLE tourism_contents (
     PRIMARY KEY (id),
     CONSTRAINT uq_tourism_contents_source UNIQUE (source_provider, source_content_id),
     CONSTRAINT fk_tourism_contents_region FOREIGN KEY (region_id) REFERENCES regions (id),
-    INDEX ix_tourism_contents_region_category (region_id, category),
+    INDEX ix_tourism_contents_region_classification_1 (region_id, classification_code_1),
+    INDEX ix_tourism_contents_source_region
+        (source_provider, source_region_code, source_district_code),
     INDEX ix_tourism_contents_active_created (status, deleted_at, created_at DESC, id DESC),
     SPATIAL INDEX ix_tourism_contents_location (location)
 ) COMMENT = '관광 콘텐츠 공통 원본';
+
+CREATE TABLE tour_api_region_mappings (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    source_provider VARCHAR(30) NOT NULL,
+    source_region_code VARCHAR(20) NOT NULL,
+    source_district_code VARCHAR(20) NOT NULL,
+    region_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_tour_api_region_mappings_source
+        UNIQUE (source_provider, source_region_code, source_district_code),
+    CONSTRAINT fk_tour_api_region_mappings_region
+        FOREIGN KEY (region_id) REFERENCES regions (id),
+    INDEX ix_tour_api_region_mappings_region (region_id)
+) COMMENT = 'TourAPI 원본 지역 코드와 서비스 2단계 지역의 매핑';
 
 CREATE TABLE event_details (
     content_id BIGINT NOT NULL,
@@ -192,6 +225,7 @@ CREATE TABLE generation_jobs (
     PRIMARY KEY (id),
     CONSTRAINT uq_generation_jobs_member_idempotency UNIQUE (member_id, idempotency_key),
     CONSTRAINT uq_generation_jobs_active_member UNIQUE (active_member_id),
+    CONSTRAINT uq_generation_jobs_ai_job_id UNIQUE (ai_job_id),
     CONSTRAINT fk_generation_jobs_member FOREIGN KEY (member_id) REFERENCES members (id),
     CONSTRAINT fk_generation_jobs_guidebook FOREIGN KEY (guidebook_id) REFERENCES guidebooks (id),
     CONSTRAINT ck_generation_jobs_attempt CHECK (attempt_count BETWEEN 0 AND 3),

@@ -37,7 +37,8 @@ class GuidebookGenerationControllerTest {
                 MemberStatus.ACTIVE,
                 10L);
         GuidebookGenerationRequest request = new GuidebookGenerationRequest(
-                "47",
+                "경상북도",
+                "경주시",
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,

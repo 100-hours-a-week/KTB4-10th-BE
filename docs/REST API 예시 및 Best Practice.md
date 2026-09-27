@@ -89,7 +89,8 @@ Idempotency-Key: request_unique_key
 
 ```json
 {
-  "region_code": "47",
+  "province": "경상북도",
+  "city": "경주시",
   "start_date": "2026-10-12",
   "end_date": "2026-10-14",
   "companion": "FRIEND",
@@ -180,7 +181,7 @@ OAuth 동의는 우리 서비스의 별도 동의 이력 저장과 동일하지 
 
 **꼬리 질문: ERD의 복합 인덱스가 이 API를 다 해결하나요?**
 
-아니다. WHERE·ORDER BY·LIMIT을 실제로 구성해서 확인해야 한다. `(region_id,category)` 인덱스는 `%검색어%` 부분 검색과 제목 정렬까지 자동 해결하지 않는다. 지도 좌표는 공간 인덱스가 있더라도 사용하는 함수와 조건에 따라 실행 계획이 달라진다.
+아니다. WHERE·ORDER BY·LIMIT을 실제로 구성해서 확인해야 한다. `(region_id,classification_code_1)` 인덱스는 `%검색어%` 부분 검색과 제목 정렬까지 자동 해결하지 않는다. 지도 좌표는 공간 인덱스가 있더라도 사용하는 함수와 조건에 따라 실행 계획이 달라진다.
 
 ## 9. API DTO와 MySQL 저장 모델
 

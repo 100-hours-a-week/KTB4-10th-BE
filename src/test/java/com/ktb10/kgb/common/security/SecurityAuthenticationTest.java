@@ -86,7 +86,7 @@ class SecurityAuthenticationTest {
 
     @Test
     void validSessionExposesAuthenticatedMemberPrincipal() throws Exception {
-        Member member = memberRepository.save(member("principal-member"));
+        Member member = memberRepository.save(activeMember("principal-member"));
         AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
                 member,
                 sessionIdHasher.hash("principal-session"),
@@ -97,8 +97,43 @@ class SecurityAuthenticationTest {
                         .cookie(new Cookie(SessionCookieResolver.COOKIE_NAME, "principal-session")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.member_id").value(member.getId()))
-                .andExpect(jsonPath("$.status").value("ONBOARDING"))
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.session_id").value(session.getId()));
+    }
+
+    @Test
+    void onboardingMemberCanAccessInitialSetupApi() throws Exception {
+        Member member = memberRepository.save(member("onboarding-allowed-member"));
+        authSessionRepository.saveAndFlush(AuthSession.issue(
+                member,
+                sessionIdHasher.hash("onboarding-allowed-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+
+        mockMvc.perform(get("/api/v1/members/me")
+                        .cookie(new Cookie(
+                                SessionCookieResolver.COOKIE_NAME,
+                                "onboarding-allowed-session")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ONBOARDING"));
+    }
+
+    @Test
+    void onboardingMemberCannotAccessActiveMemberApi() throws Exception {
+        Member member = memberRepository.save(member("onboarding-forbidden-member"));
+        authSessionRepository.saveAndFlush(AuthSession.issue(
+                member,
+                sessionIdHasher.hash("onboarding-forbidden-session"),
+                NOW.plusHours(1),
+                NOW.minusMinutes(10)));
+
+        mockMvc.perform(get("/api/v1/test/principal")
+                        .cookie(new Cookie(
+                                SessionCookieResolver.COOKIE_NAME,
+                                "onboarding-forbidden-session")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("요청한 작업을 수행할 권한이 없습니다."))
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_FORBIDDEN"));
     }
 
     @Test
@@ -116,7 +151,7 @@ class SecurityAuthenticationTest {
 
     @Test
     void stateChangingRequestWithoutCsrfTokenReturnsCommonForbiddenResponse() throws Exception {
-        Member member = memberRepository.save(member("csrf-member"));
+        Member member = memberRepository.save(activeMember("csrf-member"));
         authSessionRepository.saveAndFlush(AuthSession.issue(
                 member,
                 sessionIdHasher.hash("csrf-session"),
@@ -152,7 +187,7 @@ class SecurityAuthenticationTest {
 
     @Test
     void stateChangingRequestWithCookieTokenAndHeaderSucceeds() throws Exception {
-        Member member = memberRepository.save(member("valid-csrf-member"));
+        Member member = memberRepository.save(activeMember("valid-csrf-member"));
         authSessionRepository.saveAndFlush(AuthSession.issue(
                 member,
                 sessionIdHasher.hash("valid-csrf-session"),
@@ -229,6 +264,12 @@ class SecurityAuthenticationTest {
                 null,
                 null,
                 NOW.minusDays(1));
+    }
+
+    private static Member activeMember(String oauthSubject) {
+        Member member = member(oauthSubject);
+        member.activate(NOW.minusHours(1));
+        return member;
     }
 
     @TestConfiguration

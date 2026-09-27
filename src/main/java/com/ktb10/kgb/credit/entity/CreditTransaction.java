@@ -98,6 +98,41 @@ public class CreditTransaction {
                 createdAt);
     }
 
+    public static CreditTransaction revoke(
+            CreditWallet wallet,
+            int amount,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("회수할 생성권은 1개 이상이어야 합니다.");
+        }
+        return new CreditTransaction(
+                wallet,
+                CreditTransactionType.REVOKE,
+                -amount,
+                0,
+                idempotencyKey,
+                createdAt);
+    }
+
+    public static CreditTransaction consume(
+            CreditWallet wallet,
+            Long generationJobId,
+            int balanceAfter,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        CreditTransaction transaction = new CreditTransaction(
+                wallet,
+                CreditTransactionType.CONSUME,
+                -1,
+                balanceAfter,
+                idempotencyKey,
+                createdAt);
+        transaction.generationJobId = Objects.requireNonNull(
+                generationJobId, "생성 작업 ID는 null일 수 없습니다.");
+        return transaction;
+    }
+
     private static String requireText(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " 값은 비어 있을 수 없습니다.");

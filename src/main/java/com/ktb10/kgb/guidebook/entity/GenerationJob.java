@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.time.LocalDateTime;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -29,7 +30,10 @@ import lombok.NoArgsConstructor;
                     columnNames = {"member_id", "idempotency_key"}),
             @UniqueConstraint(
                     name = "uq_generation_jobs_active_member",
-                    columnNames = "active_member_id")
+                    columnNames = "active_member_id"),
+            @UniqueConstraint(
+                    name = "uq_generation_jobs_ai_job_id",
+                    columnNames = "ai_job_id")
         },
         indexes = {
             @Index(
@@ -48,6 +52,8 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GenerationJob {
+
+    private static final int MAX_RETRY_COUNT = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -135,5 +141,97 @@ public class GenerationJob {
         job.createdAt = createdAt;
         job.updatedAt = createdAt;
         return job;
+    }
+
+    public void registerAiJob(String aiJobId, LocalDateTime registeredAt) {
+        if (status != GenerationStatus.PENDING) {
+            return;
+        }
+        if (this.aiJobId != null) {
+            throw new IllegalStateException("AI 작업 ID가 이미 등록되어 있습니다.");
+        }
+        if (aiJobId == null || aiJobId.isBlank()) {
+            throw new IllegalArgumentException("AI 작업 ID는 비어 있을 수 없습니다.");
+        }
+        this.aiJobId = aiJobId;
+        this.updatedAt = registeredAt;
+    }
+
+    public boolean isPending() {
+        return status == GenerationStatus.PENDING;
+    }
+
+    public boolean cancelForWithdrawal(LocalDateTime canceledAt) {
+        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+            return false;
+        }
+        LocalDateTime now = java.util.Objects.requireNonNull(
+                canceledAt, "취소 시각은 null일 수 없습니다.");
+        status = GenerationStatus.CANCELED;
+        cancelRequestedAt = now;
+        completedAt = now;
+        nextAttemptAt = null;
+        leaseToken = null;
+        leaseExpiresAt = null;
+        leaseVersion = Math.addExact(leaseVersion, 1L);
+        updatedAt = now;
+        return true;
+    }
+
+    public void markProcessing(LocalDateTime processedAt) {
+        if (status == GenerationStatus.PROCESSING) {
+            return;
+        }
+        if (status != GenerationStatus.PENDING) {
+            throw new IllegalStateException("AI 작업을 처리 중으로 변경할 수 없는 상태입니다: " + status);
+        }
+        status = GenerationStatus.PROCESSING;
+        startedAt = processedAt;
+        attemptStartedAt = processedAt;
+        updatedAt = processedAt;
+    }
+
+    public void complete(Long completedGuidebookId, LocalDateTime completedAt) {
+        if (status == GenerationStatus.COMPLETED) {
+            return;
+        }
+        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+            throw new IllegalStateException("완료할 수 없는 생성 작업 상태입니다: " + status);
+        }
+        guidebookId = Objects.requireNonNull(completedGuidebookId);
+        status = GenerationStatus.COMPLETED;
+        this.completedAt = Objects.requireNonNull(completedAt);
+        updatedAt = completedAt;
+    }
+
+    public void fail(String failurePayload, LocalDateTime failedAt) {
+        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+            throw new IllegalStateException("실패할 수 없는 생성 작업 상태입니다: " + status);
+        }
+        if (failurePayload == null || failurePayload.isBlank()) {
+            throw new IllegalArgumentException("실패 정보는 비어 있을 수 없습니다.");
+        }
+        status = GenerationStatus.FAILED;
+        errorPayload = failurePayload;
+        completedAt = Objects.requireNonNull(failedAt);
+        updatedAt = failedAt;
+    }
+
+    public void retry(LocalDateTime retriedAt) {
+        if (status != GenerationStatus.FAILED) {
+            throw new IllegalStateException("실패한 생성 작업만 다시 시도할 수 있습니다.");
+        }
+        if (attemptCount >= MAX_RETRY_COUNT) {
+            throw new IllegalStateException("가이드북 생성 재시도 횟수를 초과했습니다.");
+        }
+        attemptCount++;
+        status = GenerationStatus.PENDING;
+        aiJobId = null;
+        errorPayload = null;
+        startedAt = null;
+        attemptStartedAt = null;
+        nextAttemptAt = null;
+        completedAt = null;
+        updatedAt = Objects.requireNonNull(retriedAt);
     }
 }

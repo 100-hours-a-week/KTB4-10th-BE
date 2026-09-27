@@ -57,4 +57,15 @@ public class GuidebookGenerationController {
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(ApiResponse.success(ACCEPTED_MESSAGE, response));
     }
+
+    @PostMapping("/{jobId}/retry")
+    public ResponseEntity<ApiResponse<GuidebookGenerationResponse>> retry(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable @Positive Long jobId) {
+        GuidebookGenerationResponse response =
+                guidebookGenerationService.retry(member.memberId(), jobId);
+
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.success("guidebook_retry_accepted", response));
+    }
 }

@@ -11,6 +11,12 @@ public enum GuidebookErrorCode implements ErrorCode {
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "이미 진행 중인 가이드북 생성 작업이 있습니다."),
+    RETRY_INVALID_STATE(
+            HttpStatus.CONFLICT,
+            "실패한 가이드북 생성 작업만 다시 시도할 수 있습니다."),
+    RETRY_LIMIT_EXCEEDED(
+            HttpStatus.CONFLICT,
+            "가이드북 생성 재시도 횟수를 초과했습니다."),
     CREDIT_INSUFFICIENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "가이드북 생성권이 부족합니다."),
@@ -20,6 +26,9 @@ public enum GuidebookErrorCode implements ErrorCode {
     GUIDEBOOK_INVALID_PARTY(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "동행 유형과 인원수가 올바르지 않습니다."),
+    GUIDEBOOK_INVALID_REGION(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "시도와 시군구 정보가 올바르지 않습니다."),
     PREFERENCE_INVALID(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "회원의 기본 취향 정보가 올바르지 않습니다.");

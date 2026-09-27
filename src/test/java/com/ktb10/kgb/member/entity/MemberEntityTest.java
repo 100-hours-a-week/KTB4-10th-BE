@@ -66,10 +66,10 @@ class MemberEntityTest {
     void preferenceTypeComesFromStablePreferenceCode() {
         MemberPreference preference = MemberPreference.select(
                 createMember(),
-                PreferenceCode.QUIET_PLACE);
+                PreferenceCode.NATURE_MOUNTAIN);
 
         assertThat(preference.getPreferenceType()).isEqualTo(PreferenceType.DETAIL);
-        assertThat(preference.getPreferenceCode().parentCode()).isEqualTo("HEALING");
+        assertThat(preference.getPreferenceCode().parentCode()).isEqualTo("NATURE");
     }
 
     @Test

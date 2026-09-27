@@ -68,8 +68,10 @@ class GenerationStatusApiTest {
     @BeforeEach
     void setUp() {
         LocalDateTime now = LocalDateTime.now(clock);
-        member = memberRepository.save(Member.register(
-                OauthProvider.KAKAO, UUID.randomUUID().toString(), "여행자", null, null, now));
+        Member activeMember = Member.register(
+                OauthProvider.KAKAO, UUID.randomUUID().toString(), "여행자", null, null, now);
+        activeMember.activate(now);
+        member = memberRepository.save(activeMember);
         String rawSessionId = UUID.randomUUID().toString();
         authSessionRepository.saveAndFlush(AuthSession.issue(
                 member, sessionIdHasher.hash(rawSessionId), now.plusHours(1), now));

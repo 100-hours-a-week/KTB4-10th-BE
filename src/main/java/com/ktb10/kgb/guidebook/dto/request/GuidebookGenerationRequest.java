@@ -10,10 +10,13 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 public record GuidebookGenerationRequest(
-        @JsonProperty("region_code")
         @NotBlank
         @Size(max = 20)
-        String regionCode,
+        String province,
+
+        @NotBlank
+        @Size(max = 20)
+        String city,
 
         @JsonProperty("start_date")
         @NotNull
