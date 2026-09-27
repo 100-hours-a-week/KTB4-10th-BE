@@ -82,14 +82,22 @@ CREATE TABLE tourism_contents (
     category VARCHAR(30) NOT NULL,
     source_provider VARCHAR(30) NOT NULL,
     source_content_id VARCHAR(100) NOT NULL,
+    source_content_type_id VARCHAR(20) NULL,
     title VARCHAR(200) NOT NULL,
     description TEXT NULL,
     region_id BIGINT NOT NULL,
+    source_region_code VARCHAR(20) NULL,
+    source_district_code VARCHAR(20) NULL,
+    classification_code_1 VARCHAR(20) NULL,
+    classification_code_2 VARCHAR(20) NULL,
+    classification_code_3 VARCHAR(20) NULL,
     address VARCHAR(500) NULL,
     location POINT SRID 4326 NOT NULL,
     phone VARCHAR(50) NULL,
     homepage_url VARCHAR(2048) NULL,
     thumbnail_url VARCHAR(2048) NULL,
+    source_created_at DATETIME(6) NULL,
+    source_modified_at DATETIME(6) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     deleted_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
@@ -98,9 +106,27 @@ CREATE TABLE tourism_contents (
     CONSTRAINT uq_tourism_contents_source UNIQUE (source_provider, source_content_id),
     CONSTRAINT fk_tourism_contents_region FOREIGN KEY (region_id) REFERENCES regions (id),
     INDEX ix_tourism_contents_region_category (region_id, category),
+    INDEX ix_tourism_contents_source_region
+        (source_provider, source_region_code, source_district_code),
     INDEX ix_tourism_contents_active_created (status, deleted_at, created_at DESC, id DESC),
     SPATIAL INDEX ix_tourism_contents_location (location)
 ) COMMENT = '관광 콘텐츠 공통 원본';
+
+CREATE TABLE tour_api_region_mappings (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    source_provider VARCHAR(30) NOT NULL,
+    source_region_code VARCHAR(20) NOT NULL,
+    source_district_code VARCHAR(20) NOT NULL,
+    region_id BIGINT NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    updated_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_tour_api_region_mappings_source
+        UNIQUE (source_provider, source_region_code, source_district_code),
+    CONSTRAINT fk_tour_api_region_mappings_region
+        FOREIGN KEY (region_id) REFERENCES regions (id),
+    INDEX ix_tour_api_region_mappings_region (region_id)
+) COMMENT = 'TourAPI 원본 지역 코드와 서비스 2단계 지역의 매핑';
 
 CREATE TABLE event_details (
     content_id BIGINT NOT NULL,

@@ -78,3 +78,19 @@ tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
         setStylesheet("fancy-hist.xsl")
     }
 }
+
+tasks.register<JavaExec>("importTourApiData") {
+    group = "application"
+    description = "Imports initial TourAPI area and festival JSON files"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiImportApplication"
+
+    val areaFile = providers.gradleProperty("areaFile")
+    val festivalFile = providers.gradleProperty("festivalFile")
+    doFirst {
+        args(
+            "--area-file=${areaFile.get()}",
+            "--festival-file=${festivalFile.get()}",
+        )
+    }
+}
