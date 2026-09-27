@@ -11,5 +11,4 @@ public interface GuidebookAiClient {
 
     AiGenerationStatusResponse getGenerationStatus(String aiJobId);
 
-    AiGenerationAcceptedResponse retryGeneration(String aiJobId);
 }

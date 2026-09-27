@@ -9,6 +9,9 @@ import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
+import com.ktb10.kgb.guidebook.client.AiGuidebookContentQuery;
+import com.ktb10.kgb.guidebook.client.TourismContentSnapshotQuery;
+import com.ktb10.kgb.guidebook.client.TourismContentSnapshotQuery.TourismContentSnapshot;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookResult;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Place;
@@ -30,9 +33,13 @@ import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.guidebook.repository.RegionRepository;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,6 +55,8 @@ public class GuidebookResultService {
     private final ItineraryItemRepository itineraryItemRepository;
     private final MemberGuidebookRepository memberGuidebookRepository;
     private final RegionRepository regionRepository;
+    private final AiGuidebookContentQuery contentQuery;
+    private final TourismContentSnapshotQuery contentSnapshotQuery;
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final ObjectMapper objectMapper;
@@ -60,6 +69,8 @@ public class GuidebookResultService {
             ItineraryItemRepository itineraryItemRepository,
             MemberGuidebookRepository memberGuidebookRepository,
             RegionRepository regionRepository,
+            AiGuidebookContentQuery contentQuery,
+            TourismContentSnapshotQuery contentSnapshotQuery,
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
             ObjectMapper objectMapper,
@@ -70,6 +81,8 @@ public class GuidebookResultService {
         this.itineraryItemRepository = itineraryItemRepository;
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.regionRepository = regionRepository;
+        this.contentQuery = contentQuery;
+        this.contentSnapshotQuery = contentSnapshotQuery;
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
         this.objectMapper = objectMapper;
@@ -112,6 +125,8 @@ public class GuidebookResultService {
                         "가이드북 지역 기준 정보를 찾을 수 없습니다: " + request.province()));
 
         validateItinerary(result, request);
+        Map<String, TourismContentSnapshot> selectedContents = loadSelectedContents(
+                result, request);
         Guidebook guidebook = guidebookRepository.save(Guidebook.create(
                 result.title(),
                 region.getId(),
@@ -132,12 +147,13 @@ public class GuidebookResultService {
                     .sorted(Comparator.comparingInt(Place::order))
                     .toList();
             for (Place place : places) {
+                TourismContentSnapshot content = selectedContents.get(place.contentId());
                 itineraryItemRepository.save(ItineraryItem.create(
                         day,
-                        null,
+                        content.id(),
                         place.order(),
                         place.time(),
-                        serialize(place),
+                        serialize(PlaceSnapshot.from(content, place)),
                         now));
             }
         }
@@ -146,6 +162,35 @@ public class GuidebookResultService {
                 job.getMember(), guidebook, AcquisitionType.CREATED, now));
         consumeCredit(job, now);
         job.complete(guidebook.getId(), now);
+    }
+
+    private Map<String, TourismContentSnapshot> loadSelectedContents(
+            GuidebookResult result,
+            GuidebookGenerationRequest request) {
+        Map<String, Boolean> candidateIds = contentQuery.findAll(
+                        request.province(),
+                        request.city(),
+                        request.startDate(),
+                        request.endDate()).stream()
+                .collect(Collectors.toUnmodifiableMap(
+                        com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Content::contentId,
+                        ignored -> Boolean.TRUE));
+        return result.itinerary().stream()
+                .flatMap(day -> day.places().stream())
+                .map(Place::contentId)
+                .distinct()
+                .peek(contentId -> {
+                    if (!candidateIds.containsKey(contentId)) {
+                        throw new IllegalStateException(
+                                "AI 일정에 요청 후보가 아닌 콘텐츠가 포함되었습니다: " + contentId);
+                    }
+                })
+                .map(contentId -> contentSnapshotQuery.findBySourceContentId(contentId)
+                        .orElseThrow(() -> new IllegalStateException(
+                                "AI 일정 콘텐츠를 찾을 수 없습니다: " + contentId)))
+                .collect(Collectors.toUnmodifiableMap(
+                        TourismContentSnapshot::contentId,
+                        Function.identity()));
     }
 
     private void consumeCredit(GenerationJob job, LocalDateTime now) {
@@ -173,6 +218,11 @@ public class GuidebookResultService {
     private void validateItinerary(
             GuidebookResult result,
             GuidebookGenerationRequest request) {
+        if (result.title() == null
+                || result.title().isBlank()
+                || result.title().length() > 15) {
+            throw new IllegalStateException("AI 가이드북 제목은 1자 이상 15자 이하여야 합니다.");
+        }
         List<AiGenerationStatusResponse.ItineraryDay> days = result.itinerary().stream()
                 .sorted(Comparator.comparingInt(AiGenerationStatusResponse.ItineraryDay::day))
                 .toList();
@@ -197,6 +247,50 @@ public class GuidebookResultService {
                 }
             }
         }
+    }
+
+    private record PlaceSnapshot(
+            @com.fasterxml.jackson.annotation.JsonProperty("content_id")
+            String contentId,
+            String name,
+            String category,
+            String description,
+            @com.fasterxml.jackson.annotation.JsonProperty("recommend_reason")
+            String recommendReason,
+            String tip,
+            @com.fasterxml.jackson.annotation.JsonProperty("duration_minutes")
+            Integer durationMinutes,
+            String address,
+            Coordinates coordinates,
+            @com.fasterxml.jackson.annotation.JsonProperty("image_url")
+            String imageUrl,
+            String source,
+            @com.fasterxml.jackson.annotation.JsonProperty("event_start_date")
+            LocalDate eventStartDate,
+            @com.fasterxml.jackson.annotation.JsonProperty("event_end_date")
+            LocalDate eventEndDate) {
+
+        private static PlaceSnapshot from(
+                TourismContentSnapshot content,
+                Place place) {
+            return new PlaceSnapshot(
+                    content.contentId(),
+                    content.name(),
+                    content.category(),
+                    place.description(),
+                    place.recommendReason(),
+                    place.tip(),
+                    place.durationMinutes(),
+                    content.address(),
+                    new Coordinates(content.latitude(), content.longitude()),
+                    content.imageUrl(),
+                    "tourapi",
+                    content.eventStartDate(),
+                    content.eventEndDate());
+        }
+    }
+
+    private record Coordinates(double lat, double lng) {
     }
 
     private void validateResponse(GenerationJob job, AiGenerationStatusResponse response) {

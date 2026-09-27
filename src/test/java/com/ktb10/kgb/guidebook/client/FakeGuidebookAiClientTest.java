@@ -39,19 +39,6 @@ class FakeGuidebookAiClientTest {
     }
 
     @Test
-    void resetsStatusFlowWhenRetrying() {
-        var accepted = client.requestGeneration(request());
-        client.getGenerationStatus(accepted.jobId());
-        client.getGenerationStatus(accepted.jobId());
-
-        var retried = client.retryGeneration(accepted.jobId());
-        var processing = client.getGenerationStatus(accepted.jobId());
-
-        assertThat(retried.status()).isEqualTo(AiGenerationStatus.PENDING);
-        assertThat(processing.status()).isEqualTo(AiGenerationStatus.PROCESSING);
-    }
-
-    @Test
     void rejectsUnknownAiJobId() {
         assertThatThrownBy(() -> client.getGenerationStatus("unknown-job"))
                 .isInstanceOf(AiClientException.class)
@@ -60,6 +47,7 @@ class FakeGuidebookAiClientTest {
 
     private AiGuidebookRequest request() {
         return new AiGuidebookRequest(
+                "301-0",
                 new AiGuidebookRequest.Region("경상북도", "경주시"),
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14),
@@ -68,6 +56,18 @@ class FakeGuidebookAiClientTest {
                 new AiGuidebookRequest.Preferences(
                         List.of("힐링"),
                         Map.of("힐링", List.of("조용한 곳")),
-                        List.of("여유롭게")));
+                        List.of("여유롭게")),
+                List.of(new AiGuidebookRequest.Content(
+                        "126508",
+                        AiGuidebookRequest.ContentType.PLACE,
+                        "첨성대",
+                        "HS",
+                        "HS",
+                        "HS01",
+                        "HS010100",
+                        "경상북도 경주시 인왕동",
+                        new AiGuidebookRequest.Coordinates(35.8347, 129.219),
+                        null,
+                        null)));
     }
 }

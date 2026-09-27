@@ -22,7 +22,10 @@ public class AiGuidebookRequestMapper {
         this.contentQuery = contentQuery;
     }
 
-    public AiGuidebookRequest map(InitialGenerationRequestPayload payload) {
+    public AiGuidebookRequest map(
+            InitialGenerationRequestPayload payload,
+            long jobId,
+            int attemptCount) {
         GuidebookGenerationRequest request = payload.request();
         List<String> largeCategory = new ArrayList<>();
         Map<String, List<String>> midCategory = new LinkedHashMap<>();
@@ -45,6 +48,7 @@ public class AiGuidebookRequestMapper {
         }
 
         return new AiGuidebookRequest(
+                jobId + "-" + attemptCount,
                 new AiGuidebookRequest.Region(request.province(), request.city()),
                 request.startDate(),
                 request.endDate(),
@@ -54,7 +58,11 @@ public class AiGuidebookRequestMapper {
                         largeCategory,
                         midCategory,
                         travelStyle),
-                contentQuery.findAll(request.province(), request.city()));
+                contentQuery.findAll(
+                        request.province(),
+                        request.city(),
+                        request.startDate(),
+                        request.endDate()));
     }
 
     private void validatePreferenceType(PreferenceType snapshotType, PreferenceCode code) {

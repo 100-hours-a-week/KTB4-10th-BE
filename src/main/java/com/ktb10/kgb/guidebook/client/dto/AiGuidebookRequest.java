@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 
 /** AI 서버에 전달하는 가이드북 생성 요청입니다. */
 public record AiGuidebookRequest(
+        @JsonProperty("request_id")
+        String requestId,
         Region region,
         @JsonProperty("start_date")
         @JsonFormat(pattern = "yy.MM.dd")
@@ -26,45 +28,45 @@ public record AiGuidebookRequest(
         contents = List.copyOf(contents);
     }
 
-    public AiGuidebookRequest(
-            Region region,
-            LocalDate startDate,
-            LocalDate endDate,
-            String companion,
-            Integer peopleCount,
-            Preferences preferences) {
-        this(region, startDate, endDate, companion, peopleCount, preferences, List.of());
-    }
-
     public record Region(String province, String city) {
     }
 
     public record Content(
-            @JsonProperty("contentid")
+            @JsonProperty("content_id")
             String contentId,
-            @JsonProperty("contenttypeid")
-            String contentTypeId,
+            @JsonProperty("content_type")
+            ContentType contentType,
             String title,
-            @JsonProperty("lclsSystm1")
-            String lclsSystm1,
-            @JsonProperty("lclsSystm2")
-            String lclsSystm2,
-            @JsonProperty("lclsSystm3")
-            String lclsSystm3,
-            @JsonProperty("addr1")
+            String category,
+            @JsonProperty("classification_code_1")
+            String classificationCode1,
+            @JsonProperty("classification_code_2")
+            String classificationCode2,
+            @JsonProperty("classification_code_3")
+            String classificationCode3,
             String address,
-            @JsonProperty("mapx")
-            double mapx,
-            @JsonProperty("mapy")
-            double mapy,
-            @JsonProperty("firstimage")
-            String firstImage,
-            @JsonProperty("eventstartdate")
-            @JsonFormat(pattern = "yyyyMMdd")
-            LocalDate eventStartDate,
-            @JsonProperty("eventenddate")
-            @JsonFormat(pattern = "yyyyMMdd")
-            LocalDate eventEndDate) {
+            Coordinates coordinates,
+            @JsonProperty("image_url")
+            String imageUrl,
+            @JsonProperty("event_period")
+            EventPeriod eventPeriod) {
+    }
+
+    public enum ContentType {
+        PLACE,
+        EVENT
+    }
+
+    public record Coordinates(double lat, double lng) {
+    }
+
+    public record EventPeriod(
+            @JsonProperty("start_date")
+            @JsonFormat(pattern = "yy.MM.dd")
+            LocalDate startDate,
+            @JsonProperty("end_date")
+            @JsonFormat(pattern = "yy.MM.dd")
+            LocalDate endDate) {
     }
 
     public record Preferences(

@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class GuidebookAiTriggerServiceTest {
@@ -68,7 +69,13 @@ class GuidebookAiTriggerServiceTest {
     @Test
     void requestsAiGenerationAndRegistersExternalJobId() throws Exception {
         GenerationJob job = pendingJob();
+        ReflectionTestUtils.setField(job, "id", 301L);
         given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+        given(contentQuery.findAll(
+                "경상북도",
+                "경주시",
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14))).willReturn(List.of());
         given(guidebookAiClient.requestGeneration(org.mockito.ArgumentMatchers.any()))
                 .willReturn(new AiGenerationAcceptedResponse(
                         "ai-job-301",

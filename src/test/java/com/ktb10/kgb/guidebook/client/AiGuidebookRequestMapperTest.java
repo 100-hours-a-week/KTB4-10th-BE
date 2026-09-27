@@ -6,6 +6,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Content;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.ContentType;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Coordinates;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
@@ -37,22 +39,26 @@ class AiGuidebookRequestMapperTest {
                         new PreferenceSnapshot("TRAVEL_STYLE", "RELAXING")));
         Content content = new Content(
                 "1001",
-                "12",
+                ContentType.PLACE,
                 "불국사",
+                "HS",
                 "HS",
                 "HS01",
                 "HS010100",
                 "경상북도 경주시",
-                129.3,
-                35.7,
-                null,
+                new Coordinates(35.7, 129.3),
                 null,
                 null);
-        given(contentQuery.findAll("경상북도", "경주시"))
+        given(contentQuery.findAll(
+                "경상북도",
+                "경주시",
+                LocalDate.of(2026, 8, 24),
+                LocalDate.of(2026, 8, 25)))
                 .willReturn(List.of(content));
 
-        var request = mapper.map(payload);
+        var request = mapper.map(payload, 301L, 0);
 
+        assertThat(request.requestId()).isEqualTo("301-0");
         assertThat(request.region().province()).isEqualTo("경상북도");
         assertThat(request.region().city()).isEqualTo("경주시");
         assertThat(request.startDate()).isEqualTo(LocalDate.of(2026, 8, 24));
@@ -78,7 +84,7 @@ class AiGuidebookRequestMapperTest {
                         2),
                 List.of(new PreferenceSnapshot("THEME", "NATURE_MOUNTAIN")));
 
-        assertThatThrownBy(() -> mapper.map(payload))
+        assertThatThrownBy(() -> mapper.map(payload, 301L, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("NATURE_MOUNTAIN");
     }

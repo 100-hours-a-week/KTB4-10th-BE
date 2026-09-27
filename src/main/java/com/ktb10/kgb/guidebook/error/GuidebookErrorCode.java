@@ -11,6 +11,12 @@ public enum GuidebookErrorCode implements ErrorCode {
     GENERATION_IN_PROGRESS(
             HttpStatus.CONFLICT,
             "이미 진행 중인 가이드북 생성 작업이 있습니다."),
+    RETRY_INVALID_STATE(
+            HttpStatus.CONFLICT,
+            "실패한 가이드북 생성 작업만 다시 시도할 수 있습니다."),
+    RETRY_LIMIT_EXCEEDED(
+            HttpStatus.CONFLICT,
+            "가이드북 생성 재시도 횟수를 초과했습니다."),
     CREDIT_INSUFFICIENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "가이드북 생성권이 부족합니다."),

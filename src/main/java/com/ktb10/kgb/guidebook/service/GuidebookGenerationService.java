@@ -147,6 +147,28 @@ public class GuidebookGenerationService {
         return GenerationStatusResponse.from(job, error);
     }
 
+    @Transactional
+    public GuidebookGenerationResponse retry(Long memberId, Long jobId) {
+        if (!generationJobRepository.existsById(jobId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+        if (!generationJobRepository.existsByIdAndMemberId(jobId, memberId)) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_FORBIDDEN);
+        }
+        GenerationJob job = generationJobRepository.findByIdForUpdate(jobId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        if (job.getStatus() != GenerationStatus.FAILED) {
+            throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
+        }
+        if (job.getAttemptCount() >= 3) {
+            throw new BusinessException(GuidebookErrorCode.RETRY_LIMIT_EXCEEDED);
+        }
+
+        job.retry(LocalDateTime.now(clock));
+        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(job.getId()));
+        return GuidebookGenerationResponse.from(job);
+    }
+
     private boolean shouldSynchronize(GenerationJob job) {
         return job.getAiJobId() != null
                 && (job.getStatus() == GenerationStatus.PENDING

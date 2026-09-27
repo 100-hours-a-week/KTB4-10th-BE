@@ -53,12 +53,18 @@ public class GuidebookAiTriggerService {
         }
 
         InitialGenerationRequestPayload payload = deserialize(job.getRequestPayload());
-        AiGuidebookRequest request = aiGuidebookRequestMapper.map(payload);
+        AiGuidebookRequest request = aiGuidebookRequestMapper.map(
+                payload, job.getId(), job.getAttemptCount());
         AiGenerationAcceptedResponse response = guidebookAiClient.requestGeneration(request);
-        if (response.status() != AiGenerationStatus.PENDING) {
-            throw new AiClientException("AI 생성 접수 상태가 PENDING이 아닙니다.");
+        if (response.status() != AiGenerationStatus.PENDING
+                && response.status() != AiGenerationStatus.PROCESSING) {
+            throw new AiClientException("AI 생성 접수 상태가 올바르지 않습니다.");
         }
-        job.registerAiJob(response.jobId(), LocalDateTime.now(clock));
+        LocalDateTime now = LocalDateTime.now(clock);
+        job.registerAiJob(response.jobId(), now);
+        if (response.status() == AiGenerationStatus.PROCESSING) {
+            job.markProcessing(now);
+        }
     }
 
     private InitialGenerationRequestPayload deserialize(String requestPayload) {

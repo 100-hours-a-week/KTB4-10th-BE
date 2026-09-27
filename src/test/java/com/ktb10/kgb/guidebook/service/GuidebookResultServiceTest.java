@@ -12,11 +12,14 @@ import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
+import com.ktb10.kgb.guidebook.client.AiGuidebookContentQuery;
+import com.ktb10.kgb.guidebook.client.TourismContentSnapshotQuery;
+import com.ktb10.kgb.guidebook.client.TourismContentSnapshotQuery.TourismContentSnapshot;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Coordinates;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookResult;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.ItineraryDay;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Place;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
@@ -24,6 +27,7 @@ import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
+import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.Region;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.GuidebookRepository;
@@ -68,6 +72,10 @@ class GuidebookResultServiceTest {
     @Mock
     private RegionRepository regionRepository;
     @Mock
+    private AiGuidebookContentQuery contentQuery;
+    @Mock
+    private TourismContentSnapshotQuery contentSnapshotQuery;
+    @Mock
     private CreditWalletRepository creditWalletRepository;
     @Mock
     private CreditTransactionRepository creditTransactionRepository;
@@ -84,6 +92,8 @@ class GuidebookResultServiceTest {
                 itineraryItemRepository,
                 memberGuidebookRepository,
                 regionRepository,
+                contentQuery,
+                contentSnapshotQuery,
                 creditWalletRepository,
                 creditTransactionRepository,
                 objectMapper,
@@ -112,6 +122,24 @@ class GuidebookResultServiceTest {
         given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
         given(regionRepository.findProvinceByName("경상북도"))
                 .willReturn(Optional.of(region));
+        given(contentQuery.findAll(
+                "경상북도",
+                "경주시",
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 1)))
+                .willReturn(List.of(candidate()));
+        given(contentSnapshotQuery.findBySourceContentId("content-1"))
+                .willReturn(Optional.of(new TourismContentSnapshot(
+                        701L,
+                        "content-1",
+                        "첨성대",
+                        "HS",
+                        "경상북도 경주시",
+                        35.8,
+                        129.2,
+                        null,
+                        null,
+                        null)));
         given(guidebookRepository.save(any(Guidebook.class))).willAnswer(invocation -> {
             Guidebook guidebook = invocation.getArgument(0);
             ReflectionTestUtils.setField(guidebook, "id", 501L);
@@ -189,20 +217,29 @@ class GuidebookResultServiceTest {
                 1,
                 LocalTime.of(9, 0),
                 "content-1",
-                "첨성대",
-                "관광",
+                60,
                 "설명",
                 "추천 이유",
-                "팁",
-                60,
-                "경상북도 경주시",
-                new Coordinates(35.8, 129.2),
-                null);
+                "팁");
         return new GuidebookResult(
-                "경주시",
                 "경주 여행",
                 "경주 여행 요약",
                 List.of(new ItineraryDay(
                         1, LocalDate.of(2026, 10, 1), List.of(place))));
+    }
+
+    private AiGuidebookRequest.Content candidate() {
+        return new AiGuidebookRequest.Content(
+                "content-1",
+                AiGuidebookRequest.ContentType.PLACE,
+                "첨성대",
+                "HS",
+                "HS",
+                "HS01",
+                "HS010100",
+                "경상북도 경주시",
+                new AiGuidebookRequest.Coordinates(35.8, 129.2),
+                null,
+                null);
     }
 }
