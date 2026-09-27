@@ -64,7 +64,7 @@
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query latitude,longitude,radius_m 또는 south,west,north,east; zoom,limit. category 미지원 |
+| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom,limit. 반경·category·서버 clusters 미지원 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | Query cursor,size |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -727,15 +727,15 @@ Body 없음.
 |---|---|---|
 | GET | `/map/contents` | 세션 쿠키 필수 |
 
-- Query (latitude,longitude,radius_m) 또는 (south,west,north,east) 중 정확히 하나의 조합
-- 좌표 Number: 위도 -90~90, 경도 (-180,180]. radius_m 1~10,000; 최초 진입 기본 반경 3,000m
+- Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
+- 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이고 대각선 거리가 20km 이하여야 함
-- zoom: Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100; category 선택
-- category는 TourAPI 원본 분류를 V1 취향 코드표의 THEME·DETAIL 안정 코드에 매핑한다. TRAVEL_STYLE은 관광 category에 포함하지 않는다.
-- 응답 markers[]/clusters[]/has_more; 좌표는 도, 거리 m
-- 클러스터 표시는 실제 개수 1~9, 10 이상은 `9+`; 클러스터링 시작 기본 줌은 13~14
-- 서버가 요청 범위와 zoom을 기준으로 클러스터링한다. `clusters[]`는 cluster_id, latitude, longitude, count, display_count를 반환하며 markers와 clusters 합계가 limit을 초과하면 has_more=true
-- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회한다. 동일 지역 AI 후보 또는 낮은 줌·고정 타일의 클러스터 계산이 실제 병목으로 확인되면 V2에서 해당 파생 결과만 Redis에 캐싱하며, 캐시 미스·장애 시 MySQL 조회로 복구한다.
+- zoom: 필수 Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100
+- ACTIVE·미삭제 콘텐츠만 `id` 오름차순으로 조회하며 최대 `limit+1`건으로 `has_more`를 계산
+- `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
+- 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
+- 서버는 `items[]/has_more`만 반환한다. 마커 렌더링과 클러스터링·`9+` 표시는 카카오맵 SDK `MarkerClusterer`가 담당한다.
+- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
 
 **Request Body**
 
@@ -747,8 +747,16 @@ Body 없음.
 {
   "message": "map_content_success",
   "data": {
-    "markers": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
-    "clusters": [{"cluster_id":"cl_example","latitude":35.7890,"longitude":129.3300,"count":12,"display_count":"9+"}],
+    "items": [{
+      "content_id": "101",
+      "title": "불국사",
+      "content_type": "PLACE",
+      "address": "경상북도 경주시 불국로 385",
+      "latitude": 35.7898,
+      "longitude": 129.3321,
+      "thumbnail_url": null,
+      "event_period": null
+    }],
     "has_more": false
   }
 }
@@ -760,7 +768,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-05 확정: Figma MAP-01 기준 기본 반경 3km, 줌 6~21(최초 16~17), 클러스터 숫자 10 이상 `9+`. 백엔드 상한은 반경 10km, 마커·클러스터 합계 200개이며 서버가 클러스터를 집계한다. 관광 콘텐츠 6개 분류의 정확한 코드와 TourAPI 매핑은 샘플 검증 후 확정한다.
+**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds를 전달하며 백엔드는 대각선 20km·기본 100·최대 200 제한으로 핀 원본만 반환한다. 클러스터링과 `9+` 표시는 프론트의 카카오맵 SDK가 담당한다.
 
 ### API-CON-04 관심 장소 목록
 
@@ -1956,7 +1964,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |
-| API-DEC-05 | CON-01/03 | 확정: 검색은 title 부분 일치 후 DB 등록 최신순. 지도 기본 반경 3km, 최대 10km, 줌 6~21, 응답 기본 100·최대 200, 서버 클러스터링, 10개 이상 `9+`. |
+| API-DEC-05 | CON-01/03 | 확정: 지도 최초 중심은 카카오 판교 아지트, 줌 6~21(최초 16~17). bounds 대각선 최대 20km, 응답 기본 100·최대 200. 서버는 핀 원본만 반환하고 카카오맵 SDK가 클러스터링과 `9+` 표시를 담당. |
 | API-DEC-06 | CON-04 | 확정: 비활성·삭제된 관심 장소는 목록에서 숨김. |
 | API-DEC-08 | GDE-13 | 부분 확정: MVP는 기존 설계대로 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정. |
 | API-DEC-09 | RNK-03/06 | 확정: 기존 최종 평가는 덮어쓰고 null은 삭제. 유효 content_id를 최초 등장 순으로 중복 제거하고 미매핑 항목은 제외. 제출 완료 후 모든 재요청은 409. |
