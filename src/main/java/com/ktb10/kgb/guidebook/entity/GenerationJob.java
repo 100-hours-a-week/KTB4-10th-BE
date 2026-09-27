@@ -142,6 +142,9 @@ public class GenerationJob {
     }
 
     public void registerAiJob(String aiJobId, LocalDateTime registeredAt) {
+        if (status != GenerationStatus.PENDING) {
+            return;
+        }
         if (this.aiJobId != null) {
             throw new IllegalStateException("AI 작업 ID가 이미 등록되어 있습니다.");
         }
@@ -150,6 +153,27 @@ public class GenerationJob {
         }
         this.aiJobId = aiJobId;
         this.updatedAt = registeredAt;
+    }
+
+    public boolean isPending() {
+        return status == GenerationStatus.PENDING;
+    }
+
+    public boolean cancelForWithdrawal(LocalDateTime canceledAt) {
+        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+            return false;
+        }
+        LocalDateTime now = java.util.Objects.requireNonNull(
+                canceledAt, "취소 시각은 null일 수 없습니다.");
+        status = GenerationStatus.CANCELED;
+        cancelRequestedAt = now;
+        completedAt = now;
+        nextAttemptAt = null;
+        leaseToken = null;
+        leaseExpiresAt = null;
+        leaseVersion = Math.addExact(leaseVersion, 1L);
+        updatedAt = now;
+        return true;
     }
 
     public void markProcessing(LocalDateTime processedAt) {
