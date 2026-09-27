@@ -40,24 +40,30 @@ public record AiGuidebookRequest(
     }
 
     public record Content(
-            @JsonProperty("content_id")
+            @JsonProperty("contentid")
             String contentId,
+            @JsonProperty("contenttypeid")
+            String contentTypeId,
             String title,
-            String category,
-            @JsonProperty("classification_code_1")
-            String classificationCode1,
-            @JsonProperty("classification_code_2")
-            String classificationCode2,
-            @JsonProperty("classification_code_3")
-            String classificationCode3,
+            @JsonProperty("lclsSystm1")
+            String lclsSystm1,
+            @JsonProperty("lclsSystm2")
+            String lclsSystm2,
+            @JsonProperty("lclsSystm3")
+            String lclsSystm3,
+            @JsonProperty("addr1")
             String address,
-            double longitude,
-            double latitude,
-            @JsonProperty("thumbnail_url")
-            String thumbnailUrl,
-            @JsonProperty("event_start_date")
+            @JsonProperty("mapx")
+            double mapx,
+            @JsonProperty("mapy")
+            double mapy,
+            @JsonProperty("firstimage")
+            String firstImage,
+            @JsonProperty("eventstartdate")
+            @JsonFormat(pattern = "yyyyMMdd")
             LocalDate eventStartDate,
-            @JsonProperty("event_end_date")
+            @JsonProperty("eventenddate")
+            @JsonFormat(pattern = "yyyyMMdd")
             LocalDate eventEndDate) {
     }
 
