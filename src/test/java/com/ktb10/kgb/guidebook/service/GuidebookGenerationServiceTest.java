@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
+import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
@@ -27,6 +29,7 @@ import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
@@ -36,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -60,6 +64,12 @@ class GuidebookGenerationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
+
+    @Mock
+    private GuidebookResultService guidebookResultService;
+
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -72,6 +82,8 @@ class GuidebookGenerationServiceTest {
                 memberRepository,
                 memberPreferenceRepository,
                 eventPublisher,
+                guidebookAiClientProvider,
+                guidebookResultService,
                 objectMapper,
                 CLOCK);
     }
@@ -103,6 +115,28 @@ class GuidebookGenerationServiceTest {
         assertThat(response.guidebookId()).isNull();
         verify(generationJobRepository).save(any(GenerationJob.class));
         verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+    }
+
+    @Test
+    void getsLatestAiStatusBeforeReturningJobStatus() {
+        Member member = member();
+        GenerationJob job = GenerationJob.createInitial(
+                member, "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.registerAiJob("ai-job-301", LocalDateTime.now(CLOCK));
+        GuidebookAiClient aiClient = org.mockito.Mockito.mock(GuidebookAiClient.class);
+        AiGenerationStatusResponse aiResponse =
+                AiGenerationStatusResponse.processing("ai-job-301");
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+        given(guidebookAiClientProvider.getIfAvailable()).willReturn(aiClient);
+        given(aiClient.getGenerationStatus("ai-job-301")).willReturn(aiResponse);
+
+        service.getGenerationJobStatus(MEMBER_ID, 301L);
+
+        verify(aiClient).getGenerationStatus("ai-job-301");
+        verify(guidebookResultService).apply(301L, aiResponse);
     }
 
     @Test

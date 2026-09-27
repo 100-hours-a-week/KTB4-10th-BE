@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
+import com.ktb10.kgb.guidebook.client.AiGuidebookContentQuery;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
@@ -16,6 +17,7 @@ import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
+import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -44,6 +46,9 @@ class GuidebookAiTriggerServiceTest {
     @Mock
     private GuidebookAiClient guidebookAiClient;
 
+    @Mock
+    private AiGuidebookContentQuery contentQuery;
+
     private ObjectMapper objectMapper;
     private AiGuidebookRequestMapper mapper;
     private GuidebookAiTriggerService service;
@@ -51,7 +56,7 @@ class GuidebookAiTriggerServiceTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper().findAndRegisterModules();
-        mapper = new AiGuidebookRequestMapper();
+        mapper = new AiGuidebookRequestMapper(contentQuery);
         service = new GuidebookAiTriggerService(
                 generationJobRepository,
                 guidebookAiClient,
@@ -77,6 +82,7 @@ class GuidebookAiTriggerServiceTest {
         assertThat(requestCaptor.getValue().preferences().largeCategory())
                 .containsExactly("자연");
         assertThat(job.getAiJobId()).isEqualTo("ai-job-301");
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
     }
 
     @Test
