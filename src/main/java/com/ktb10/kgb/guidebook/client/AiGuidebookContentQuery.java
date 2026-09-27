@@ -23,8 +23,8 @@ public class AiGuidebookContentQuery {
                 """
                 SELECT
                     content.source_content_id,
+                    content.source_content_type_id,
                     content.title,
-                    content.category,
                     content.classification_code_1,
                     content.classification_code_2,
                     content.classification_code_3,
@@ -49,8 +49,8 @@ public class AiGuidebookContentQuery {
                 """,
                 (resultSet, rowNumber) -> new Content(
                         resultSet.getString("source_content_id"),
+                        resultSet.getString("source_content_type_id"),
                         resultSet.getString("title"),
-                        resultSet.getString("category"),
                         resultSet.getString("classification_code_1"),
                         resultSet.getString("classification_code_2"),
                         resultSet.getString("classification_code_3"),

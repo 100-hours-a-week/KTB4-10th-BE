@@ -37,8 +37,8 @@ class AiGuidebookRequestMapperTest {
                         new PreferenceSnapshot("TRAVEL_STYLE", "RELAXING")));
         Content content = new Content(
                 "1001",
+                "12",
                 "불국사",
-                "HS",
                 "HS",
                 "HS01",
                 "HS010100",
