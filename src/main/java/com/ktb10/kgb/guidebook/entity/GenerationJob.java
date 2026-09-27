@@ -29,7 +29,10 @@ import lombok.NoArgsConstructor;
                     columnNames = {"member_id", "idempotency_key"}),
             @UniqueConstraint(
                     name = "uq_generation_jobs_active_member",
-                    columnNames = "active_member_id")
+                    columnNames = "active_member_id"),
+            @UniqueConstraint(
+                    name = "uq_generation_jobs_ai_job_id",
+                    columnNames = "ai_job_id")
         },
         indexes = {
             @Index(
@@ -135,5 +138,16 @@ public class GenerationJob {
         job.createdAt = createdAt;
         job.updatedAt = createdAt;
         return job;
+    }
+
+    public void registerAiJob(String aiJobId, LocalDateTime registeredAt) {
+        if (this.aiJobId != null) {
+            throw new IllegalStateException("AI 작업 ID가 이미 등록되어 있습니다.");
+        }
+        if (aiJobId == null || aiJobId.isBlank()) {
+            throw new IllegalArgumentException("AI 작업 ID는 비어 있을 수 없습니다.");
+        }
+        this.aiJobId = aiJobId;
+        this.updatedAt = registeredAt;
     }
 }

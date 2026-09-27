@@ -1,6 +1,7 @@
 package com.ktb10.kgb.guidebook.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -21,6 +22,27 @@ class GenerationJobTest {
         assertThat(job.getAttemptCount()).isZero();
         assertThat(job.getLeaseVersion()).isZero();
         assertThat(job.getMember()).isNotNull();
+    }
+
+    @Test
+    void registersExternalAiJobIdOnce() {
+        GenerationJob job = initialJob();
+        LocalDateTime registeredAt = NOW.plusMinutes(1);
+
+        job.registerAiJob("job_12345", registeredAt);
+
+        assertThat(job.getAiJobId()).isEqualTo("job_12345");
+        assertThat(job.getUpdatedAt()).isEqualTo(registeredAt);
+        assertThatThrownBy(() -> job.registerAiJob("job_67890", registeredAt.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void rejectsBlankAiJobId() {
+        GenerationJob job = initialJob();
+
+        assertThatThrownBy(() -> job.registerAiJob(" ", NOW.plusMinutes(1)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static GenerationJob initialJob() {

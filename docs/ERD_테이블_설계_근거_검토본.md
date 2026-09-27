@@ -454,7 +454,8 @@ erDiagram
 AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한다.
 
 - 최초 생성 실패에는 가이드북이 없지만 작업 기록은 남아야 해 guidebooks와 분리한다.
-- 백엔드가 job ID를 먼저 만들어 AI에 전달하며 프론트는 이 ID로 폴링한다.
+- `generation_jobs.id`는 백엔드가 발급하는 내부 작업 ID이며 프론트는 이 ID로 폴링한다.
+- `generation_jobs.ai_job_id`는 AI 서버가 접수 응답으로 발급하는 외부 작업 ID이며 AI 상태 폴링에만 사용하고 UNIQUE로 제약한다.
 - 최초 생성 중 guidebook_id는 NULL, 성공 시 결과 ID를 연결한다. 재생성은 시작부터 기존 ID를 가진다.
 - request_payload는 날짜·동행·인원·취향의 요청 당시 스냅샷이다.
 - idempotency_key UNIQUE는 네트워크 재전송의 중복 작업을 막는다.

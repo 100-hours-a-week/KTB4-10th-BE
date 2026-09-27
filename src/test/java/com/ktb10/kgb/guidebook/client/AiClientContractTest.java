@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.time.LocalDate;
@@ -38,18 +39,24 @@ class AiClientContractTest {
     }
 
     @Test
-    void deserializesLowercaseAiStatus() throws Exception {
+    void deserializesAcceptedResponseEnvelope() throws Exception {
         String json = """
                 {
-                  "job_id": "job_12345",
-                  "status": "pending"
+                  "message": "guidebook_accepted",
+                  "data": {
+                    "job_id": "job_12345",
+                    "status": "pending",
+                    "remaining_quota": 4
+                  }
                 }
                 """;
 
-        AiGenerationAcceptedResponse response = objectMapper.readValue(
+        AiGenerationAcceptedEnvelope envelope = objectMapper.readValue(
                 json,
-                AiGenerationAcceptedResponse.class);
+                AiGenerationAcceptedEnvelope.class);
+        AiGenerationAcceptedResponse response = envelope.data();
 
+        assertThat(envelope.message()).isEqualTo("guidebook_accepted");
         assertThat(response.jobId()).isEqualTo("job_12345");
         assertThat(response.status()).isEqualTo(AiGenerationStatus.PENDING);
     }
