@@ -156,6 +156,10 @@ class GuidebookResultServiceTest {
         assertThat(job.getGuidebookId()).isEqualTo(501L);
         assertThat(job.getCompletedAt()).isEqualTo(NOW);
         assertThat(wallet.getCreditBalance()).isEqualTo(2);
+        var guidebookCaptor = org.mockito.ArgumentCaptor.forClass(Guidebook.class);
+        verify(guidebookRepository).save(guidebookCaptor.capture());
+        assertThat(guidebookCaptor.getValue().getContentHtml())
+                .isEqualTo("<article><h1>경주 여행</h1></article>");
         verify(itineraryDayRepository).save(any());
         verify(itineraryItemRepository).save(any());
         verify(memberGuidebookRepository).save(any());
@@ -224,6 +228,7 @@ class GuidebookResultServiceTest {
         return new GuidebookResult(
                 "경주 여행",
                 "경주 여행 요약",
+                "<article><h1>경주 여행</h1></article>",
                 List.of(new ItineraryDay(
                         1, LocalDate.of(2026, 10, 1), List.of(place))));
     }

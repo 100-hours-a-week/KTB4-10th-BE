@@ -30,8 +30,8 @@ class AiClientContractTest {
                 "couple",
                 2,
                 new AiGuidebookRequest.Preferences(
-                        List.of("힐링"),
-                        Map.of("힐링", List.of("조용한 곳")),
+                        List.of("자연"),
+                        Map.of("자연", List.of("산")),
                         List.of("여유롭게")),
                 List.of(new AiGuidebookRequest.Content(
                         "126508",
@@ -53,7 +53,7 @@ class AiClientContractTest {
         assertThat(json.get("end_date").asText()).isEqualTo("26.10.14");
         assertThat(json.get("people_count").asInt()).isEqualTo(2);
         assertThat(json.get("preferences").get("large_category").get(0).asText())
-                .isEqualTo("힐링");
+                .isEqualTo("자연");
         assertThat(json.get("contents").isArray()).isTrue();
         assertThat(json.get("contents").get(0).get("content_type").asText())
                 .isEqualTo("PLACE");
@@ -95,6 +95,7 @@ class AiClientContractTest {
                     "result": {
                       "title": "경주 역사 여행",
                       "summary": "여행 요약",
+                      "content_html": "<article><h1>경주 역사 여행</h1></article>",
                       "itinerary": [{
                         "day": 1,
                         "date": "26.10.12",
@@ -119,6 +120,8 @@ class AiClientContractTest {
         AiGenerationStatusResponse response = envelope.data();
 
         assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
+        assertThat(response.result().contentHtml())
+                .isEqualTo("<article><h1>경주 역사 여행</h1></article>");
         assertThat(response.result().itinerary().get(0).date())
                 .isEqualTo(LocalDate.of(2026, 10, 12));
     }
