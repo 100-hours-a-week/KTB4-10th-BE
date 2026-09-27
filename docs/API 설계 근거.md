@@ -10,7 +10,7 @@
 |---|---|---|
 | 회원/취향 | 기기·동의·옵션 ID 제거 → Enum 유형/코드 선택; 탈퇴는 deleted_at | BR-MEM-03/10/11 및 members/member_preferences |
 | 알림 | PATCH read_at / read-all → DELETE 개별/전체 | BR-NOT-04, notifications에 read_at 없음 |
-| 관광 콘텐츠 | 복수 categories → 단일 category; 시군구 제외; 위경도는 POINT 변환 DTO | BR-CON-10~12, regions/tourism_contents |
+| 관광 콘텐츠 | 중복 category 제거 → TourAPI `classification_code_1/2/3` 유지; province/city 2단계 지역; POINT 좌표 | BR-CON-10~12, regions/tourism_contents |
 | 관심 장소 | 복합 PK 설명 제거 → 대리 PK+복합 UNIQUE; 관계 URL 유지 | favorite_contents와 BR-CON-07 |
 | 생성권 | 예약수량/RESERVE/RELEASE 제거 → 활성 작업으로 논리 예약, 성공 시 CONSUME | BR-PAY-01~04 |
 | 가져오기 | 공유 링크별 중복 판단 → 회원+최초 원본 기준 | BR-GDE-09~10 |
@@ -20,7 +20,7 @@
 | 가이드북 삭제 | API-GDE-16 DELETE → V1은 회원별 보관 관계만 소프트 삭제, 원본·타인 관계 유지 | BR-GDE-14 |
 | 결제 | PURCHASE → PURCHASE_GRANT; 환불 API 범위 제외; PG 원문 계약 보류 | credit_transactions, BR-PAY-08 |
 | JSON/오류 | data 필드 이름 문자열 → 실제 객체; 공통 error.code/trace_id 포함 | 프론트가 역직렬화·분기할 수 있는 계약 필요 |
-| API 표현 합의 | BIGINT ID 문자열, category 키, policy_type 경로, DELETE 전환 | DB 변경에서 자동 확정되지 않음. 프론트/AI와 DTO 호환 합의 필요 |
+| API 표현 합의 | BIGINT ID 문자열, TourAPI 분류 코드, policy_type 경로, DELETE 전환 | DB 변경에서 자동 확정되지 않음. 프론트/AI와 DTO 호환 합의 필요 |
 
 ## 2. 엔드포인트별 요구사항 연결과 선택 이유
 
@@ -55,7 +55,7 @@
 | API ID | 요구사항/저장 기준 | 이유·대안/주의점 |
 |---|---|---|
 | API-CON-01 | FR-CON-01~03; BR-CON-01~06/10~13 | 번호 페이지를 위한 GET이다. 지역 코드를 regions에 매핑하며 ACTIVE이고 deleted_at이 없는 콘텐츠만 검색한다. 검색어 유무와 관계없이 수집·DB 등록 최신순(`created_at DESC, id DESC`)으로 정렬한다. |
-| API-CON-02 | FR-CON-01; BR-CON-10~12 | 단일 category와 공통 정보·행사 상세·이미지를 조합한다. DB POINT는 위도/경도 응답으로 변환하고 해시는 내부 중복 제거용이다. |
+| API-CON-02 | FR-CON-01; BR-CON-10~12 | TourAPI `classification_code_1/2/3`과 공통 정보·행사 상세·이미지를 조합한다. 행사 여부는 `classification_code_1=EV`로 판별한다. DB POINT는 경도·위도 순서로 저장하고 API에서는 위도·경도 응답으로 변환하며, 해시는 내부 중복 제거용이다. |
 | API-CON-03 | FR-CON-04; BR-CON-08/14 | 위치·지도 범위는 조회 조건이지 회원의 영구 위치 저장값이 아니다. MySQL POINT와 공간 인덱스로 후보를 구하고 필요한 정확 필터를 적용한다. Figma의 3km는 최초 표시 반경이고 `9+`는 클러스터 배지 표기이므로 서버 최대 조회 반경·총 마커 상한과 혼동하지 않는다. |
 | API-CON-04 | FR-CON-05; BR-CON-07/12 | member_id로 소유 관계를 조회한다. 대리키 id와 복합 UNIQUE를 사용해도 외부 식별은 content_id로 충분하다. |
 | API-CON-05 | FR-CON-05; BR-CON-07 | 클라이언트가 회원·콘텐츠 관계의 URI를 알고 있어 PUT으로 관계 존재를 보장한다. 현재 PK는 id이고 중복 차단은 UNIQUE(member_id,content_id)다. |
@@ -159,7 +159,7 @@ deleted_at은 필터링에 쓰는 데이터이며 컬럼이 존재한다고 자�
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 미리보기에 공개. |
 | DEC-07 | GDE-12 | 확정: 삭제된 `member_guidebooks` 관계를 복구. |
 | DEC-08 | NOT-01 | 확정: 초기 4개, 미읽음 최대 20개, 초과 시 최고령순 삭제. |
-| DEC-09 | GDE-02/03/09 | 확정: 300초/시도, 재시도 최대 3회, 탈퇴·대상 삭제 시 취소 요청·늦은 결과 무시. |
+| DEC-09 | GDE-02/03/09 | 현재는 실패 작업의 수동 재시도 최대 3회를 구현. 300초 타임아웃·자동 재시도·정체 작업 복구는 실제 AI Client 도입 시 구현. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: deleted_at 소프 삭제·30일 보관 후 삭제·비식별화, 재가입은 새 회원. 결제·원장 법정 보존은 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성하고 공유는 이후에 제공. |
@@ -260,7 +260,7 @@ ea330328은 GDE-06 제목 PATCH와 GDE-08 일정 PUT을 제거하고 GDE-09로 �
 | 알림 page | BR-NOT-06, NOT-01 | 4개씩 번호 이동하는 화면과 최대20개 저장에 맞춘다. 삽입/삭제 사이 페이지 중복·누락 가능성을 수용하고 새로 조회한다. |
 | 공통 커서 | GDE-01/CON-04/PAY-02 | 안정적인 복합 정렬 키로 삭제된 행 이후도 조회한다. 관심 장소는 id가 아닌 content_id를 사용한다. 서명은 권한 검사를 대체하지 않는다. |
 | 태그 제거 | DEC-01, GDE-01/05/11 | 저장 근거 없는 preference_tags를 없앤다. 현재 DB 취향으로 과거 생성 결과를 표시하는 오류를 피한다. |
-| 워커 선점/잠금 | BR-GDE-03/16, BR-PAY-04 | DB lease·시도 번호로 오래된 결과 반영을 막고 결과와 차감을 원자 처리한다. AI 계산 중복 방지에는 외부 멱등 계약도 필요하다. |
+| 생성 상태·완료 저장 | BR-GDE-03/16, BR-PAY-04 | 현재는 커밋 후 local 접수와 조회 시 상태 동기화를 사용하고, 결과·차감·원장·알림을 원자 처리한다. DB lease·자동 폴링·정체 작업 복구는 미구현이며 관련 컬럼만 예약되어 있다. |
 
 세부 수치·순서·실패 처리는 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)에 있다. 생성 지역은 AI 계약과 동일하게 `province`·`city`를 필수로 받고 행정구역 부모·자식 조합을 검증한다. 날짜 형식·진행 구조·HTML 부재·재시도 주체는 양 팀 합의 전 확정하지 않는다. 기반 개발과 실제 연동 완료를 구분한다.
 
