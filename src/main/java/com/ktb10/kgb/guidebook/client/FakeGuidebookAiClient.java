@@ -2,7 +2,6 @@ package com.ktb10.kgb.guidebook.client;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Coordinates;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookResult;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.ItineraryDay;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Place;
@@ -44,13 +43,6 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
                 createResult(job.request()));
     }
 
-    @Override
-    public AiGenerationAcceptedResponse retryGeneration(String aiJobId) {
-        FakeJob job = findJob(aiJobId);
-        job.statusChecks().set(0);
-        return new AiGenerationAcceptedResponse(aiJobId, AiGenerationStatus.PENDING);
-    }
-
     private FakeJob findJob(String aiJobId) {
         FakeJob job = jobs.get(aiJobId);
         if (job == null) {
@@ -65,7 +57,6 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
                 .map(date -> createDay(request, date))
                 .toList();
         return new GuidebookResult(
-                request.region().city(),
                 request.region().city() + " 여행 가이드북",
                 "로컬 개발을 위한 Fake AI 생성 결과입니다.",
                 itinerary);
@@ -74,19 +65,19 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
     private ItineraryDay createDay(AiGuidebookRequest request, LocalDate date) {
         int dayNumber = Math.toIntExact(
                 ChronoUnit.DAYS.between(request.startDate(), date) + 1);
+        if (request.contents().isEmpty()) {
+            throw new AiClientException("Fake AI 생성에 사용할 관광 콘텐츠가 없습니다.");
+        }
+        AiGuidebookRequest.Content content = request.contents().get(
+                (dayNumber - 1) % request.contents().size());
         Place place = new Place(
                 1,
                 LocalTime.of(9, 0),
-                "fake-content-" + dayNumber,
-                request.region().city() + " 테스트 장소",
-                "관광",
+                content.contentId(),
+                60,
                 "Fake AI가 생성한 테스트 장소입니다.",
                 "선택한 취향을 확인하기 위한 추천입니다.",
-                "로컬 환경에서만 사용하는 데이터입니다.",
-                60,
-                request.region().province() + " " + request.region().city(),
-                new Coordinates(35.0, 129.0),
-                null);
+                "로컬 환경에서만 사용하는 데이터입니다.");
         return new ItineraryDay(dayNumber, date, List.of(place));
     }
 

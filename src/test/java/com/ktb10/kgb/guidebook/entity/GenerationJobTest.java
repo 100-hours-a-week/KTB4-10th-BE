@@ -74,6 +74,39 @@ class GenerationJobTest {
         assertThat(job.getAiJobId()).isNull();
     }
 
+    @Test
+    void retriesFailedJobWithFreshAiState() {
+        GenerationJob job = initialJob();
+        job.registerAiJob("job_12345", NOW.plusMinutes(1));
+        job.markProcessing(NOW.plusMinutes(2));
+        job.fail("{\"code\":\"AI_TIMEOUT\"}", NOW.plusMinutes(3));
+
+        job.retry(NOW.plusMinutes(4));
+
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(job.getAttemptCount()).isEqualTo((short) 1);
+        assertThat(job.getAiJobId()).isNull();
+        assertThat(job.getErrorPayload()).isNull();
+        assertThat(job.getStartedAt()).isNull();
+        assertThat(job.getAttemptStartedAt()).isNull();
+        assertThat(job.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void allowsAtMostThreeRetries() {
+        GenerationJob job = initialJob();
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+            job.fail("{\"code\":\"AI_TIMEOUT\"}", NOW.plusMinutes(attempt * 2L + 1));
+            job.retry(NOW.plusMinutes(attempt * 2L + 2));
+        }
+        job.fail("{\"code\":\"AI_TIMEOUT\"}", NOW.plusMinutes(7));
+
+        assertThatThrownBy(() -> job.retry(NOW.plusMinutes(8)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("재시도 횟수");
+    }
+
     private static GenerationJob initialJob() {
         return GenerationJob.createInitial(
                 Member.register(

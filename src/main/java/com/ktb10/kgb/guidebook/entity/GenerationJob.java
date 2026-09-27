@@ -53,6 +53,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class GenerationJob {
 
+    private static final int MAX_RETRY_COUNT = 3;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -213,5 +215,23 @@ public class GenerationJob {
         errorPayload = failurePayload;
         completedAt = Objects.requireNonNull(failedAt);
         updatedAt = failedAt;
+    }
+
+    public void retry(LocalDateTime retriedAt) {
+        if (status != GenerationStatus.FAILED) {
+            throw new IllegalStateException("실패한 생성 작업만 다시 시도할 수 있습니다.");
+        }
+        if (attemptCount >= MAX_RETRY_COUNT) {
+            throw new IllegalStateException("가이드북 생성 재시도 횟수를 초과했습니다.");
+        }
+        attemptCount++;
+        status = GenerationStatus.PENDING;
+        aiJobId = null;
+        errorPayload = null;
+        startedAt = null;
+        attemptStartedAt = null;
+        nextAttemptAt = null;
+        completedAt = null;
+        updatedAt = Objects.requireNonNull(retriedAt);
     }
 }

@@ -1,7 +1,11 @@
 package com.ktb10.kgb.guidebook.client;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Content;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.ContentType;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Coordinates;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.EventPeriod;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -18,13 +22,17 @@ public class AiGuidebookContentQuery {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<Content> findAll(String province, String city) {
+    public List<Content> findAll(
+            String province,
+            String city,
+            LocalDate startDate,
+            LocalDate endDate) {
         return jdbcTemplate.query(
                 """
                 SELECT
                     content.source_content_id,
-                    content.source_content_type_id,
                     content.title,
+                    content.category,
                     content.classification_code_1,
                     content.classification_code_2,
                     content.classification_code_3,
@@ -44,28 +52,47 @@ public class AiGuidebookContentQuery {
                   AND district.name = ?
                   AND content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
+                  AND (
+                      content.category <> 'EV'
+                      OR (
+                          event.content_id IS NOT NULL
+                          AND event.start_date <= ?
+                          AND event.end_date >= ?
+                      )
+                  )
                 ORDER BY content.id
                 LIMIT ?
                 """,
                 (resultSet, rowNumber) -> new Content(
                         resultSet.getString("source_content_id"),
-                        resultSet.getString("source_content_type_id"),
+                        "EV".equals(resultSet.getString("category"))
+                                ? ContentType.EVENT
+                                : ContentType.PLACE,
                         resultSet.getString("title"),
+                        resultSet.getString("category"),
                         resultSet.getString("classification_code_1"),
                         resultSet.getString("classification_code_2"),
                         resultSet.getString("classification_code_3"),
                         resultSet.getString("address"),
-                        resultSet.getDouble("longitude"),
-                        resultSet.getDouble("latitude"),
+                        new Coordinates(
+                                resultSet.getDouble("latitude"),
+                                resultSet.getDouble("longitude")),
                         resultSet.getString("thumbnail_url"),
-                        toLocalDate(resultSet.getDate("start_date")),
-                        toLocalDate(resultSet.getDate("end_date"))),
+                        eventPeriod(
+                                resultSet.getDate("start_date"),
+                                resultSet.getDate("end_date"))),
                 province,
                 city,
+                endDate,
+                startDate,
                 MAX_CANDIDATE_CONTENTS);
     }
 
-    private static java.time.LocalDate toLocalDate(Date value) {
-        return value == null ? null : value.toLocalDate();
+    private static EventPeriod eventPeriod(Date startDate, Date endDate) {
+        if (startDate == null || endDate == null) {
+            return null;
+        }
+        return new EventPeriod(startDate.toLocalDate(), endDate.toLocalDate());
     }
+
 }

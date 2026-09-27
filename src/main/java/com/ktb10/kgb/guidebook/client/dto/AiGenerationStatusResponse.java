@@ -1,5 +1,6 @@
 package com.ktb10.kgb.guidebook.client.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
 import java.time.LocalDate;
@@ -33,7 +34,6 @@ public record AiGenerationStatusResponse(
     }
 
     public record GuidebookResult(
-            String region,
             String title,
             String summary,
             List<ItineraryDay> itinerary) {
@@ -45,6 +45,7 @@ public record AiGenerationStatusResponse(
 
     public record ItineraryDay(
             int day,
+            @JsonFormat(pattern = "yyyyMMdd")
             LocalDate date,
             List<Place> places) {
 
@@ -58,21 +59,12 @@ public record AiGenerationStatusResponse(
             LocalTime time,
             @JsonProperty("content_id")
             String contentId,
-            String name,
-            String category,
+            @JsonProperty("duration_minutes")
+            Integer durationMinutes,
             String description,
             @JsonProperty("recommend_reason")
             String recommendReason,
-            String tip,
-            @JsonProperty("duration_minutes")
-            Integer durationMinutes,
-            String address,
-            Coordinates coordinates,
-            @JsonProperty("image_url")
-            String imageUrl) {
-    }
-
-    public record Coordinates(double lat, double lng) {
+            String tip) {
     }
 
     public record GenerationError(String code, String message) {
