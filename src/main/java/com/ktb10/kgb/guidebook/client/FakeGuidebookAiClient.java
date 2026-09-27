@@ -59,6 +59,8 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
         return new GuidebookResult(
                 request.region().city() + " 여행 가이드북",
                 "로컬 개발을 위한 Fake AI 생성 결과입니다.",
+                "<article><h1>" + request.region().city()
+                        + " 여행 가이드북</h1></article>",
                 itinerary);
     }
 
