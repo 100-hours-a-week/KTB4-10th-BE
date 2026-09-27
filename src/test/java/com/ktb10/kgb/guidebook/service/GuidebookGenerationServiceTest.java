@@ -100,7 +100,8 @@ class GuidebookGenerationServiceTest {
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
-        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(member));
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> {
                     GenerationJob job = invocation.getArgument(0);
@@ -151,7 +152,8 @@ class GuidebookGenerationServiceTest {
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
-        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(member));
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
@@ -213,6 +215,8 @@ class GuidebookGenerationServiceTest {
     void rejectsRequestWhenAnotherGenerationIsActive() {
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
                 MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(member()));
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(true);
@@ -222,6 +226,22 @@ class GuidebookGenerationServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.errorCode())
                                 .isEqualTo(GuidebookErrorCode.GENERATION_IN_PROGRESS));
+    }
+
+    @Test
+    void rejectsGenerationWhenMemberWasWithdrawnBeforeMemberLock() {
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.createInitial(
+                MEMBER_ID, IDEMPOTENCY_KEY, validRequest()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(
+                                com.ktb10.kgb.common.error.CommonErrorCode
+                                        .AUTH_SESSION_REQUIRED));
+        verify(generationJobRepository, never()).save(any());
     }
 
     @Test
@@ -296,7 +316,8 @@ class GuidebookGenerationServiceTest {
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
-        given(memberRepository.getReferenceById(MEMBER_ID)).willReturn(member);
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(member));
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
