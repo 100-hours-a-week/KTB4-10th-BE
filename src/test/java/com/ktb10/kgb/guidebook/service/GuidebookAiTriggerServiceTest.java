@@ -16,6 +16,7 @@ import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
+import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -77,6 +78,7 @@ class GuidebookAiTriggerServiceTest {
         assertThat(requestCaptor.getValue().preferences().largeCategory())
                 .containsExactly("자연");
         assertThat(job.getAiJobId()).isEqualTo("ai-job-301");
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
     }
 
     @Test

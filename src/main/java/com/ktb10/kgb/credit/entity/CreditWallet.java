@@ -66,6 +66,18 @@ public class CreditWallet {
         return creditBalance;
     }
 
+    public int consume(int amount, LocalDateTime now) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("차감할 생성권은 1개 이상이어야 합니다.");
+        }
+        if (creditBalance < amount) {
+            throw new IllegalStateException("생성권 잔액이 부족합니다.");
+        }
+        creditBalance -= amount;
+        updatedAt = Objects.requireNonNull(now, "수정 시각은 null일 수 없습니다.");
+        return creditBalance;
+    }
+
     public Long getId() {
         return id;
     }
