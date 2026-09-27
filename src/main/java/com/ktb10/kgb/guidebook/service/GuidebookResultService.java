@@ -139,7 +139,7 @@ public class GuidebookResultService {
                 request.endDate(),
                 request.companion(),
                 request.peopleCount(),
-                result.summary(),
+                result.contentHtml(),
                 now));
 
         List<AiGenerationStatusResponse.ItineraryDay> days = result.itinerary().stream()

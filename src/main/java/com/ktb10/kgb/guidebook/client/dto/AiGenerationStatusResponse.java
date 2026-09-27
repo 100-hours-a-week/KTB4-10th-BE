@@ -36,6 +36,8 @@ public record AiGenerationStatusResponse(
     public record GuidebookResult(
             String title,
             String summary,
+            @JsonProperty("content_html")
+            String contentHtml,
             List<ItineraryDay> itinerary) {
 
         public GuidebookResult {
