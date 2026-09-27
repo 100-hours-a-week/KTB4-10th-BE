@@ -29,6 +29,7 @@ import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.Region;
+import com.ktb10.kgb.guidebook.event.GuidebookCompletedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.GuidebookRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
@@ -51,6 +52,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class GuidebookResultServiceTest {
@@ -79,6 +81,8 @@ class GuidebookResultServiceTest {
     private CreditWalletRepository creditWalletRepository;
     @Mock
     private CreditTransactionRepository creditTransactionRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
     private ObjectMapper objectMapper;
     private GuidebookResultService resultService;
 
@@ -96,6 +100,7 @@ class GuidebookResultServiceTest {
                 contentSnapshotQuery,
                 creditWalletRepository,
                 creditTransactionRepository,
+                eventPublisher,
                 objectMapper,
                 CLOCK);
     }
@@ -160,6 +165,7 @@ class GuidebookResultServiceTest {
         verify(itineraryItemRepository).save(any());
         verify(memberGuidebookRepository).save(any());
         verify(creditTransactionRepository).save(any(CreditTransaction.class));
+        verify(eventPublisher).publishEvent(any(GuidebookCompletedEvent.class));
     }
 
     @Test
@@ -172,6 +178,7 @@ class GuidebookResultServiceTest {
         resultService.apply(301L, AiGenerationStatusResponse.processing("ai-job-301"));
 
         verify(guidebookRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(GuidebookCompletedEvent.class));
     }
 
     @Test

@@ -26,6 +26,7 @@ import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.entity.Region;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
+import com.ktb10.kgb.guidebook.event.GuidebookCompletedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.GuidebookRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -59,6 +61,7 @@ public class GuidebookResultService {
     private final TourismContentSnapshotQuery contentSnapshotQuery;
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -73,6 +76,7 @@ public class GuidebookResultService {
             TourismContentSnapshotQuery contentSnapshotQuery,
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
+            ApplicationEventPublisher eventPublisher,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
@@ -85,6 +89,7 @@ public class GuidebookResultService {
         this.contentSnapshotQuery = contentSnapshotQuery;
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
+        this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -162,6 +167,10 @@ public class GuidebookResultService {
                 job.getMember(), guidebook, AcquisitionType.CREATED, now));
         consumeCredit(job, now);
         job.complete(guidebook.getId(), now);
+        eventPublisher.publishEvent(new GuidebookCompletedEvent(
+                job.getMember().getId(),
+                guidebook.getId(),
+                guidebook.getTitle()));
     }
 
     private Map<String, TourismContentSnapshot> loadSelectedContents(
