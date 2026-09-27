@@ -4,6 +4,7 @@ import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import jakarta.persistence.LockModeType;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -21,6 +22,13 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
     boolean existsByIdAndMemberId(Long id, Long memberId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select job from GenerationJob job where job.id = :jobId")
-    Optional<GenerationJob> findByIdForUpdate(@Param("jobId") Long jobId);
+    @Query("select job from GenerationJob job "
+            + "where job.member.id = :memberId and job.status in :statuses order by job.id")
+    List<GenerationJob> findAllByMemberIdAndStatusInForUpdate(
+            @Param("memberId") Long memberId,
+            @Param("statuses") Collection<GenerationStatus> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select job from GenerationJob job where job.id = :id")
+    Optional<GenerationJob> findByIdForUpdate(@Param("id") Long id);
 }

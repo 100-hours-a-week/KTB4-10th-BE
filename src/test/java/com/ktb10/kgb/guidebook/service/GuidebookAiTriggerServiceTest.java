@@ -68,7 +68,7 @@ class GuidebookAiTriggerServiceTest {
     @Test
     void requestsAiGenerationAndRegistersExternalJobId() throws Exception {
         GenerationJob job = pendingJob();
-        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
         given(guidebookAiClient.requestGeneration(org.mockito.ArgumentMatchers.any()))
                 .willReturn(new AiGenerationAcceptedResponse(
                         "ai-job-301",
@@ -90,7 +90,19 @@ class GuidebookAiTriggerServiceTest {
             throws Exception {
         GenerationJob job = pendingJob();
         job.registerAiJob("existing-ai-job", LocalDate.of(2026, 9, 26).atStartOfDay());
-        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        service.trigger(301L);
+
+        verify(guidebookAiClient, never())
+                .requestGeneration(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void doesNotRequestAiGenerationForCanceledJob() throws Exception {
+        GenerationJob job = pendingJob();
+        job.cancelForWithdrawal(LocalDate.of(2026, 9, 26).atStartOfDay());
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
 
         service.trigger(301L);
 

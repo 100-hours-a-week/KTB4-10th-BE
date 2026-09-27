@@ -90,7 +90,10 @@ public class GuidebookGenerationService {
 
         validateTravelCondition(request);
 
-        // TODO: #42 회원 행을 잠근 뒤 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
+        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+
+        // TODO: #42 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
         // TODO: #42 멱등 비교용 요청과 취향 스냅샷을 구분해 requestPayload에 저장한다.
         // TODO: #42 생성권 지갑을 잠근 뒤 잔액을 확인한다.
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
@@ -107,7 +110,6 @@ public class GuidebookGenerationService {
                 memberPreferences);
         String requestPayload = serialize(payload);
 
-        Member member = memberRepository.getReferenceById(memberId);
         LocalDateTime now = LocalDateTime.now(clock);
         GenerationJob job = GenerationJob.createInitial(
                 member,

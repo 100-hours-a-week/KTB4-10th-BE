@@ -98,6 +98,23 @@ public class CreditTransaction {
                 createdAt);
     }
 
+    public static CreditTransaction revoke(
+            CreditWallet wallet,
+            int amount,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("회수할 생성권은 1개 이상이어야 합니다.");
+        }
+        return new CreditTransaction(
+                wallet,
+                CreditTransactionType.REVOKE,
+                -amount,
+                0,
+                idempotencyKey,
+                createdAt);
+    }
+
     public static CreditTransaction consume(
             CreditWallet wallet,
             Long generationJobId,

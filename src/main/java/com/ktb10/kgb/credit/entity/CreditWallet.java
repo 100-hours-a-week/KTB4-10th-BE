@@ -66,6 +66,13 @@ public class CreditWallet {
         return creditBalance;
     }
 
+    public int revokeAll(LocalDateTime now) {
+        int revokedAmount = creditBalance;
+        creditBalance = 0;
+        updatedAt = Objects.requireNonNull(now, "수정 시각은 null일 수 없습니다.");
+        return revokedAmount;
+    }
+
     public int consume(int amount, LocalDateTime now) {
         if (amount <= 0) {
             throw new IllegalArgumentException("차감할 생성권은 1개 이상이어야 합니다.");

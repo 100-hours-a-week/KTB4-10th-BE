@@ -48,6 +48,32 @@ class GenerationJobTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void cancelsPendingJobForMemberWithdrawal() {
+        GenerationJob job = initialJob();
+        LocalDateTime canceledAt = NOW.plusMinutes(2);
+
+        boolean canceled = job.cancelForWithdrawal(canceledAt);
+
+        assertThat(canceled).isTrue();
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.CANCELED);
+        assertThat(job.getCancelRequestedAt()).isEqualTo(canceledAt);
+        assertThat(job.getCompletedAt()).isEqualTo(canceledAt);
+        assertThat(job.getLeaseVersion()).isOne();
+        assertThat(job.getUpdatedAt()).isEqualTo(canceledAt);
+    }
+
+    @Test
+    void canceledJobIgnoresLateAiRegistration() {
+        GenerationJob job = initialJob();
+        job.cancelForWithdrawal(NOW.plusMinutes(1));
+
+        job.registerAiJob("late_job", NOW.plusMinutes(2));
+
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.CANCELED);
+        assertThat(job.getAiJobId()).isNull();
+    }
+
     private static GenerationJob initialJob() {
         return GenerationJob.createInitial(
                 Member.register(

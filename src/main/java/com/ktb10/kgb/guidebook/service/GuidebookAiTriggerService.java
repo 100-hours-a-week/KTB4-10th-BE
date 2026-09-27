@@ -46,9 +46,9 @@ public class GuidebookAiTriggerService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void trigger(Long jobId) {
-        GenerationJob job = generationJobRepository.findById(jobId)
+        GenerationJob job = generationJobRepository.findByIdForUpdate(jobId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        if (job.getAiJobId() != null) {
+        if (!job.isPending() || job.getAiJobId() != null) {
             return;
         }
 
