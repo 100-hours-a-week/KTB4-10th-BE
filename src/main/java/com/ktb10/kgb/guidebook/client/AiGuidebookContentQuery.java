@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class AiGuidebookContentQuery {
 
+    static final int MAX_CANDIDATE_CONTENTS = 100;
+
     private final JdbcTemplate jdbcTemplate;
 
     public AiGuidebookContentQuery(JdbcTemplate jdbcTemplate) {
@@ -43,6 +45,7 @@ public class AiGuidebookContentQuery {
                   AND content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
                 ORDER BY content.id
+                LIMIT ?
                 """,
                 (resultSet, rowNumber) -> new Content(
                         resultSet.getString("source_content_id"),
@@ -58,7 +61,8 @@ public class AiGuidebookContentQuery {
                         toLocalDate(resultSet.getDate("start_date")),
                         toLocalDate(resultSet.getDate("end_date"))),
                 province,
-                city);
+                city,
+                MAX_CANDIDATE_CONTENTS);
     }
 
     private static java.time.LocalDate toLocalDate(Date value) {
