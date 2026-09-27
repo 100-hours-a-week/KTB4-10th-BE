@@ -39,16 +39,19 @@ class AiGuidebookContentQueryTest {
                 sqlCaptor.capture(), any(RowMapper.class), argumentsCaptor.capture());
         assertThat(result).isEmpty();
         assertThat(sqlCaptor.getValue()).contains(
-                "event.start_date <= ?",
-                "event.end_date >= ?",
+                "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
                 "ORDER BY content.id",
                 "LIMIT ?");
         assertThat(argumentsCaptor.getValue())
                 .containsExactly(
                         "충청북도",
                         "청주시",
-                        LocalDate.of(2026, 10, 14),
-                        LocalDate.of(2026, 10, 12),
+                        "NA",
+                        "HS",
+                        "VE",
+                        "EX",
+                        "LS",
+                        "EV",
                         100);
     }
 }

@@ -38,7 +38,6 @@ class AiClientContractTest {
                         ContentType.PLACE,
                         "첨성대",
                         "HS",
-                        "HS",
                         "HS01",
                         "HS010100",
                         "경상북도 경주시 인왕동",
@@ -47,6 +46,8 @@ class AiClientContractTest {
                         null)));
 
         JsonNode json = objectMapper.readTree(objectMapper.writeValueAsString(request));
+
+        assertThat(json.get("contents").get(0).has("category")).isFalse();
 
         assertThat(json.get("request_id").asText()).isEqualTo("301-0");
         assertThat(json.get("start_date").asText()).isEqualTo("26.10.12");

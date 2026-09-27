@@ -79,7 +79,6 @@ CREATE TABLE regions (
 
 CREATE TABLE tourism_contents (
     id BIGINT NOT NULL AUTO_INCREMENT,
-    category VARCHAR(30) NOT NULL,
     source_provider VARCHAR(30) NOT NULL,
     source_content_id VARCHAR(100) NOT NULL,
     source_content_type_id VARCHAR(20) NULL,
@@ -105,7 +104,7 @@ CREATE TABLE tourism_contents (
     PRIMARY KEY (id),
     CONSTRAINT uq_tourism_contents_source UNIQUE (source_provider, source_content_id),
     CONSTRAINT fk_tourism_contents_region FOREIGN KEY (region_id) REFERENCES regions (id),
-    INDEX ix_tourism_contents_region_category (region_id, category),
+    INDEX ix_tourism_contents_region_classification_1 (region_id, classification_code_1),
     INDEX ix_tourism_contents_source_region
         (source_provider, source_region_code, source_district_code),
     INDEX ix_tourism_contents_active_created (status, deleted_at, created_at DESC, id DESC),

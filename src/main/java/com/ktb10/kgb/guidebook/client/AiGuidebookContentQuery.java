@@ -15,6 +15,8 @@ import org.springframework.stereotype.Component;
 public class AiGuidebookContentQuery {
 
     static final int MAX_CANDIDATE_CONTENTS = 100;
+    private static final List<String> SUPPORTED_CLASSIFICATION_CODES =
+            List.of("NA", "HS", "VE", "EX", "LS", "EV");
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -32,7 +34,6 @@ public class AiGuidebookContentQuery {
                 SELECT
                     content.source_content_id,
                     content.title,
-                    content.category,
                     content.classification_code_1,
                     content.classification_code_2,
                     content.classification_code_3,
@@ -52,24 +53,16 @@ public class AiGuidebookContentQuery {
                   AND district.name = ?
                   AND content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
-                  AND (
-                      content.category <> 'EV'
-                      OR (
-                          event.content_id IS NOT NULL
-                          AND event.start_date <= ?
-                          AND event.end_date >= ?
-                      )
-                  )
+                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
                 ORDER BY content.id
                 LIMIT ?
                 """,
                 (resultSet, rowNumber) -> new Content(
                         resultSet.getString("source_content_id"),
-                        "EV".equals(resultSet.getString("category"))
+                        "EV".equals(resultSet.getString("classification_code_1"))
                                 ? ContentType.EVENT
                                 : ContentType.PLACE,
                         resultSet.getString("title"),
-                        resultSet.getString("category"),
                         resultSet.getString("classification_code_1"),
                         resultSet.getString("classification_code_2"),
                         resultSet.getString("classification_code_3"),
@@ -83,8 +76,12 @@ public class AiGuidebookContentQuery {
                                 resultSet.getDate("end_date"))),
                 province,
                 city,
-                endDate,
-                startDate,
+                SUPPORTED_CLASSIFICATION_CODES.get(0),
+                SUPPORTED_CLASSIFICATION_CODES.get(1),
+                SUPPORTED_CLASSIFICATION_CODES.get(2),
+                SUPPORTED_CLASSIFICATION_CODES.get(3),
+                SUPPORTED_CLASSIFICATION_CODES.get(4),
+                SUPPORTED_CLASSIFICATION_CODES.get(5),
                 MAX_CANDIDATE_CONTENTS);
     }
 

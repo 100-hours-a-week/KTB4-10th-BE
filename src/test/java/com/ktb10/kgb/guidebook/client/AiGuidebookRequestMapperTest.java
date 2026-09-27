@@ -42,7 +42,6 @@ class AiGuidebookRequestMapperTest {
                 ContentType.PLACE,
                 "불국사",
                 "HS",
-                "HS",
                 "HS01",
                 "HS010100",
                 "경상북도 경주시",

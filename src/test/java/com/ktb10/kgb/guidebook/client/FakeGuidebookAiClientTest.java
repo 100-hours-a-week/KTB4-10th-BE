@@ -62,7 +62,6 @@ class FakeGuidebookAiClientTest {
                         AiGuidebookRequest.ContentType.PLACE,
                         "첨성대",
                         "HS",
-                        "HS",
                         "HS01",
                         "HS010100",
                         "경상북도 경주시 인왕동",

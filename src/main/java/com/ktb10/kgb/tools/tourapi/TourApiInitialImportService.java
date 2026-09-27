@@ -313,7 +313,7 @@ public class TourApiInitialImportService {
         String sql =
                 """
                 INSERT INTO tourism_contents (
-                    category, source_provider, source_content_id,
+                    source_provider, source_content_id,
                     source_content_type_id, title, description, region_id,
                     source_region_code, source_district_code,
                     classification_code_1, classification_code_2,
@@ -321,12 +321,11 @@ public class TourApiInitialImportService {
                     homepage_url, thumbnail_url, source_created_at,
                     source_modified_at, status, deleted_at, created_at, updated_at
                 ) VALUES (
-                    ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?,
                     ST_SRID(POINT(?, ?), 4326), ?, NULL, ?, ?, ?,
                     'ACTIVE', NULL, NOW(6), NOW(6)
                 )
                 ON DUPLICATE KEY UPDATE
-                    category = VALUES(category),
                     source_content_type_id = VALUES(source_content_type_id),
                     title = VALUES(title),
                     region_id = VALUES(region_id),
@@ -498,7 +497,6 @@ public class TourApiInitialImportService {
     }
 
     private record ContentRow(
-            String category,
             String sourceContentId,
             String sourceContentTypeId,
             String title,
@@ -523,8 +521,8 @@ public class TourApiInitialImportService {
                 BigDecimal latitude) {
             String sourceContentId = text(source, "contentid");
             String title = text(source, "title");
-            String category = text(source, "lclsSystm1");
-            if (sourceContentId == null || title == null || category == null) {
+            String classificationCode1 = text(source, "lclsSystm1");
+            if (sourceContentId == null || title == null || classificationCode1 == null) {
                 return null;
             }
             String address = String.join(" ",
@@ -535,14 +533,13 @@ public class TourApiInitialImportService {
                 thumbnail = text(source, "firstimage2");
             }
             return new ContentRow(
-                    limit(category, 30),
                     limit(sourceContentId, 100),
                     limit(text(source, "contenttypeid"), 20),
                     limit(title, 200),
                     regionId,
                     limit(text(source, "lDongRegnCd"), 20),
                     limit(text(source, "lDongSignguCd"), 20),
-                    limit(text(source, "lclsSystm1"), 20),
+                    limit(classificationCode1, 20),
                     limit(text(source, "lclsSystm2"), 20),
                     limit(text(source, "lclsSystm3"), 20),
                     limit(StringUtils.hasText(address) ? address : null, 500),
@@ -555,24 +552,23 @@ public class TourApiInitialImportService {
         }
 
         private void setValues(PreparedStatement statement) throws SQLException {
-            statement.setString(1, category);
-            statement.setString(2, SOURCE_PROVIDER);
-            statement.setString(3, sourceContentId);
-            statement.setString(4, sourceContentTypeId);
-            statement.setString(5, title);
-            statement.setLong(6, regionId);
-            statement.setString(7, sourceRegionCode);
-            statement.setString(8, sourceDistrictCode);
-            statement.setString(9, classificationCode1);
-            statement.setString(10, classificationCode2);
-            statement.setString(11, classificationCode3);
-            statement.setString(12, address);
-            statement.setBigDecimal(13, longitude);
-            statement.setBigDecimal(14, latitude);
-            statement.setString(15, phone);
-            statement.setString(16, thumbnailUrl);
-            statement.setTimestamp(17, timestamp(sourceCreatedAt));
-            statement.setTimestamp(18, timestamp(sourceModifiedAt));
+            statement.setString(1, SOURCE_PROVIDER);
+            statement.setString(2, sourceContentId);
+            statement.setString(3, sourceContentTypeId);
+            statement.setString(4, title);
+            statement.setLong(5, regionId);
+            statement.setString(6, sourceRegionCode);
+            statement.setString(7, sourceDistrictCode);
+            statement.setString(8, classificationCode1);
+            statement.setString(9, classificationCode2);
+            statement.setString(10, classificationCode3);
+            statement.setString(11, address);
+            statement.setBigDecimal(12, longitude);
+            statement.setBigDecimal(13, latitude);
+            statement.setString(14, phone);
+            statement.setString(15, thumbnailUrl);
+            statement.setTimestamp(16, timestamp(sourceCreatedAt));
+            statement.setTimestamp(17, timestamp(sourceModifiedAt));
         }
 
         private static Timestamp timestamp(LocalDateTime value) {

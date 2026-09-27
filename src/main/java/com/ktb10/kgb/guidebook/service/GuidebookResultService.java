@@ -285,7 +285,7 @@ public class GuidebookResultService {
             return new PlaceSnapshot(
                     content.contentId(),
                     content.name(),
-                    content.category(),
+                    content.classificationCode1(),
                     place.description(),
                     place.recommendReason(),
                     place.tip(),
