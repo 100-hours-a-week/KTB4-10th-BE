@@ -69,7 +69,6 @@ public class NotificationService {
             String body,
             NotificationReferenceType referenceType,
             String referenceId) {
-        // TODO: #74 가이드북 완료·일정 임박 사건의 원본 트랜잭션 커밋 후 호출을 연결한다.
         Member recipient = memberRepository.findActiveByIdForUpdate(recipientMemberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         notificationRepository.saveAndFlush(Notification.create(
