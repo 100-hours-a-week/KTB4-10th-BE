@@ -734,6 +734,7 @@ Body 없음.
 - ACTIVE·미삭제 콘텐츠만 `id` 오름차순으로 조회하며 최대 `limit+1`건으로 `has_more`를 계산
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
 - 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
+- `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
 - 서버는 `items[]/has_more`만 반환한다. 마커 렌더링과 클러스터링·`9+` 표시는 카카오맵 SDK `MarkerClusterer`가 담당한다.
 - V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
 
@@ -755,7 +756,8 @@ Body 없음.
       "latitude": 35.7898,
       "longitude": 129.3321,
       "thumbnail_url": null,
-      "event_period": null
+      "event_period": null,
+      "is_favorite": true
     }],
     "has_more": false
   }
@@ -777,7 +779,7 @@ Body 없음.
 | GET | `/members/me/favorites` | 세션 쿠키 필수 |
 
 - Query cursor, size: 공통 커서 규칙
-- 최신 등록 순; 응답 content와 favorited_at
+- 최신 등록 순(`favorited_at DESC`, 동률은 관심 관계 ID DESC); 응답은 지도 핀과 같은 장소·행사 정보 및 favorited_at
 - 비활성·삭제된 콘텐츠는 관심 장소 목록에서 숨김
 
 **Request Body**
@@ -790,7 +792,7 @@ Body 없음.
 {
   "message": "favorite_list_success",
   "data": {
-    "items": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null,"favorited_at":"2026-09-04T00:00:00Z"}],
+    "items": [{"content_id":"101","title":"불국사","content_type":"PLACE","address":"경상북도 경주시","latitude":35.7898,"longitude":129.3321,"thumbnail_url":null,"event_period":null,"favorited_at":"2026-09-04T00:00:00Z"}],
     "next_cursor": null,
     "has_more": false
   }

@@ -1,10 +1,12 @@
 package com.ktb10.kgb.content.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.time.LocalDate;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
+import java.time.OffsetDateTime;
 
-/** 지도에 표시할 관광 콘텐츠 한 건입니다. */
-public record MapContentItemResponse(
+/** 회원이 저장한 관심 장소 한 건입니다. */
+public record FavoriteContentItemResponse(
         @JsonProperty("content_id")
         String contentId,
         String title,
@@ -17,18 +19,6 @@ public record MapContentItemResponse(
         String thumbnailUrl,
         @JsonProperty("event_period")
         EventPeriod eventPeriod,
-        @JsonProperty("is_favorite")
-        boolean favorite) {
-
-    public enum ContentType {
-        PLACE,
-        EVENT
-    }
-
-    public record EventPeriod(
-            @JsonProperty("start_date")
-            LocalDate startDate,
-            @JsonProperty("end_date")
-            LocalDate endDate) {
-    }
+        @JsonProperty("favorited_at")
+        OffsetDateTime favoritedAt) {
 }
