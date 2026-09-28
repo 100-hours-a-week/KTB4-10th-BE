@@ -255,6 +255,22 @@ class GuidebookGenerationServiceTest {
     }
 
     @Test
+    void rejectsGenerationWhenMemberIsNotActive() {
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, IDEMPOTENCY_KEY)).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(onboardingMember()));
+
+        assertThatThrownBy(() -> service.createInitial(
+                MEMBER_ID, IDEMPOTENCY_KEY, validRequest()))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(
+                                com.ktb10.kgb.common.error.CommonErrorCode
+                                        .AUTH_SESSION_REQUIRED));
+        verify(generationJobRepository, never()).save(any());
+    }
+
+    @Test
     void rejectsRequestWhenCreditBalanceIsInsufficient() {
         Member member = member();
         given(generationJobRepository.findByMemberIdAndIdempotencyKey(
@@ -392,6 +408,12 @@ class GuidebookGenerationServiceTest {
     }
 
     private Member member() {
+        Member member = onboardingMember();
+        member.activate(LocalDate.of(2026, 9, 19).atStartOfDay());
+        return member;
+    }
+
+    private Member onboardingMember() {
         return Member.register(
                 OauthProvider.KAKAO,
                 "guidebook-service-member",
