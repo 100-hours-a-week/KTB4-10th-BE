@@ -23,6 +23,7 @@ import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
+import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
@@ -97,8 +98,10 @@ public class GuidebookGenerationService {
 
         Member member = memberRepository.findActiveByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        if (member.getStatus() != MemberStatus.ACTIVE) {
+            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
+        }
 
-        // TODO: #42 ACTIVE 상태를 재검증하고 현재 취향을 조회한다.
         // TODO: #42 멱등 비교용 요청과 취향 스냅샷을 구분해 requestPayload에 저장한다.
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
