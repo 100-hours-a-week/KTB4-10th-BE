@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** 저장된 생성 입력을 AI 서버에 접수하고 외부 작업 ID를 연결합니다. */
 @Service
-@Profile("local")
+@Profile({"local", "prod"})
 public class GuidebookAiTriggerService {
 
     private final GenerationJobRepository generationJobRepository;
