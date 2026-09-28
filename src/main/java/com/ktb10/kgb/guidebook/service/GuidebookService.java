@@ -42,7 +42,6 @@ public class GuidebookService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final ItineraryItemRepository itineraryItemRepository;
     private final ObjectMapper objectMapper;
-    private final GuidebookHtmlSanitizer htmlSanitizer;
     private final Clock clock;
 
     public GuidebookService(
@@ -50,13 +49,11 @@ public class GuidebookService {
             ItineraryDayRepository itineraryDayRepository,
             ItineraryItemRepository itineraryItemRepository,
             ObjectMapper objectMapper,
-            GuidebookHtmlSanitizer htmlSanitizer,
             Clock clock) {
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.itineraryDayRepository = itineraryDayRepository;
         this.itineraryItemRepository = itineraryItemRepository;
         this.objectMapper = objectMapper;
-        this.htmlSanitizer = htmlSanitizer;
         this.clock = clock;
     }
 
@@ -123,11 +120,7 @@ public class GuidebookService {
         if (contentHtml == null || contentHtml.isBlank()) {
             throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_NOT_READY);
         }
-        String sanitizedHtml = htmlSanitizer.sanitize(contentHtml);
-        if (sanitizedHtml.isBlank()) {
-            throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_NOT_READY);
-        }
-        return GuidebookViewerResponse.from(guidebook, sanitizedHtml);
+        return GuidebookViewerResponse.from(guidebook, contentHtml);
     }
 
     @Transactional

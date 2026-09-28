@@ -1,7 +1,6 @@
 package com.ktb10.kgb.guidebook.controller;
 
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -183,7 +182,7 @@ class GuidebookDetailApiTest {
     }
 
     @Test
-    void returnsSanitizedHtmlForActivelyStoredGuidebook() throws Exception {
+    void returnsCompleteHtmlDocumentForActivelyStoredGuidebook() throws Exception {
         Guidebook guidebook = saveGuidebook("""
                 <article class="guide" onclick="alert('x')">
                   <h1>경주 여행</h1>
@@ -204,27 +203,14 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.data.updated_at").value("2026-09-21T03:00:00Z"))
                 .andExpect(jsonPath("$.data.content_html", containsString("경주 여행")))
                 .andExpect(jsonPath("$.data.content_html", containsString("class=\"guide\"")))
-                .andExpect(jsonPath("$.data.content_html", not(containsString("<script"))))
-                .andExpect(jsonPath("$.data.content_html", not(containsString("onclick"))))
-                .andExpect(jsonPath("$.data.content_html", not(containsString("javascript:"))));
+                .andExpect(jsonPath("$.data.content_html", containsString("<script")))
+                .andExpect(jsonPath("$.data.content_html", containsString("onclick")))
+                .andExpect(jsonPath("$.data.content_html", containsString("javascript:")));
     }
 
     @Test
     void returnsConflictWhenViewerHtmlIsNotReady() throws Exception {
         Guidebook guidebook = saveGuidebook("   ");
-        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
-                member, guidebook, AcquisitionType.CREATED, NOW));
-        entityManager.clear();
-
-        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
-                        .cookie(sessionCookie))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("GUIDEBOOK_NOT_READY"));
-    }
-
-    @Test
-    void returnsConflictWhenViewerHtmlContainsOnlyUnsafeElements() throws Exception {
-        Guidebook guidebook = saveGuidebook("<script>alert('x')</script>");
         memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
                 member, guidebook, AcquisitionType.CREATED, NOW));
         entityManager.clear();
