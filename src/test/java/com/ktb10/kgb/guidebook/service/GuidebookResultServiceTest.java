@@ -229,15 +229,16 @@ class GuidebookResultServiceTest {
                 LocalTime.of(9, 0),
                 "content-1",
                 60,
-                "설명",
-                "추천 이유",
-                "팁");
+                "추천 이유");
         return new GuidebookResult(
                 "경주 여행",
                 "경주 여행 요약",
                 "<article><h1>경주 여행</h1></article>",
                 List.of(new ItineraryDay(
-                        1, LocalDate.of(2026, 10, 1), List.of(place))));
+                        1,
+                        LocalDate.of(2026, 10, 1),
+                        "첫날 일정 요약",
+                        List.of(place))));
     }
 
     private AiGuidebookRequest.Content candidate() {
