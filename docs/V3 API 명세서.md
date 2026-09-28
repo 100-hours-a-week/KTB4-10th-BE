@@ -897,7 +897,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 `classification_code_1`이 `NA`, `HS`, `VE`, `EX`, `LS`, `EV`인 항목을 `content.id` 오름차순 최대 100개까지 조립한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local` 프로필에서는 Fake AI Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·완료 알림·작업 완료를 한 트랜잭션으로 저장한다. 실제 AI HTTP Client, 백그라운드 폴링, 네트워크 실패·정체 작업 복구는 아직 구현하지 않았다.
+> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 `classification_code_1`이 `NA`, `HS`, `VE`, `EX`, `LS`, `EV`인 항목을 `content.id` 오름차순 최대 100개까지 조립한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local` 프로필에서는 Fake AI Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 실제 AI HTTP Client, 백그라운드 폴링, 네트워크 실패·정체 작업 복구는 아직 구현하지 않았다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -956,7 +956,7 @@ Body 없음.
 
 ### API-GDE-03 생성 상태 조회
 
-> 구현 상태: `local` 프로필에서 종료되지 않은 작업을 조회하면 Fake AI 상태를 한 번 동기화한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·완료 알림·작업 완료를 한 트랜잭션으로 반영한다. 실패 작업의 수동 재시도 API도 구현되어 있다. 실제 AI 연동과 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
+> 구현 상태: `local` 프로필에서 종료되지 않은 작업을 조회하면 Fake AI 상태를 한 번 동기화한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. 실패 작업의 수동 재시도 API도 구현되어 있다. 실제 AI 연동과 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -965,7 +965,7 @@ Body 없음.
 - Path job_id: 필수 양의 정수
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
-- 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. 300초 타임아웃·자동 폴링·늦은 완료 차단은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
+- 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
 - error: FAILED이면 {code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다."}, 그 외 상태는 null. 내부 AI error_payload는 반환하지 않는다.
 
 **Request Body**
