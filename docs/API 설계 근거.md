@@ -57,7 +57,7 @@
 | API-CON-01 | FR-CON-01~03; BR-CON-01~06/10~13 | 번호 페이지를 위한 GET이다. 지역 코드를 regions에 매핑하며 ACTIVE이고 deleted_at이 없는 콘텐츠만 검색한다. 검색어 유무와 관계없이 수집·DB 등록 최신순(`created_at DESC, id DESC`)으로 정렬한다. |
 | API-CON-02 | FR-CON-01; BR-CON-10~12 | 단일 category와 공통 정보·행사 상세·이미지를 조합한다. DB POINT는 위도/경도 응답으로 변환하고 해시는 내부 중복 제거용이다. |
 | API-CON-03 | FR-CON-04~05; BR-CON-07/14; NFR-PERF-02 | V1은 현재 위치를 수집하지 않고 카카오 판교 아지트에서 시작한다. 프론트가 현재 화면 bounds를 보내면 MySQL POINT 공간 인덱스로 ACTIVE·미삭제 콘텐츠를 상한보다 한 건 더 조회해 `has_more`를 계산한다. 로그인 회원의 관심 관계를 LEFT JOIN해 `is_favorite`을 함께 반환한다. 서버 클러스터 모델은 만들지 않고 카카오맵 SDK `MarkerClusterer`가 표시를 담당한다. |
-| API-CON-04 | FR-CON-05; BR-CON-07/12 | member_id로 소유 관계를 조회한다. 대리키 id와 복합 UNIQUE를 사용해도 외부 식별은 content_id로 충분하다. |
+| API-CON-04 | FR-CON-05; BR-CON-07/12 | 정보 탭과 별도 관심 장소 목록 화면을 V1에서 제외했으므로 구현하지 않는다. 지도 핀의 관심 여부는 API-CON-03에서 제공한다. |
 | API-CON-05 | FR-CON-05; BR-CON-07 | 클라이언트가 회원·콘텐츠 관계의 URI를 알고 있어 PUT으로 관계 존재를 보장한다. 현재 PK는 id이고 중복 차단은 UNIQUE(member_id,content_id)다. |
 | API-CON-06 | FR-CON-05; BR-CON-07 | 자기 회원·콘텐츠 관계만 제거하므로 대리키를 별도로 받지 않는다. |
 
