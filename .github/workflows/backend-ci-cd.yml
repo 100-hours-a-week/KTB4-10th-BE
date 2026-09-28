@@ -164,7 +164,7 @@ jobs:
               \"GHCR_OWNER=${GHCR_OWNER} IMAGE_TAG=${IMAGE_TAG} docker compose pull backend\",
               \"GHCR_OWNER=${GHCR_OWNER} IMAGE_TAG=${IMAGE_TAG} docker compose up -d backend\",
               \"docker compose ps backend\",
-              \"for i in {1..12}; do if curl -fsS http://localhost:8080/actuator/health; then exit 0; fi; sleep 5; done; exit 1\"
+              \"for i in \$(seq 1 12); do if curl -fsS http://localhost:8080/actuator/health; then exit 0; fi; sleep 5; done; exit 1\"
             ]" \
             --query "Command.CommandId" \
             --output text)
