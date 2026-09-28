@@ -64,7 +64,7 @@
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query latitude,longitude,radius_m 또는 south,west,north,east; zoom,limit. category 미지원 |
+| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom,limit. 반경·category·서버 clusters 미지원 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | Query cursor,size |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -727,15 +727,15 @@ Body 없음.
 |---|---|---|
 | GET | `/map/contents` | 세션 쿠키 필수 |
 
-- Query (latitude,longitude,radius_m) 또는 (south,west,north,east) 중 정확히 하나의 조합
-- 좌표 Number: 위도 -90~90, 경도 (-180,180]. radius_m 1~10,000; 최초 진입 기본 반경 3,000m
+- Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
+- 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이고 대각선 거리가 20km 이하여야 함
-- zoom: Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100; category 선택
-- category는 TourAPI 원본 분류를 V1 취향 코드표의 THEME·DETAIL 안정 코드에 매핑한다. TRAVEL_STYLE은 관광 category에 포함하지 않는다.
-- 응답 markers[]/clusters[]/has_more; 좌표는 도, 거리 m
-- 클러스터 표시는 실제 개수 1~9, 10 이상은 `9+`; 클러스터링 시작 기본 줌은 13~14
-- 서버가 요청 범위와 zoom을 기준으로 클러스터링한다. `clusters[]`는 cluster_id, latitude, longitude, count, display_count를 반환하며 markers와 clusters 합계가 limit을 초과하면 has_more=true
-- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회한다. 동일 지역 AI 후보 또는 낮은 줌·고정 타일의 클러스터 계산이 실제 병목으로 확인되면 V2에서 해당 파생 결과만 Redis에 캐싱하며, 캐시 미스·장애 시 MySQL 조회로 복구한다.
+- zoom: 필수 Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100
+- ACTIVE·미삭제 콘텐츠만 `id` 오름차순으로 조회하며 최대 `limit+1`건으로 `has_more`를 계산
+- `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
+- 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
+- 서버는 `items[]/has_more`만 반환한다. 마커 렌더링과 클러스터링·`9+` 표시는 카카오맵 SDK `MarkerClusterer`가 담당한다.
+- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
 
 **Request Body**
 
@@ -747,8 +747,16 @@ Body 없음.
 {
   "message": "map_content_success",
   "data": {
-    "markers": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
-    "clusters": [{"cluster_id":"cl_example","latitude":35.7890,"longitude":129.3300,"count":12,"display_count":"9+"}],
+    "items": [{
+      "content_id": "101",
+      "title": "불국사",
+      "content_type": "PLACE",
+      "address": "경상북도 경주시 불국로 385",
+      "latitude": 35.7898,
+      "longitude": 129.3321,
+      "thumbnail_url": null,
+      "event_period": null
+    }],
     "has_more": false
   }
 }
@@ -760,7 +768,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** API-DEC-05 확정: Figma MAP-01 기준 기본 반경 3km, 줌 6~21(최초 16~17), 클러스터 숫자 10 이상 `9+`. 백엔드 상한은 반경 10km, 마커·클러스터 합계 200개이며 서버가 클러스터를 집계한다. 관광 콘텐츠 6개 분류의 정확한 코드와 TourAPI 매핑은 샘플 검증 후 확정한다.
+**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds를 전달하며 백엔드는 대각선 20km·기본 100·최대 200 제한으로 핀 원본만 반환한다. 클러스터링과 `9+` 표시는 프론트의 카카오맵 SDK가 담당한다.
 
 ### API-CON-04 관심 장소 목록
 
@@ -889,7 +897,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청·현재 취향 스냅샷 저장과 커밋 후 AI 접수 이벤트, AI 요청 변환 및 외부 `job_id` 저장을 구현했다. AI 요청에는 `province`·`city`의 활성 관광 콘텐츠와 행사 기간을 `content.id` 오름차순 최대 100개까지 조립한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지하며, 상태 조회에서 `PROCESSING`을 받으면 내부 상태와 시작 시각을 갱신한다. `local` 프로필에서는 Fake AI Client를 사용하며, 완료 결과·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장한다. 실제 AI HTTP Client, 접수 시점 생성권 검증, 동시성 보강과 실패 복구를 마치기 전에는 운영에 공개하지 않는다.
+> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 `classification_code_1`이 `NA`, `HS`, `VE`, `EX`, `LS`, `EV`인 항목을 `content.id` 오름차순 최대 100개까지 조립한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -944,11 +952,11 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-09 확정: 개별 시도 300초, 재시도 3회(`attempt_count=0~3`, 최초 포함 최대 4회). API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현.
+**현재 구현:** 실패한 자신의 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도는 복구 작업과 함께 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
 
 ### API-GDE-03 생성 상태 조회
 
-> 구현 상태: `local` 프로필에서 종료되지 않은 작업을 조회하면 Fake AI 상태를 한 번 동기화한다. `COMPLETED`는 가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 실제 AI 연동과 주기적 백그라운드 폴링은 후속 구현이다.
+> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -957,7 +965,7 @@ Body 없음.
 - Path job_id: 필수 양의 정수
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
-- 개별 시도는 300초 타임아웃. 탈퇴·대상 가이드북 삭제로 취소된 작업의 늦은 완료 결과는 무시
+- 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
 - error: FAILED이면 {code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다."}, 그 외 상태는 null. 내부 AI error_payload는 반환하지 않는다.
 
 **Request Body**
@@ -1948,7 +1956,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
 | DEC-07 | GDE-12 | 확정: 가이드북을 복제하지 않고 `member_guidebooks` 관계를 생성하며 삭제된 관계는 복구. |
 | DEC-08 | NOT-01 | 확정: 초기 4개 노출, 회원별 미읽음 최대 20개 보관. 새 알림이 추가될 때 20개를 초과하면 가장 오래된 행부터 삭제. |
-| DEC-09 | GDE-02/03/09 | 확정: 개별 시도 300초 타임아웃, 재시도 최대 3회. `attempt_count=0~3`은 재시도 횟수이므로 최초 포함 최대 4회 실행. 탈퇴·대상 삭제 시 작업 취소 요청 및 늦은 결과 무시. |
+| DEC-09 | GDE-02/03/09 | 현재 구현: FAILED 작업의 명시적 재시도 최대 3회(`attempt_count=0~3`). 300초 타임아웃·자동 재시도·정체 작업 복구와 늦은 결과 차단은 실제 AI Client 도입 시 구현. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성. 공유는 재생성 흐름 종료 후 제공. |
@@ -1956,7 +1964,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |
-| API-DEC-05 | CON-01/03 | 확정: 검색은 title 부분 일치 후 DB 등록 최신순. 지도 기본 반경 3km, 최대 10km, 줌 6~21, 응답 기본 100·최대 200, 서버 클러스터링, 10개 이상 `9+`. |
+| API-DEC-05 | CON-01/03 | 확정: 지도 최초 중심은 카카오 판교 아지트, 줌 6~21(최초 16~17). bounds 대각선 최대 20km, 응답 기본 100·최대 200. 서버는 핀 원본만 반환하고 카카오맵 SDK가 클러스터링과 `9+` 표시를 담당. |
 | API-DEC-06 | CON-04 | 확정: 비활성·삭제된 관심 장소는 목록에서 숨김. |
 | API-DEC-08 | GDE-13 | 부분 확정: MVP는 기존 설계대로 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정. |
 | API-DEC-09 | RNK-03/06 | 확정: 기존 최종 평가는 덮어쓰고 null은 삭제. 유효 content_id를 최초 등장 순으로 중복 제거하고 미매핑 항목은 제외. 제출 완료 후 모든 재요청은 409. |

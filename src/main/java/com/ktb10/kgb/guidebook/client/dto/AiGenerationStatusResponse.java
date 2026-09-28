@@ -36,6 +36,8 @@ public record AiGenerationStatusResponse(
     public record GuidebookResult(
             String title,
             String summary,
+            @JsonProperty("content_html")
+            String contentHtml,
             List<ItineraryDay> itinerary) {
 
         public GuidebookResult {
@@ -47,6 +49,8 @@ public record AiGenerationStatusResponse(
             int day,
             @JsonFormat(pattern = "yy.MM.dd")
             LocalDate date,
+            @JsonProperty("day_summary")
+            String daySummary,
             List<Place> places) {
 
         public ItineraryDay {
@@ -61,10 +65,8 @@ public record AiGenerationStatusResponse(
             String contentId,
             @JsonProperty("duration_minutes")
             Integer durationMinutes,
-            String description,
             @JsonProperty("recommend_reason")
-            String recommendReason,
-            String tip) {
+            String recommendReason) {
     }
 
     public record GenerationError(String code, String message) {
