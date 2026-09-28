@@ -99,14 +99,13 @@ class AiClientContractTest {
                       "itinerary": [{
                         "day": 1,
                         "date": "26.10.12",
+                        "day_summary": "첫날 일정 요약",
                         "places": [{
                           "order": 1,
                           "time": "09:00",
                           "content_id": "126508",
                           "duration_minutes": 60,
-                          "description": "장소 설명",
-                          "recommend_reason": "추천 이유",
-                          "tip": "방문 팁"
+                          "recommend_reason": "추천 이유"
                         }]
                       }]
                     },
@@ -122,6 +121,9 @@ class AiClientContractTest {
         assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
         assertThat(response.result().contentHtml())
                 .isEqualTo("<article><h1>경주 역사 여행</h1></article>");
+        assertThat(response.result().summary()).isEqualTo("여행 요약");
+        assertThat(response.result().itinerary().get(0).daySummary())
+                .isEqualTo("첫날 일정 요약");
         assertThat(response.result().itinerary().get(0).date())
                 .isEqualTo(LocalDate.of(2026, 10, 12));
     }

@@ -77,10 +77,12 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
                 LocalTime.of(9, 0),
                 content.contentId(),
                 60,
-                "Fake AI가 생성한 테스트 장소입니다.",
-                "선택한 취향을 확인하기 위한 추천입니다.",
-                "로컬 환경에서만 사용하는 데이터입니다.");
-        return new ItineraryDay(dayNumber, date, List.of(place));
+                "선택한 취향을 확인하기 위한 추천입니다.");
+        return new ItineraryDay(
+                dayNumber,
+                date,
+                "로컬 개발을 위한 " + dayNumber + "일차 요약입니다.",
+                List.of(place));
     }
 
     private record FakeJob(
