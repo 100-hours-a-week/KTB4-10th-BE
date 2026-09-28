@@ -8,12 +8,14 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListItemResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListResponse;
+import com.ktb10.kgb.guidebook.dto.response.GuidebookViewerResponse;
 import com.ktb10.kgb.guidebook.dto.response.ItineraryDayResponse;
 import com.ktb10.kgb.guidebook.dto.response.ItineraryItemResponse;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryDay;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
+import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
@@ -40,6 +42,7 @@ public class GuidebookService {
     private final ItineraryDayRepository itineraryDayRepository;
     private final ItineraryItemRepository itineraryItemRepository;
     private final ObjectMapper objectMapper;
+    private final GuidebookHtmlSanitizer htmlSanitizer;
     private final Clock clock;
 
     public GuidebookService(
@@ -47,11 +50,13 @@ public class GuidebookService {
             ItineraryDayRepository itineraryDayRepository,
             ItineraryItemRepository itineraryItemRepository,
             ObjectMapper objectMapper,
+            GuidebookHtmlSanitizer htmlSanitizer,
             Clock clock) {
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.itineraryDayRepository = itineraryDayRepository;
         this.itineraryItemRepository = itineraryItemRepository;
         this.objectMapper = objectMapper;
+        this.htmlSanitizer = htmlSanitizer;
         this.clock = clock;
     }
 
@@ -106,6 +111,23 @@ public class GuidebookService {
                         day, itemsByDayId.getOrDefault(day.getId(), List.of())))
                 .toList();
         return GuidebookDetailResponse.from(guidebook, itinerary);
+    }
+
+    @Transactional(readOnly = true)
+    public GuidebookViewerResponse getGuidebookViewer(Long memberId, Long guidebookId) {
+        Guidebook guidebook = memberGuidebookRepository
+                .findActiveWithGuidebook(memberId, guidebookId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
+                .getGuidebook();
+        String contentHtml = guidebook.getContentHtml();
+        if (contentHtml == null || contentHtml.isBlank()) {
+            throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_NOT_READY);
+        }
+        String sanitizedHtml = htmlSanitizer.sanitize(contentHtml);
+        if (sanitizedHtml.isBlank()) {
+            throw new BusinessException(GuidebookErrorCode.GUIDEBOOK_NOT_READY);
+        }
+        return GuidebookViewerResponse.from(guidebook, sanitizedHtml);
     }
 
     @Transactional

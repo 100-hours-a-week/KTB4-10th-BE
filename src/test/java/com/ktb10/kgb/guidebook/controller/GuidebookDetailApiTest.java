@@ -1,5 +1,7 @@
 package com.ktb10.kgb.guidebook.controller;
 
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -180,6 +182,104 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
     }
 
+    @Test
+    void returnsSanitizedHtmlForActivelyStoredGuidebook() throws Exception {
+        Guidebook guidebook = saveGuidebook("""
+                <article class="guide" onclick="alert('x')">
+                  <h1>경주 여행</h1>
+                  <script>alert('x')</script>
+                  <a href="javascript:alert('x')">위험한 링크</a>
+                </article>
+                """);
+        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
+                member, guidebook, AcquisitionType.CREATED, NOW));
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("viewer_get_success"))
+                .andExpect(jsonPath("$.data.guidebook_id").value(guidebook.getId()))
+                .andExpect(jsonPath("$.data.version").value(1))
+                .andExpect(jsonPath("$.data.updated_at").value("2026-09-21T03:00:00Z"))
+                .andExpect(jsonPath("$.data.content_html", containsString("경주 여행")))
+                .andExpect(jsonPath("$.data.content_html", containsString("class=\"guide\"")))
+                .andExpect(jsonPath("$.data.content_html", not(containsString("<script"))))
+                .andExpect(jsonPath("$.data.content_html", not(containsString("onclick"))))
+                .andExpect(jsonPath("$.data.content_html", not(containsString("javascript:"))));
+    }
+
+    @Test
+    void returnsConflictWhenViewerHtmlIsNotReady() throws Exception {
+        Guidebook guidebook = saveGuidebook("   ");
+        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
+                member, guidebook, AcquisitionType.CREATED, NOW));
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("GUIDEBOOK_NOT_READY"));
+    }
+
+    @Test
+    void returnsConflictWhenViewerHtmlContainsOnlyUnsafeElements() throws Exception {
+        Guidebook guidebook = saveGuidebook("<script>alert('x')</script>");
+        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
+                member, guidebook, AcquisitionType.CREATED, NOW));
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("GUIDEBOOK_NOT_READY"));
+    }
+
+    @Test
+    void returnsNotFoundForAnotherMembersViewer() throws Exception {
+        Member otherMember = saveActiveMember("viewer-other-member");
+        Guidebook guidebook = saveGuidebook();
+        memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
+                otherMember, guidebook, AcquisitionType.CREATED, NOW));
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void returnsNotFoundWhenViewerStorageRelationshipIsSoftDeleted() throws Exception {
+        Guidebook guidebook = saveGuidebook();
+        MemberGuidebook relationship = MemberGuidebook.create(
+                member, guidebook, AcquisitionType.CREATED, NOW);
+        ReflectionTestUtils.setField(relationship, "deletedAt", NOW.plusHours(1));
+        memberGuidebookRepository.saveAndFlush(relationship);
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebook.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"));
+    }
+
+    @Test
+    void viewerRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/v1/guidebooks/1/viewer"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1", "abc", "9223372036854775808"})
+    void rejectsInvalidViewerGuidebookId(String guidebookId) throws Exception {
+        mockMvc.perform(get("/api/v1/guidebooks/{guidebookId}/viewer", guidebookId)
+                        .cookie(sessionCookie))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+    }
+
     private Member saveActiveMember(String oauthSubject) {
         Member savedMember = Member.register(
                 OauthProvider.KAKAO, oauthSubject, "여행자", null, null, NOW);
@@ -196,6 +296,10 @@ class GuidebookDetailApiTest {
     }
 
     private Guidebook saveGuidebook() {
+        return saveGuidebook("<article>여행 안내</article>");
+    }
+
+    private Guidebook saveGuidebook(String contentHtml) {
         return guidebookRepository.saveAndFlush(Guidebook.create(
                 "경주 여행",
                 47L,
@@ -203,7 +307,7 @@ class GuidebookDetailApiTest {
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,
                 2,
-                "<article>여행 안내</article>",
+                contentHtml,
                 NOW));
     }
 }

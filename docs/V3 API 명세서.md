@@ -1270,6 +1270,8 @@ PDF 바이너리 (JSON 아님)
 
 ### API-GDE-15 HTML 뷰어 데이터
 
+> 구현 상태: 활성 보관 관계를 확인한 뒤 `content_html`, `version`, `updated_at`을 반환한다. 본문이 준비되지 않았으면 `409 GUIDEBOOK_NOT_READY`, 활성 보관 관계가 없으면 `404 RESOURCE_NOT_FOUND`를 반환하며, 응답 전 실행 가능한 태그·이벤트 속성·위험 URL을 제거한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/guidebooks/{guidebook_id}/viewer` | 세션 쿠키 필수 |

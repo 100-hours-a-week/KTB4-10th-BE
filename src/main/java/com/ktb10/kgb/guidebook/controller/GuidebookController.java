@@ -4,6 +4,7 @@ import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListResponse;
+import com.ktb10.kgb.guidebook.dto.response.GuidebookViewerResponse;
 import com.ktb10.kgb.guidebook.service.GuidebookService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -26,6 +27,7 @@ public class GuidebookController {
 
     private static final String DETAIL_SUCCESS_MESSAGE = "guidebook_get_success";
     private static final String LIST_SUCCESS_MESSAGE = "guidebook_list_success";
+    private static final String VIEWER_SUCCESS_MESSAGE = "viewer_get_success";
 
     private final GuidebookService guidebookService;
 
@@ -52,6 +54,15 @@ public class GuidebookController {
         GuidebookDetailResponse response = guidebookService.getGuidebookDetail(
                 member.memberId(), guidebookId);
         return ResponseEntity.ok(ApiResponse.success(DETAIL_SUCCESS_MESSAGE, response));
+    }
+
+    @GetMapping("/{guidebookId}/viewer")
+    public ResponseEntity<ApiResponse<GuidebookViewerResponse>> getGuidebookViewer(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable @Positive Long guidebookId) {
+        GuidebookViewerResponse response = guidebookService.getGuidebookViewer(
+                member.memberId(), guidebookId);
+        return ResponseEntity.ok(ApiResponse.success(VIEWER_SUCCESS_MESSAGE, response));
     }
 
     @DeleteMapping("/{guidebookId}")
