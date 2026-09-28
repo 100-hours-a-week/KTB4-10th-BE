@@ -8,7 +8,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 /** 생성 작업 저장이 커밋된 뒤 AI 서버 접수를 시작합니다. */
 @Component
-@Profile("local")
+@Profile({"local", "prod"})
 public class GuidebookGenerationEventListener {
 
     private final GuidebookAiTriggerService guidebookAiTriggerService;
