@@ -1270,13 +1270,15 @@ PDF 바이너리 (JSON 아님)
 
 ### API-GDE-15 HTML 뷰어 데이터
 
+> 구현 상태: 활성 보관 관계를 확인한 뒤 AI가 생성한 완성형 HTML 문서인 `content_html` 원문과 `version`, `updated_at`을 JSON으로 반환한다. 본문이 준비되지 않았으면 `409 GUIDEBOOK_NOT_READY`, 활성 보관 관계가 없으면 `404 RESOURCE_NOT_FOUND`를 반환한다. 백엔드는 CSS·JavaScript를 제거하지 않으며 프론트는 일반 DOM에 직접 삽입하지 않고 격리된 iframe에서 렌더링한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/guidebooks/{guidebook_id}/viewer` | 세션 쿠키 필수 |
 
 - 응답 content_html: String|null; version: Integer; updated_at: ISO8601
 - Content-Type: application/json
-- 스크립트·이벤트 핸들러 제거 후 격리 렌더링
+- 백엔드는 완성형 HTML 원문을 반환하고 프론트는 sandbox iframe으로 격리 렌더링
 
 **Request Body**
 

@@ -17,6 +17,9 @@ public enum GuidebookErrorCode implements ErrorCode {
     RETRY_LIMIT_EXCEEDED(
             HttpStatus.CONFLICT,
             "가이드북 생성 재시도 횟수를 초과했습니다."),
+    GUIDEBOOK_NOT_READY(
+            HttpStatus.CONFLICT,
+            "가이드북 본문이 아직 준비되지 않았습니다."),
     CREDIT_INSUFFICIENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "가이드북 생성권이 부족합니다."),
