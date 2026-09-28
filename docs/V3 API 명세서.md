@@ -65,7 +65,7 @@
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom,limit. 반경·category·서버 clusters 미지원 |
-| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | Query cursor,size |
+| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 예 | Query cursor,size |
@@ -734,6 +734,7 @@ Body 없음.
 - ACTIVE·미삭제 콘텐츠만 `id` 오름차순으로 조회하며 최대 `limit+1`건으로 `has_more`를 계산
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
 - 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
+- `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
 - 서버는 `items[]/has_more`만 반환한다. 마커 렌더링과 클러스터링·`9+` 표시는 카카오맵 SDK `MarkerClusterer`가 담당한다.
 - V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
 
@@ -755,7 +756,8 @@ Body 없음.
       "latitude": 35.7898,
       "longitude": 129.3321,
       "thumbnail_url": null,
-      "event_period": null
+      "event_period": null,
+      "is_favorite": true
     }],
     "has_more": false
   }
@@ -772,37 +774,7 @@ Body 없음.
 
 ### API-CON-04 관심 장소 목록
 
-| Method | URL | 인증 |
-|---|---|---|
-| GET | `/members/me/favorites` | 세션 쿠키 필수 |
-
-- Query cursor, size: 공통 커서 규칙
-- 최신 등록 순; 응답 content와 favorited_at
-- 비활성·삭제된 콘텐츠는 관심 장소 목록에서 숨김
-
-**Request Body**
-
-없음.
-
-**응답 200**
-
-```json
-{
-  "message": "favorite_list_success",
-  "data": {
-    "items": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null,"favorited_at":"2026-09-04T00:00:00Z"}],
-    "next_cursor": null,
-    "has_more": false
-  }
-}
-```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-**구현 전 확인:** API-DEC-06 확정: 비활성·삭제 관심 장소는 목록에서 숨김.
+V1에서는 정보 탭과 별도 관심 장소 목록 화면을 제외하므로 구현하지 않는다. 관심 장소는 지도 핀에서 등록·해제하고 `API-CON-03`의 `is_favorite`으로 표시한다.
 
 ### API-CON-05 관심 장소 등록
 
