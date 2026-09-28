@@ -25,8 +25,8 @@ public class TourismContentSnapshotQuery {
                             content.title,
                             content.classification_code_1,
                             content.address,
-                            ST_X(content.location) AS longitude,
-                            ST_Y(content.location) AS latitude,
+                            ST_Longitude(content.location) AS longitude,
+                            ST_Latitude(content.location) AS latitude,
                             content.thumbnail_url,
                             event.start_date,
                             event.end_date

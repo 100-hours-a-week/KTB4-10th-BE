@@ -139,7 +139,7 @@ public class GuidebookResultService {
                 request.endDate(),
                 request.companion(),
                 request.peopleCount(),
-                result.summary(),
+                result.contentHtml(),
                 now));
 
         List<AiGenerationStatusResponse.ItineraryDay> days = result.itinerary().stream()
@@ -263,10 +263,8 @@ public class GuidebookResultService {
             String contentId,
             String name,
             String category,
-            String description,
             @com.fasterxml.jackson.annotation.JsonProperty("recommend_reason")
             String recommendReason,
-            String tip,
             @com.fasterxml.jackson.annotation.JsonProperty("duration_minutes")
             Integer durationMinutes,
             String address,
@@ -286,9 +284,7 @@ public class GuidebookResultService {
                     content.contentId(),
                     content.name(),
                     content.classificationCode1(),
-                    place.description(),
                     place.recommendReason(),
-                    place.tip(),
                     place.durationMinutes(),
                     content.address(),
                     new Coordinates(content.latitude(), content.longitude()),
