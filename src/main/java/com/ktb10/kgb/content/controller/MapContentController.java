@@ -1,11 +1,13 @@
 package com.ktb10.kgb.content.controller;
 
 import com.ktb10.kgb.common.response.ApiResponse;
+import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.content.dto.MapContentResponse;
 import com.ktb10.kgb.content.service.MapContentService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -28,6 +30,7 @@ public class MapContentController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<MapContentResponse>> getContents(
+            @AuthenticationPrincipal AuthenticatedMember member,
             @RequestParam double south,
             @RequestParam double west,
             @RequestParam double north,
@@ -35,8 +38,7 @@ public class MapContentController {
             @RequestParam @Min(6) @Max(21) int zoom,
             @RequestParam(defaultValue = "100") @Min(1) @Max(200) int limit) {
         MapContentResponse response = mapContentService.getContents(
-                south, west, north, east, limit);
+                member.memberId(), south, west, north, east, limit);
         return ResponseEntity.ok(ApiResponse.success(SUCCESS_MESSAGE, response));
     }
 }
-

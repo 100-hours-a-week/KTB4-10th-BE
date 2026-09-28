@@ -6,10 +6,13 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
+import com.ktb10.kgb.common.security.AuthenticatedMember;
+import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.time.LocalDate;
 import java.util.List;
@@ -19,6 +22,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:map-content-test;MODE=MySQL;DB_CLOSE_DELAY=-1",
@@ -28,7 +32,7 @@ import org.springframework.test.web.servlet.MockMvc;
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc
 class MapContentApiTest {
 
     @Autowired
@@ -40,6 +44,7 @@ class MapContentApiTest {
     @Test
     void returnsPlacesAndEventsWithinBounds() throws Exception {
         when(mapContentQuery.findWithinBounds(
+                org.mockito.ArgumentMatchers.anyLong(),
                 anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyInt()))
                 .thenReturn(List.of(
                         new MapContentItemResponse(
@@ -50,7 +55,8 @@ class MapContentApiTest {
                                 35.8347,
                                 129.219,
                                 null,
-                                null),
+                                null,
+                                true),
                         new MapContentItemResponse(
                                 "event-1",
                                 "가을 축제",
@@ -61,9 +67,11 @@ class MapContentApiTest {
                                 "https://example.com/event.jpg",
                                 new EventPeriod(
                                         LocalDate.of(2026, 10, 1),
-                                        LocalDate.of(2026, 10, 3)))));
+                                        LocalDate.of(2026, 10, 3)),
+                                false)));
 
         mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
                         .param("south", "35.80")
                         .param("west", "129.18")
                         .param("north", "35.90")
@@ -74,6 +82,7 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.items.length()").value(2))
                 .andExpect(jsonPath("$.data.items[0].content_id").value("126508"))
                 .andExpect(jsonPath("$.data.items[0].content_type").value("PLACE"))
+                .andExpect(jsonPath("$.data.items[0].is_favorite").value(true))
                 .andExpect(jsonPath("$.data.items[0].event_period").doesNotExist())
                 .andExpect(jsonPath("$.data.items[1].content_type").value("EVENT"))
                 .andExpect(jsonPath("$.data.items[1].event_period.start_date")
@@ -85,6 +94,7 @@ class MapContentApiTest {
     @Test
     void rejectsMissingBoundsParameter() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
                         .param("west", "127.05")
                         .param("north", "37.45")
@@ -96,6 +106,7 @@ class MapContentApiTest {
     @Test
     void rejectsInvalidZoomAndLimit() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
                         .param("west", "127.05")
                         .param("north", "37.45")
@@ -109,6 +120,7 @@ class MapContentApiTest {
     @Test
     void rejectsTooLargeBounds() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
                         .param("south", "37.0")
                         .param("west", "127.0")
                         .param("north", "37.3")
@@ -119,5 +131,11 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.error.details[0].field").value("bounds"))
                 .andExpect(jsonPath("$.error.details[0].reason").value("area_too_large"));
     }
-}
 
+    private UsernamePasswordAuthenticationToken authenticatedMember() {
+        return UsernamePasswordAuthenticationToken.authenticated(
+                new AuthenticatedMember(1L, MemberStatus.ACTIVE, 10L),
+                null,
+                List.of());
+    }
+}

@@ -19,6 +19,7 @@ public class MapContentQuery {
     }
 
     public List<MapContentItemResponse> findWithinBounds(
+            Long memberId,
             double south,
             double west,
             double north,
@@ -35,9 +36,13 @@ public class MapContentQuery {
                     ST_Longitude(content.location) AS longitude,
                     content.thumbnail_url,
                     event.start_date,
-                    event.end_date
+                    event.end_date,
+                    favorite.id IS NOT NULL AS is_favorite
                 FROM tourism_contents content
                 LEFT JOIN event_details event ON event.content_id = content.id
+                LEFT JOIN favorite_contents favorite
+                  ON favorite.content_id = content.id
+                 AND favorite.member_id = ?
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
                   AND MBRContains(
@@ -68,7 +73,9 @@ public class MapContentQuery {
                         resultSet.getString("thumbnail_url"),
                         eventPeriod(
                                 resultSet.getDate("start_date"),
-                                resultSet.getDate("end_date"))),
+                                resultSet.getDate("end_date")),
+                        resultSet.getBoolean("is_favorite")),
+                memberId,
                 west, south,
                 east, south,
                 east, north,
@@ -84,4 +91,3 @@ public class MapContentQuery {
         return new EventPeriod(startDate.toLocalDate(), endDate.toLocalDate());
     }
 }
-

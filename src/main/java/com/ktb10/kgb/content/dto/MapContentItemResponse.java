@@ -16,7 +16,9 @@ public record MapContentItemResponse(
         @JsonProperty("thumbnail_url")
         String thumbnailUrl,
         @JsonProperty("event_period")
-        EventPeriod eventPeriod) {
+        EventPeriod eventPeriod,
+        @JsonProperty("is_favorite")
+        boolean favorite) {
 
     public enum ContentType {
         PLACE,
@@ -30,4 +32,3 @@ public record MapContentItemResponse(
             LocalDate endDate) {
     }
 }
-

@@ -25,6 +25,7 @@ public class MapContentService {
 
     @Transactional(readOnly = true)
     public MapContentResponse getContents(
+            Long memberId,
             double south,
             double west,
             double north,
@@ -33,7 +34,7 @@ public class MapContentService {
         validateBounds(south, west, north, east);
 
         List<MapContentItemResponse> candidates = mapContentQuery.findWithinBounds(
-                south, west, north, east, limit + 1);
+                memberId, south, west, north, east, limit + 1);
         boolean hasMore = candidates.size() > limit;
         List<MapContentItemResponse> items = hasMore
                 ? candidates.subList(0, limit)
@@ -92,4 +93,3 @@ public class MapContentService {
                 List.of(new ErrorDetail(field, reason)));
     }
 }
-
