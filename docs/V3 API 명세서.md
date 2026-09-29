@@ -93,6 +93,7 @@
 | API-PAY-05 | 주문 조회 | GET | `/orders/{merchant_order_id}` | 아니오 | V2 |
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
+| API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
 | API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` | 예 | Query/Body 없음; 인프라 내부 |
 | API-OPS-02 | Prometheus 메트릭 수집 | GET | `/actuator/prometheus` | 예 | Query/Body 없음; 인프라 내부 |
 
@@ -1646,6 +1647,34 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
+### API-PAY-09 쿠폰 등록
+
+| Method | URL | 인증 |
+|---|---|---|
+| POST | `/credits/coupons/redeem` | 세션 쿠키·CSRF 필수 |
+
+서버 환경변수에 설정된 관리자용 쿠폰을 등록한다. 번호는 앞뒤 공백을 제거하고 대소문자를 구분하지 않는다. 쿠폰 원문은 응답과 원장에 포함하지 않으며 관리자가 필요할 때 반복해 사용할 수 있다.
+
+**Request Body**
+
+```json
+{ "coupon_code": "EVENT-2026" }
+```
+
+**응답 200**
+
+```json
+{
+  "message": "credit_coupon_redeem_success",
+  "data": { "granted_credits": 2, "credit_balance": 5 }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 422 | COUPON_INVALID | 설정된 번호와 일치하지 않음 |
+| 503 | COUPON_UNAVAILABLE | 쿠폰 또는 지급 수량이 서버에 올바르게 설정되지 않음 |
+
 ### API-PAY-02 생성권 원장 조회
 
 | Method | URL | 인증 |
@@ -1653,7 +1682,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | GET | `/credits/transactions` | 세션 쿠키 필수 |
 
 - Query cursor,size: 공통 규칙
-- type 선택 FREE_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
+- type 선택 FREE_GRANT|COUPON_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
 - credit_delta: Integer; credit_balance_after: Integer≥0
 - order_id: ID|null; generation_job_id: Long|null
 
