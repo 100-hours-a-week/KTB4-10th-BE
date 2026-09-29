@@ -46,7 +46,7 @@
 
 | API ID | 기능 | Method | URL | V1 제공 | V1 허용 입력 |
 |---|---|---|---|---|---|
-| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음 |
+| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음; 카카오 인가 요청에 `prompt=login` 적용 |
 | API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
 | API-MEM-16 | CSRF 토큰 계약 조회 | GET | `/auth/csrf` | 예 | Query/Body 없음; 공개 |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 예 | Body 없음 |
@@ -117,6 +117,8 @@
 ## 3. 회원
 
 ### API-MEM-01 소셜 로그인 시작
+
+- V1은 카카오 인가 URL에 `prompt=login`을 포함한다. 브라우저의 카카오 로그인 세션이 남아 있어도 계정 인증 화면을 다시 표시하기 위한 서비스 보안 정책이며, 카카오 계정 전체 로그아웃을 의미하지 않는다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -224,6 +226,8 @@
 
 ### API-MEM-03 로그아웃
 
+- 현재 서비스 세션과 쿠키만 폐기하며 카카오 계정 로그인 세션과 카카오 앱 연결은 유지한다. 다음 로그인 시작 요청은 `prompt=login`으로 계정 인증 화면을 다시 표시한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/auth/logout` | 세션 쿠키 필수 |
@@ -306,7 +310,9 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-11/API-DEC-02 확정: 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
+**외부 연결 해제:** 저장된 카카오 사용자 ID와 서버의 `KAKAO_ADMIN_KEY`로 카카오 연결 해제 API를 호출한다. 성공한 경우에만 로컬 소프트 삭제·세션 폐기·생성권 회수·작업 취소를 커밋한다. 카카오 장애·오류 응답은 502 `UPSTREAM_SERVICE_ERROR`, 어드민 키 누락은 503 `SERVICE_UNAVAILABLE`이며 로컬 탈퇴 상태는 변경하지 않는다.
+
+**구현 전 확인:** DEC-11/API-DEC-02 확정: 카카오 연결 해제, 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
 
 ### API-MEM-07 취향 옵션 조회
 
