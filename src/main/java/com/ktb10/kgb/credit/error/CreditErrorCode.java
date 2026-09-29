@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 
 /** 생성권 지갑과 관리자 쿠폰 처리 오류를 제공합니다. */
 public enum CreditErrorCode implements ErrorCode {
+    WALLET_NOT_FOUND(HttpStatus.NOT_FOUND, "생성권 지갑을 찾을 수 없습니다."),
     COUPON_INVALID(HttpStatus.UNPROCESSABLE_ENTITY, "유효하지 않은 쿠폰입니다."),
     COUPON_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "쿠폰 등록이 잠시 중단되었습니다.");
 
