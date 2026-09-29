@@ -37,6 +37,16 @@ SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 - Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
 - MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
 
+## 관측성
+
+- Prometheus 수집 엔드포인트: `GET http://<backend-host>:8080/actuator/prometheus`
+- 제공 범위: CPU·메모리, JVM Heap·GC·Thread, HTTP 요청 수·지연·상태, HikariCP Active·Idle·Pending·Max
+- 메트릭에는 `application=kgb` 공통 태그가 포함됩니다.
+- `/actuator/prometheus`는 Prometheus scraper가 서비스 세션 없이 접근하며, 운영에서는 보안 그룹이나 프록시로 접근 범위를 제한합니다.
+- 백엔드는 메트릭 엔드포인트까지만 제공합니다. Prometheus 서버, Grafana, 수집 주기와 경보 임계값은 인프라에서 구성합니다.
+- 별도 로그 파일은 생성하지 않습니다. 애플리케이션 로그는 콘솔로 출력되어 Docker stdout/stderr에서 수집합니다.
+- 예기치 않은 예외와 5xx 업무 예외는 trace ID, HTTP method·URI, 오류 코드, 예외·root cause 타입과 stack trace를 남깁니다. 요청 본문과 인증 비밀값은 기록하지 않습니다.
+
 ## 브라우저 CSRF·CORS 전제
 
 - 운영은 브라우저가 `https://kguidebook.site`에 접속하고 CloudFront가 같은 호스트의

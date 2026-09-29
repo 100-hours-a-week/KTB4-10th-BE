@@ -94,6 +94,7 @@
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
 | API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` | 예 | Query/Body 없음; 인프라 내부 |
+| API-OPS-02 | Prometheus 메트릭 수집 | GET | `/actuator/prometheus` | 예 | Query/Body 없음; 인프라 내부 |
 
 ### 2.1 운영 헬스체크
 
@@ -113,6 +114,19 @@
 ```
 
 **구현 기준:** Spring Boot Actuator health를 사용한다. 인프라의 검사 주기·timeout·실패 기준은 배포 환경에서 설정하며, 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다. 가능하면 로드밸런서·배포 인프라에서만 접근하도록 제한한다.
+
+### API-OPS-02 Prometheus 메트릭 수집
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/actuator/prometheus` | Prometheus scraper용 공개 경로. 서비스 세션 인증 없음 |
+
+- 애플리케이션 포트 `8080`에서 Prometheus text format을 반환한다.
+- CPU·메모리, JVM Heap·GC·Thread, `http.server.requests`, HikariCP Active·Idle·Pending·Max 메트릭을 포함한다.
+- Actuator 기본 태그 외에 `application=kgb` 공통 태그를 부여한다.
+- 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다.
+- 백엔드는 수집 엔드포인트만 제공하며 Prometheus 서버·Grafana·경보 설정은 인프라 범위다.
+- 애플리케이션 인증을 요구하지 않는 대신 운영에서는 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
 
 ## 3. 회원
 
