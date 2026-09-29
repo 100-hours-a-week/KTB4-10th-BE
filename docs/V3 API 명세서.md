@@ -64,7 +64,7 @@
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom,limit. 반경·category·서버 clusters 미지원 |
+| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 서버 clusters, 상세 줌은 개별 콘텐츠 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -750,13 +750,15 @@ Body 없음.
 
 - Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
 - 좌표 Number: 위도 -90~90, 경도 -180~180
-- bounds 조합은 south<north, west<east이고 대각선 거리가 20km 이하여야 함
-- zoom: 필수 Integer 6~21, 최초 진입 16~17; limit: Integer 1~200, 기본 100
-- ACTIVE·미삭제 콘텐츠만 `id` 오름차순으로 조회하며 최대 `limit+1`건으로 `has_more`를 계산
+- bounds 조합은 south<north, west<east이어야 함
+- zoom: 필수 Integer. FE가 카카오맵 레벨을 변환한 값으로 전달
+- zoom 14 이하는 `CLUSTER`, 15 이상은 `CONTENT` 모드로 응답
+- `CLUSTER` 모드는 줌에 따라 격자별 개수를 집계하고, 콘텐츠가 많은 클러스터 순으로 격자당 대표 1건을 최대 20건 반환
+- `CONTENT` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 반환
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
 - 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
 - `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
-- 서버는 `items[]/has_more`만 반환한다. 마커 렌더링과 클러스터링·`9+` 표시는 카카오맵 SDK `MarkerClusterer`가 담당한다.
+- `CLUSTER` 모드에서는 `clusters[]`로 전체 분포를, `items[]`로 바텀시트 대표 콘텐츠를 제공한다. `CONTENT` 모드는 `clusters[]`가 빈 배열이다.
 - V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
 
 **Request Body**
@@ -769,6 +771,8 @@ Body 없음.
 {
   "message": "map_content_success",
   "data": {
+    "mode": "CONTENT",
+    "clusters": [],
     "items": [{
       "content_id": "101",
       "title": "불국사",
@@ -778,7 +782,8 @@ Body 없음.
       "longitude": 129.3321,
       "thumbnail_url": null,
       "event_period": null,
-      "is_favorite": true
+      "is_favorite": true,
+      "is_in_guidebook": false
     }],
     "has_more": false
   }
