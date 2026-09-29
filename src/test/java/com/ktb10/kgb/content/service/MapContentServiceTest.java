@@ -9,7 +9,10 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
+import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
+import com.ktb10.kgb.content.dto.MapContentResponse.Mode;
+import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,8 +44,10 @@ class MapContentServiceTest {
                 .thenReturn(List.of(first, second, third));
 
         MapContentResponse response = mapContentService.getContents(
-                1L, 37.35, 127.05, 37.45, 127.15);
+                1L, 37.35, 127.05, 37.45, 127.15, 16);
 
+        assertThat(response.mode()).isEqualTo(Mode.CONTENT);
+        assertThat(response.clusters()).isEmpty();
         assertThat(response.items()).containsExactly(first, second, third);
         assertThat(response.hasMore()).isFalse();
         verify(mapContentQuery).findWithinBounds(
@@ -52,17 +57,17 @@ class MapContentServiceTest {
     @Test
     void rejectsReversedBounds() {
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.45, 127.05, 37.35, 127.15));
+                1L, 37.45, 127.05, 37.35, 127.15, 16));
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.35, 127.15, 37.45, 127.05));
+                1L, 37.35, 127.15, 37.45, 127.05, 16));
     }
 
     @Test
     void rejectsOutOfRangeAndNonFiniteCoordinates() {
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, -91.0, 127.05, 37.45, 127.15));
+                1L, -91.0, 127.05, 37.45, 127.15, 16));
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.35, Double.NaN, 37.45, 127.15));
+                1L, 37.35, Double.NaN, 37.45, 127.15, 16));
     }
 
     @Test
@@ -72,10 +77,37 @@ class MapContentServiceTest {
                 .thenReturn(List.of());
 
         MapContentResponse response = mapContentService.getContents(
-                1L, 33.0, 124.0, 39.0, 132.0);
+                1L, 33.0, 124.0, 39.0, 132.0, 16);
 
         assertThat(response.items()).isEmpty();
         assertThat(response.hasMore()).isFalse();
+    }
+
+    @Test
+    void returnsClustersAndAtMostTwentyRepresentativesForWideZoom() {
+        List<MapClusterQueryResult> results = java.util.stream.IntStream.rangeClosed(1, 21)
+                .mapToObj(index -> new MapClusterQueryResult(
+                        new MapClusterResponse(
+                                "cluster-" + index,
+                                37.0 + index / 100.0,
+                                127.0,
+                                100 - index),
+                        content(String.valueOf(index))))
+                .toList();
+        when(mapContentQuery.findClustersWithinBounds(
+                1L, 33.0, 124.0, 39.0, 132.0, 0.05))
+                .thenReturn(results);
+
+        MapContentResponse response = mapContentService.getContents(
+                1L, 33.0, 124.0, 39.0, 132.0, 14);
+
+        assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
+        assertThat(response.clusters()).hasSize(21);
+        assertThat(response.items()).hasSize(20);
+        assertThat(response.items().getFirst().contentId()).isEqualTo("1");
+        assertThat(response.hasMore()).isFalse();
+        verify(mapContentQuery).findClustersWithinBounds(
+                1L, 33.0, 124.0, 39.0, 132.0, 0.05);
     }
 
     private void assertValidationFailure(Runnable action) {

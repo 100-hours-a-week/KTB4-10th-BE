@@ -5,6 +5,7 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.error.ErrorDetail;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
+import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -13,6 +14,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** 클라이언트가 요청한 지도 범위를 검증하고 해당 영역의 콘텐츠를 조회합니다. */
 @Service
 public class MapContentService {
+
+    private static final int CLUSTER_MAX_ZOOM = 14;
+    private static final int REPRESENTATIVE_LIMIT = 20;
 
     private final MapContentQuery mapContentQuery;
 
@@ -26,12 +30,37 @@ public class MapContentService {
             double south,
             double west,
             double north,
-            double east) {
+            double east,
+            int zoom) {
         validateBounds(south, west, north, east);
+
+        if (zoom <= CLUSTER_MAX_ZOOM) {
+            List<MapClusterQueryResult> results = mapContentQuery.findClustersWithinBounds(
+                    memberId, south, west, north, east, gridSize(zoom));
+            return MapContentResponse.cluster(
+                    results.stream().map(MapClusterQueryResult::cluster).toList(),
+                    results.stream()
+                            .limit(REPRESENTATIVE_LIMIT)
+                            .map(MapClusterQueryResult::representative)
+                            .toList());
+        }
 
         List<MapContentItemResponse> items = mapContentQuery.findWithinBounds(
                 memberId, south, west, north, east);
-        return new MapContentResponse(items, false);
+        return MapContentResponse.content(items);
+    }
+
+    private double gridSize(int zoom) {
+        if (zoom <= 8) {
+            return 1.0;
+        }
+        if (zoom <= 10) {
+            return 0.5;
+        }
+        if (zoom <= 12) {
+            return 0.2;
+        }
+        return 0.05;
     }
 
     private void validateBounds(double south, double west, double north, double east) {
