@@ -10,12 +10,9 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 지도 범위 검증과 콘텐츠 조회 상한을 관리합니다. */
+/** 클라이언트가 요청한 지도 범위를 검증하고 해당 영역의 콘텐츠를 조회합니다. */
 @Service
 public class MapContentService {
-
-    static final double MAX_DIAGONAL_KILOMETERS = 20.0;
-    private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
     private final MapContentQuery mapContentQuery;
 
@@ -29,17 +26,12 @@ public class MapContentService {
             double south,
             double west,
             double north,
-            double east,
-            int limit) {
+            double east) {
         validateBounds(south, west, north, east);
 
-        List<MapContentItemResponse> candidates = mapContentQuery.findWithinBounds(
-                memberId, south, west, north, east, limit + 1);
-        boolean hasMore = candidates.size() > limit;
-        List<MapContentItemResponse> items = hasMore
-                ? candidates.subList(0, limit)
-                : candidates;
-        return new MapContentResponse(items, hasMore);
+        List<MapContentItemResponse> items = mapContentQuery.findWithinBounds(
+                memberId, south, west, north, east);
+        return new MapContentResponse(items, false);
     }
 
     private void validateBounds(double south, double west, double north, double east) {
@@ -55,10 +47,6 @@ public class MapContentService {
         if (west >= east) {
             throw validationError("west,east", "invalid_bounds");
         }
-        if (diagonalKilometers(south, west, north, east)
-                > MAX_DIAGONAL_KILOMETERS) {
-            throw validationError("bounds", "area_too_large");
-        }
     }
 
     private boolean validLatitude(double latitude) {
@@ -67,24 +55,6 @@ public class MapContentService {
 
     private boolean validLongitude(double longitude) {
         return Double.isFinite(longitude) && longitude >= -180.0 && longitude <= 180.0;
-    }
-
-    private double diagonalKilometers(
-            double south,
-            double west,
-            double north,
-            double east) {
-        double latitudeDistance = Math.toRadians(north - south);
-        double longitudeDistance = Math.toRadians(east - west);
-        double southRadians = Math.toRadians(south);
-        double northRadians = Math.toRadians(north);
-
-        double haversine = Math.pow(Math.sin(latitudeDistance / 2.0), 2.0)
-                + Math.cos(southRadians)
-                * Math.cos(northRadians)
-                * Math.pow(Math.sin(longitudeDistance / 2.0), 2.0);
-        return 2.0 * EARTH_RADIUS_KILOMETERS
-                * Math.asin(Math.min(1.0, Math.sqrt(haversine)));
     }
 
     private BusinessException validationError(String field, String reason) {

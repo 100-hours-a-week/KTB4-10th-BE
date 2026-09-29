@@ -2,6 +2,7 @@ package com.ktb10.kgb.member.service;
 
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.common.security.oauth.KakaoUnlinkClient;
 import com.ktb10.kgb.credit.entity.CreditTransaction;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
@@ -34,6 +35,7 @@ public class MemberWithdrawalService {
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final GenerationJobRepository generationJobRepository;
+    private final KakaoUnlinkClient kakaoUnlinkClient;
     private final Clock clock;
 
     public MemberWithdrawalService(
@@ -42,12 +44,14 @@ public class MemberWithdrawalService {
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
             GenerationJobRepository generationJobRepository,
+            KakaoUnlinkClient kakaoUnlinkClient,
             Clock clock) {
         this.memberRepository = memberRepository;
         this.authSessionRepository = authSessionRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
         this.generationJobRepository = generationJobRepository;
+        this.kakaoUnlinkClient = kakaoUnlinkClient;
         this.clock = clock;
     }
 
@@ -56,6 +60,7 @@ public class MemberWithdrawalService {
         LocalDateTime now = LocalDateTime.now(clock);
         Member member = memberRepository.findActiveByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        kakaoUnlinkClient.unlink(member.getOauthSubject());
 
         List<GenerationJob> activeJobs =
                 generationJobRepository.findAllByMemberIdAndStatusInForUpdate(

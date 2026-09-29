@@ -34,6 +34,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleBusinessException(
             BusinessException exception,
             HttpServletRequest request) {
+        if (exception.errorCode().httpStatus().is5xxServerError()) {
+            logServerError(exception.errorCode(), exception, request);
+        }
         return respond(exception.errorCode(), exception.details(), request);
     }
 
@@ -126,10 +129,43 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request) {
         String traceId = TraceId.getOrCreate(request);
-        LOGGER.error("Unhandled exception [traceId={}]", traceId, exception);
+        LOGGER.error(
+                "Unhandled application exception "
+                        + "[traceId={}, method={}, uri={}, exceptionType={}, rootCauseType={}]",
+                traceId,
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName(),
+                rootCause(exception).getClass().getSimpleName(),
+                exception);
         return ResponseEntity
                 .status(CommonErrorCode.INTERNAL_SERVER_ERROR.httpStatus())
                 .body(ErrorResponse.of(CommonErrorCode.INTERNAL_SERVER_ERROR, traceId));
+    }
+
+    private void logServerError(
+            ErrorCode errorCode,
+            BusinessException exception,
+            HttpServletRequest request) {
+        String traceId = TraceId.getOrCreate(request);
+        LOGGER.error(
+                "Handled server error "
+                        + "[traceId={}, method={}, uri={}, code={}, exceptionType={}, rootCauseType={}]",
+                traceId,
+                request.getMethod(),
+                request.getRequestURI(),
+                errorCode.code(),
+                exception.getClass().getSimpleName(),
+                rootCause(exception).getClass().getSimpleName(),
+                exception);
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current;
     }
 
     private ResponseEntity<ErrorResponse> respond(

@@ -32,53 +32,47 @@ class MapContentServiceTest {
     }
 
     @Test
-    void returnsOnlyLimitAndMarksMoreResults() {
+    void returnsAllContentsWithinRequestedBounds() {
         MapContentItemResponse first = content("1");
         MapContentItemResponse second = content("2");
         MapContentItemResponse third = content("3");
         when(mapContentQuery.findWithinBounds(
-                1L, 37.35, 127.05, 37.45, 127.15, 3))
+                1L, 37.35, 127.05, 37.45, 127.15))
                 .thenReturn(List.of(first, second, third));
 
         MapContentResponse response = mapContentService.getContents(
-                1L, 37.35, 127.05, 37.45, 127.15, 2);
+                1L, 37.35, 127.05, 37.45, 127.15);
 
-        assertThat(response.items()).containsExactly(first, second);
-        assertThat(response.hasMore()).isTrue();
+        assertThat(response.items()).containsExactly(first, second, third);
+        assertThat(response.hasMore()).isFalse();
         verify(mapContentQuery).findWithinBounds(
-                1L, 37.35, 127.05, 37.45, 127.15, 3);
+                1L, 37.35, 127.05, 37.45, 127.15);
     }
 
     @Test
     void rejectsReversedBounds() {
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.45, 127.05, 37.35, 127.15, 100));
+                1L, 37.45, 127.05, 37.35, 127.15));
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.35, 127.15, 37.45, 127.05, 100));
+                1L, 37.35, 127.15, 37.45, 127.05));
     }
 
     @Test
     void rejectsOutOfRangeAndNonFiniteCoordinates() {
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, -91.0, 127.05, 37.45, 127.15, 100));
+                1L, -91.0, 127.05, 37.45, 127.15));
         assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.35, Double.NaN, 37.45, 127.15, 100));
+                1L, 37.35, Double.NaN, 37.45, 127.15));
     }
 
     @Test
-    void rejectsBoundsWithDiagonalOverTwentyKilometers() {
-        assertValidationFailure(() -> mapContentService.getContents(
-                1L, 37.0, 127.0, 37.3, 127.3, 100));
-    }
-
-    @Test
-    void acceptsBoundsWhoseDiagonalIsWithinTwentyKilometers() {
+    void acceptsLargeValidBoundsFromClient() {
         when(mapContentQuery.findWithinBounds(
-                1L, 37.35, 127.05, 37.45, 127.15, 101))
+                1L, 33.0, 124.0, 39.0, 132.0))
                 .thenReturn(List.of());
 
         MapContentResponse response = mapContentService.getContents(
-                1L, 37.35, 127.05, 37.45, 127.15, 100);
+                1L, 33.0, 124.0, 39.0, 132.0);
 
         assertThat(response.items()).isEmpty();
         assertThat(response.hasMore()).isFalse();
@@ -101,6 +95,7 @@ class MapContentServiceTest {
                 127.1,
                 null,
                 null,
+                false,
                 false);
     }
 }

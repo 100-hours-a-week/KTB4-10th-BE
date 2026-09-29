@@ -1,13 +1,18 @@
 package com.ktb10.kgb.member;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
+import com.ktb10.kgb.common.security.oauth.KakaoUnlinkClient;
 import com.ktb10.kgb.credit.entity.CreditTransaction;
 import com.ktb10.kgb.credit.entity.CreditTransactionType;
 import com.ktb10.kgb.credit.entity.CreditWallet;
@@ -35,6 +40,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -74,6 +80,9 @@ class MemberWithdrawalApiTest {
 
     @Autowired
     private GenerationJobRepository generationJobRepository;
+
+    @MockitoBean
+    private KakaoUnlinkClient kakaoUnlinkClient;
 
     @BeforeEach
     void cleanUp() {
@@ -136,6 +145,7 @@ class MemberWithdrawalApiTest {
         assertThat(canceledJob.getStatus()).isEqualTo(GenerationStatus.CANCELED);
         assertThat(canceledJob.getCancelRequestedAt()).isEqualTo(NOW);
         assertThat(canceledJob.getCompletedAt()).isEqualTo(NOW);
+        verify(kakaoUnlinkClient).unlink("withdrawal-member");
 
         mockMvc.perform(get("/api/v1/members/me")
                         .cookie(sessionCookie("current-session")))
@@ -170,6 +180,40 @@ class MemberWithdrawalApiTest {
                         .cookie(sessionCookie("csrf-withdrawal-session")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_FORBIDDEN"));
+    }
+
+    @Test
+    void kakaoUnlinkFailureRollsBackLocalWithdrawal() throws Exception {
+        Member member = saveMember("12345");
+        AuthSession session = issueSession(member, "unlink-failure-session");
+        CreditWallet wallet = CreditWallet.open(member, NOW.minusDays(1));
+        wallet.grant(3, NOW.minusDays(1));
+        creditWalletRepository.saveAndFlush(wallet);
+        GenerationJob job = generationJobRepository.saveAndFlush(GenerationJob.createInitial(
+                member,
+                "{\"region\":\"서울\"}",
+                "unlink-failure-generation",
+                NOW.minusMinutes(10)));
+        doThrow(new BusinessException(CommonErrorCode.UPSTREAM_SERVICE_ERROR))
+                .when(kakaoUnlinkClient)
+                .unlink("12345");
+        Csrf csrf = csrf();
+
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .cookie(sessionCookie("unlink-failure-session"), csrf.cookie())
+                        .header("X-XSRF-TOKEN", csrf.cookie().getValue()))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.code").value("UPSTREAM_SERVICE_ERROR"));
+
+        Member activeMember = memberRepository.findById(member.getId()).orElseThrow();
+        assertThat(activeMember.getDeletedAt()).isNull();
+        assertThat(activeMember.getOauthSubject()).isEqualTo("12345");
+        assertThat(authSessionRepository.findById(session.getId()).orElseThrow()
+                .getRevokedAt()).isNull();
+        assertThat(creditWalletRepository.findById(wallet.getId()).orElseThrow()
+                .getCreditBalance()).isEqualTo(3);
+        assertThat(generationJobRepository.findById(job.getId()).orElseThrow()
+                .getStatus()).isEqualTo(GenerationStatus.PENDING);
     }
 
     private Member saveMember(String oauthSubject) {

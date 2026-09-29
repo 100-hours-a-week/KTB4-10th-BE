@@ -46,7 +46,7 @@
 
 | API ID | 기능 | Method | URL | V1 제공 | V1 허용 입력 |
 |---|---|---|---|---|---|
-| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음 |
+| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음; 카카오 인가 요청에 `prompt=login` 적용 |
 | API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
 | API-MEM-16 | CSRF 토큰 계약 조회 | GET | `/auth/csrf` | 예 | Query/Body 없음; 공개 |
 | API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 예 | Body 없음 |
@@ -93,7 +93,9 @@
 | API-PAY-05 | 주문 조회 | GET | `/orders/{merchant_order_id}` | 아니오 | V2 |
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
+| API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
 | API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` | 예 | Query/Body 없음; 인프라 내부 |
+| API-OPS-02 | Prometheus 메트릭 수집 | GET | `/actuator/prometheus` | 예 | Query/Body 없음; 인프라 내부 |
 
 ### 2.1 운영 헬스체크
 
@@ -114,9 +116,24 @@
 
 **구현 기준:** Spring Boot Actuator health를 사용한다. 인프라의 검사 주기·timeout·실패 기준은 배포 환경에서 설정하며, 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다. 가능하면 로드밸런서·배포 인프라에서만 접근하도록 제한한다.
 
+### API-OPS-02 Prometheus 메트릭 수집
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/actuator/prometheus` | Prometheus scraper용 공개 경로. 서비스 세션 인증 없음 |
+
+- 애플리케이션 포트 `8080`에서 Prometheus text format을 반환한다.
+- CPU·메모리, JVM Heap·GC·Thread, `http.server.requests`, HikariCP Active·Idle·Pending·Max 메트릭을 포함한다.
+- Actuator 기본 태그 외에 `application=kgb` 공통 태그를 부여한다.
+- 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다.
+- 백엔드는 수집 엔드포인트만 제공하며 Prometheus 서버·Grafana·경보 설정은 인프라 범위다.
+- 애플리케이션 인증을 요구하지 않는 대신 운영에서는 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
+
 ## 3. 회원
 
 ### API-MEM-01 소셜 로그인 시작
+
+- V1은 카카오 인가 URL에 `prompt=login`을 포함한다. 브라우저의 카카오 로그인 세션이 남아 있어도 계정 인증 화면을 다시 표시하기 위한 서비스 보안 정책이며, 카카오 계정 전체 로그아웃을 의미하지 않는다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -224,6 +241,8 @@
 
 ### API-MEM-03 로그아웃
 
+- 현재 서비스 세션과 쿠키만 폐기하며 카카오 계정 로그인 세션과 카카오 앱 연결은 유지한다. 다음 로그인 시작 요청은 `prompt=login`으로 계정 인증 화면을 다시 표시한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/auth/logout` | 세션 쿠키 필수 |
@@ -306,7 +325,9 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-11/API-DEC-02 확정: 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
+**외부 연결 해제:** 저장된 카카오 사용자 ID와 서버의 `KAKAO_ADMIN_KEY`로 카카오 연결 해제 API를 호출한다. 성공한 경우에만 로컬 소프트 삭제·세션 폐기·생성권 회수·작업 취소를 커밋한다. 카카오 장애·오류 응답은 502 `UPSTREAM_SERVICE_ERROR`, 어드민 키 누락은 503 `SERVICE_UNAVAILABLE`이며 로컬 탈퇴 상태는 변경하지 않는다.
+
+**구현 전 확인:** DEC-11/API-DEC-02 확정: 카카오 연결 해제, 세션 즉시 폐기, 30일 보관, 재가입은 새 회원, 진행 중 AI 작업은 취소 요청. 결제 중 탈퇴 경합은 PG 계약 확정 후 별도 확정 필요.
 
 ### API-MEM-07 취향 옵션 조회
 
@@ -928,7 +949,7 @@ Body 없음.
 
 ### API-GDE-03 생성 상태 조회
 
-> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
+> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 `REQUIRES_NEW` 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1626,6 +1647,34 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
+### API-PAY-09 쿠폰 등록
+
+| Method | URL | 인증 |
+|---|---|---|
+| POST | `/credits/coupons/redeem` | 세션 쿠키·CSRF 필수 |
+
+서버 환경변수에 설정된 관리자용 쿠폰을 등록한다. 번호는 앞뒤 공백을 제거하고 대소문자를 구분하지 않는다. 쿠폰 원문은 응답과 원장에 포함하지 않으며 관리자가 필요할 때 반복해 사용할 수 있다.
+
+**Request Body**
+
+```json
+{ "coupon_code": "EVENT-2026" }
+```
+
+**응답 200**
+
+```json
+{
+  "message": "credit_coupon_redeem_success",
+  "data": { "granted_credits": 2, "credit_balance": 5 }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 422 | COUPON_INVALID | 설정된 번호와 일치하지 않음 |
+| 503 | COUPON_UNAVAILABLE | 쿠폰 또는 지급 수량이 서버에 올바르게 설정되지 않음 |
+
 ### API-PAY-02 생성권 원장 조회
 
 | Method | URL | 인증 |
@@ -1633,7 +1682,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | GET | `/credits/transactions` | 세션 쿠키 필수 |
 
 - Query cursor,size: 공통 규칙
-- type 선택 FREE_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
+- type 선택 FREE_GRANT|COUPON_GRANT|PURCHASE_GRANT|CONSUME|REVOKE|ADJUSTMENT
 - credit_delta: Integer; credit_balance_after: Integer≥0
 - order_id: ID|null; generation_job_id: Long|null
 

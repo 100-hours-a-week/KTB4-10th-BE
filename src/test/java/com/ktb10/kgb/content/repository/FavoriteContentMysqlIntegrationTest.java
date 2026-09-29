@@ -83,9 +83,9 @@ class FavoriteContentMysqlIntegrationTest {
         favoriteContentQuery.save(memberId, contentId, NOW);
 
         List<MapContentItemResponse> favoriteResult = mapContentQuery.findWithinBounds(
-                memberId, 37.39, 127.10, 37.40, 127.12, 10);
+                memberId, 37.39, 127.10, 37.40, 127.12);
         List<MapContentItemResponse> otherResult = mapContentQuery.findWithinBounds(
-                otherMemberId, 37.39, 127.10, 37.40, 127.12, 10);
+                otherMemberId, 37.39, 127.10, 37.40, 127.12);
 
         assertThat(favoriteResult).singleElement()
                 .satisfies(item -> assertThat(item.favorite()).isTrue());

@@ -20,6 +20,9 @@ import jakarta.validation.constraints.Size;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
     private MockMvc mockMvc;
@@ -117,12 +121,28 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void unexpectedExceptionDoesNotExposeOriginalMessage() throws Exception {
+    void unexpectedExceptionDoesNotExposeOriginalMessage(CapturedOutput output) throws Exception {
         mockMvc.perform(get("/test/unexpected-error"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.message").value("서버 내부 오류가 발생했습니다."))
                 .andExpect(jsonPath("$.error.code").value("INTERNAL_SERVER_ERROR"))
                 .andExpect(content().string(not(containsString("sensitive database detail"))));
+
+        assertThat(output).contains("Unhandled application exception");
+        assertThat(output).contains("method=GET");
+        assertThat(output).contains("uri=/test/unexpected-error");
+        assertThat(output).contains("rootCauseType=IllegalStateException");
+    }
+
+    @Test
+    void serverBusinessExceptionLogsCodeAndRootCause(CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/test/upstream-error"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error.code").value("UPSTREAM_SERVICE_ERROR"));
+
+        assertThat(output).contains("Handled server error");
+        assertThat(output).contains("code=UPSTREAM_SERVICE_ERROR");
+        assertThat(output).contains("rootCauseType=IllegalStateException");
     }
 
     @RestController
@@ -147,6 +167,13 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/unexpected-error")
         void unexpectedError() {
             throw new IllegalStateException("sensitive database detail");
+        }
+
+        @GetMapping("/upstream-error")
+        void upstreamError() {
+            throw new BusinessException(
+                    CommonErrorCode.UPSTREAM_SERVICE_ERROR,
+                    new IllegalStateException("upstream unavailable"));
         }
 
         @GetMapping("/number")
