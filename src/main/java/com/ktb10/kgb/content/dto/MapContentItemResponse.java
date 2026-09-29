@@ -18,7 +18,9 @@ public record MapContentItemResponse(
         @JsonProperty("event_period")
         EventPeriod eventPeriod,
         @JsonProperty("is_favorite")
-        boolean favorite) {
+        boolean favorite,
+        @JsonProperty("is_in_guidebook")
+        boolean inGuidebook) {
 
     public enum ContentType {
         PLACE,

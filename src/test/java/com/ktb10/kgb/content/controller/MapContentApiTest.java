@@ -1,7 +1,6 @@
 package com.ktb10.kgb.content.controller;
 
 import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,7 +44,7 @@ class MapContentApiTest {
     void returnsPlacesAndEventsWithinBounds() throws Exception {
         when(mapContentQuery.findWithinBounds(
                 org.mockito.ArgumentMatchers.anyLong(),
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyInt()))
+                anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(
                         new MapContentItemResponse(
                                 "126508",
@@ -56,6 +55,7 @@ class MapContentApiTest {
                                 129.219,
                                 null,
                                 null,
+                                true,
                                 true),
                         new MapContentItemResponse(
                                 "event-1",
@@ -68,6 +68,7 @@ class MapContentApiTest {
                                 new EventPeriod(
                                         LocalDate.of(2026, 10, 1),
                                         LocalDate.of(2026, 10, 3)),
+                                false,
                                 false)));
 
         mockMvc.perform(get("/api/v1/map/contents")
@@ -83,6 +84,7 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.items[0].content_id").value("126508"))
                 .andExpect(jsonPath("$.data.items[0].content_type").value("PLACE"))
                 .andExpect(jsonPath("$.data.items[0].is_favorite").value(true))
+                .andExpect(jsonPath("$.data.items[0].is_in_guidebook").value(true))
                 .andExpect(jsonPath("$.data.items[0].event_period").doesNotExist())
                 .andExpect(jsonPath("$.data.items[1].content_type").value("EVENT"))
                 .andExpect(jsonPath("$.data.items[1].event_period.start_date")
@@ -104,7 +106,7 @@ class MapContentApiTest {
     }
 
     @Test
-    void rejectsInvalidZoomAndLimit() throws Exception {
+    void acceptsClientZoomAndIgnoresLegacyLimit() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
@@ -113,12 +115,11 @@ class MapContentApiTest {
                         .param("east", "127.15")
                         .param("zoom", "22")
                         .param("limit", "201"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+                .andExpect(status().isOk());
     }
 
     @Test
-    void rejectsTooLargeBounds() throws Exception {
+    void acceptsLargeValidBounds() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.0")
@@ -126,10 +127,7 @@ class MapContentApiTest {
                         .param("north", "37.3")
                         .param("east", "127.3")
                         .param("zoom", "16"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"))
-                .andExpect(jsonPath("$.error.details[0].field").value("bounds"))
-                .andExpect(jsonPath("$.error.details[0].reason").value("area_too_large"));
+                .andExpect(status().isOk());
     }
 
     private UsernamePasswordAuthenticationToken authenticatedMember() {

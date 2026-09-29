@@ -26,8 +26,7 @@ public class MapContentQuery {
             double south,
             double west,
             double north,
-            double east,
-            int fetchSize) {
+            double east) {
         return jdbcTemplate.query(
                 """
                 SELECT
@@ -40,7 +39,17 @@ public class MapContentQuery {
                     content.thumbnail_url,
                     event.start_date,
                     event.end_date,
-                    favorite.id IS NOT NULL AS is_favorite
+                    favorite.id IS NOT NULL AS is_favorite,
+                    EXISTS (
+                        SELECT 1
+                        FROM itinerary_items item
+                        JOIN itinerary_days day ON day.id = item.itinerary_day_id
+                        JOIN member_guidebooks member_guidebook
+                          ON member_guidebook.guidebook_id = day.guidebook_id
+                        WHERE item.tourism_content_id = content.id
+                          AND member_guidebook.member_id = ?
+                          AND member_guidebook.deleted_at IS NULL
+                    ) AS is_in_guidebook
                 FROM tourism_contents content
                 LEFT JOIN event_details event ON event.content_id = content.id
                 LEFT JOIN favorite_contents favorite
@@ -49,6 +58,10 @@ public class MapContentQuery {
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
                   AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
+                  AND (
+                      content.classification_code_1 <> 'EV'
+                      OR event.end_date >= CURRENT_DATE
+                  )
                   AND MBRContains(
                       ST_GeomFromText(
                           CONCAT(
@@ -63,7 +76,6 @@ public class MapContentQuery {
                           'axis-order=long-lat'),
                       content.location)
                 ORDER BY content.id
-                LIMIT ?
                 """,
                 (resultSet, rowNumber) -> new MapContentItemResponse(
                         resultSet.getString("source_content_id"),
@@ -78,7 +90,9 @@ public class MapContentQuery {
                         eventPeriod(
                                 resultSet.getDate("start_date"),
                                 resultSet.getDate("end_date")),
-                        resultSet.getBoolean("is_favorite")),
+                        resultSet.getBoolean("is_favorite"),
+                        resultSet.getBoolean("is_in_guidebook")),
+                memberId,
                 memberId,
                 SUPPORTED_CLASSIFICATION_CODES.get(0),
                 SUPPORTED_CLASSIFICATION_CODES.get(1),
@@ -90,8 +104,7 @@ public class MapContentQuery {
                 east, south,
                 east, north,
                 west, north,
-                west, south,
-                fetchSize);
+                west, south);
     }
 
     private static EventPeriod eventPeriod(Date startDate, Date endDate) {
