@@ -35,7 +35,7 @@ public class MapContentController {
             @RequestParam double east,
             @RequestParam int zoom) {
         MapContentResponse response = mapContentService.getContents(
-                member.memberId(), south, west, north, east);
+                member.memberId(), south, west, north, east, zoom);
         return ResponseEntity.ok(ApiResponse.success(SUCCESS_MESSAGE, response));
     }
 }

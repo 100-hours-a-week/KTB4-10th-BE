@@ -8,11 +8,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
+import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.content.repository.MapContentQuery;
+import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -80,6 +82,7 @@ class MapContentApiTest {
                         .param("zoom", "16"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("map_content_success"))
+                .andExpect(jsonPath("$.data.mode").value("CONTENT"))
                 .andExpect(jsonPath("$.data.items.length()").value(2))
                 .andExpect(jsonPath("$.data.items[0].content_id").value("126508"))
                 .andExpect(jsonPath("$.data.items[0].content_type").value("PLACE"))
@@ -90,7 +93,43 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.items[1].event_period.start_date")
                         .value("2026-10-01"))
                 .andExpect(jsonPath("$.data.has_more").value(false))
-                .andExpect(jsonPath("$.data.clusters").doesNotExist());
+                .andExpect(jsonPath("$.data.clusters").isEmpty());
+    }
+
+    @Test
+    void returnsServerClustersAndRepresentativesForWideZoom() throws Exception {
+        when(mapContentQuery.findClustersWithinBounds(
+                org.mockito.ArgumentMatchers.anyLong(),
+                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(new MapClusterQueryResult(
+                        new MapClusterResponse("37:126", 37.5, 126.9, 120),
+                        new MapContentItemResponse(
+                                "representative-1",
+                                "광역 대표 장소",
+                                ContentType.PLACE,
+                                "서울",
+                                37.5,
+                                126.9,
+                                null,
+                                null,
+                                false,
+                                false))));
+
+        mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "33.0")
+                        .param("west", "124.0")
+                        .param("north", "39.0")
+                        .param("east", "132.0")
+                        .param("zoom", "14"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("CLUSTER"))
+                .andExpect(jsonPath("$.data.clusters.length()").value(1))
+                .andExpect(jsonPath("$.data.clusters[0].count").value(120))
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].content_id")
+                        .value("representative-1"))
+                .andExpect(jsonPath("$.data.has_more").value(false));
     }
 
     @Test
