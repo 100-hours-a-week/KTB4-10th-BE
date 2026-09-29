@@ -98,6 +98,24 @@ public class CreditTransaction {
                 createdAt);
     }
 
+    public static CreditTransaction couponGrant(
+            CreditWallet wallet,
+            int amount,
+            int balanceAfter,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("쿠폰 지급 생성권은 1개 이상이어야 합니다.");
+        }
+        return new CreditTransaction(
+                wallet,
+                CreditTransactionType.COUPON_GRANT,
+                amount,
+                balanceAfter,
+                idempotencyKey,
+                createdAt);
+    }
+
     public static CreditTransaction revoke(
             CreditWallet wallet,
             int amount,
