@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MapContentQuery {
 
+    private static final List<String> SUPPORTED_CLASSIFICATION_CODES =
+            List.of("NA", "HS", "VE", "EX", "LS", "EV");
+
     private final JdbcTemplate jdbcTemplate;
 
     public MapContentQuery(JdbcTemplate jdbcTemplate) {
@@ -45,6 +48,7 @@ public class MapContentQuery {
                  AND favorite.member_id = ?
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
+                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
                   AND MBRContains(
                       ST_GeomFromText(
                           CONCAT(
@@ -76,6 +80,12 @@ public class MapContentQuery {
                                 resultSet.getDate("end_date")),
                         resultSet.getBoolean("is_favorite")),
                 memberId,
+                SUPPORTED_CLASSIFICATION_CODES.get(0),
+                SUPPORTED_CLASSIFICATION_CODES.get(1),
+                SUPPORTED_CLASSIFICATION_CODES.get(2),
+                SUPPORTED_CLASSIFICATION_CODES.get(3),
+                SUPPORTED_CLASSIFICATION_CODES.get(4),
+                SUPPORTED_CLASSIFICATION_CODES.get(5),
                 west, south,
                 east, south,
                 east, north,
