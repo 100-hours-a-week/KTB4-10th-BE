@@ -12,6 +12,7 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
+import com.ktb10.kgb.guidebook.client.AiClientException;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -146,6 +147,29 @@ class GuidebookGenerationServiceTest {
 
         verify(aiClient).getGenerationStatus("ai-job-301");
         verify(guidebookResultService).apply(301L, aiResponse);
+    }
+
+    @Test
+    void marksJobFailedWhenAiStatusCannotBeFetched() {
+        Member member = member();
+        GenerationJob job = GenerationJob.createInitial(
+                member, "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.registerAiJob("ai-job-301", LocalDateTime.now(CLOCK));
+        GuidebookAiClient aiClient = org.mockito.Mockito.mock(GuidebookAiClient.class);
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+        given(guidebookAiClientProvider.getIfAvailable()).willReturn(aiClient);
+        given(aiClient.getGenerationStatus("ai-job-301"))
+                .willThrow(new AiClientException("AI 서버 상태 조회 요청에 실패했습니다."));
+
+        var response = service.getGenerationJobStatus(MEMBER_ID, 301L);
+
+        assertThat(response.status()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(response.error().code()).isEqualTo("GENERATION_FAILED");
+        assertThat(job.getErrorPayload()).contains("AI_STATUS_UNAVAILABLE");
+        verify(guidebookResultService, never()).apply(any(), any());
     }
 
     @Test
