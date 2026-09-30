@@ -4,11 +4,14 @@ import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.credit.dto.request.CouponRedeemRequest;
 import com.ktb10.kgb.credit.dto.response.CouponRedeemResponse;
+import com.ktb10.kgb.credit.dto.response.CreditWalletResponse;
 import com.ktb10.kgb.credit.service.CouponRedemptionService;
+import com.ktb10.kgb.credit.service.CreditWalletQueryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +23,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class CreditController {
 
     private final CouponRedemptionService couponRedemptionService;
+    private final CreditWalletQueryService creditWalletQueryService;
+
+    @GetMapping("/wallet")
+    public ApiResponse<CreditWalletResponse> getWallet(
+            @AuthenticationPrincipal AuthenticatedMember member) {
+        return ApiResponse.success(
+                "credit_wallet_success",
+                creditWalletQueryService.getWallet(member.memberId()));
+    }
 
     @PostMapping("/coupons/redeem")
     public ApiResponse<CouponRedeemResponse> redeemCoupon(

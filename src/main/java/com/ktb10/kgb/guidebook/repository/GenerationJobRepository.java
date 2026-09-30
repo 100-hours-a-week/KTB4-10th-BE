@@ -19,6 +19,9 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
     boolean existsByMemberIdAndStatusIn(
             Long memberId, Collection<GenerationStatus> statuses);
 
+    Optional<GenerationJob> findFirstByMemberIdAndStatusInOrderByIdAsc(
+            Long memberId, Collection<GenerationStatus> statuses);
+
     boolean existsByIdAndMemberId(Long id, Long memberId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
