@@ -72,14 +72,15 @@ class MapContentServiceTest {
 
     @Test
     void acceptsLargeValidBoundsFromClient() {
-        when(mapContentQuery.findWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0))
+        when(mapContentQuery.findClustersWithinBounds(
+                1L, 33.0, 124.0, 39.0, 132.0, 1.0))
                 .thenReturn(List.of());
 
         MapContentResponse response = mapContentService.getContents(
                 1L, 33.0, 124.0, 39.0, 132.0, 16);
 
         assertThat(response.items()).isEmpty();
+        assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
         assertThat(response.hasMore()).isFalse();
     }
 
@@ -95,7 +96,7 @@ class MapContentServiceTest {
                         content(String.valueOf(index))))
                 .toList();
         when(mapContentQuery.findClustersWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0, 0.05))
+                1L, 33.0, 124.0, 39.0, 132.0, 1.0))
                 .thenReturn(results);
 
         MapContentResponse response = mapContentService.getContents(
@@ -107,7 +108,7 @@ class MapContentServiceTest {
         assertThat(response.items().getFirst().contentId()).isEqualTo("1");
         assertThat(response.hasMore()).isFalse();
         verify(mapContentQuery).findClustersWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0, 0.05);
+                1L, 33.0, 124.0, 39.0, 132.0, 1.0);
     }
 
     private void assertValidationFailure(Runnable action) {
