@@ -7,6 +7,7 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
+import com.ktb10.kgb.guidebook.client.AiClientException;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -136,6 +137,7 @@ public class GuidebookGenerationService {
         return GuidebookGenerationResponse.from(savedJob);
     }
 
+    @Transactional
     public GenerationStatusResponse getGenerationJobStatus(Long memberId, Long jobId) {
         if (!generationJobRepository.existsById(jobId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
@@ -147,11 +149,15 @@ public class GuidebookGenerationService {
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         GuidebookAiClient aiClient = guidebookAiClientProvider.getIfAvailable();
         if (aiClient != null && shouldSynchronize(job)) {
-            AiGenerationStatusResponse aiResponse =
-                    aiClient.getGenerationStatus(job.getAiJobId());
-            guidebookResultService.apply(jobId, aiResponse);
-            job = generationJobRepository.findById(jobId)
-                    .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+            try {
+                AiGenerationStatusResponse aiResponse =
+                        aiClient.getGenerationStatus(job.getAiJobId());
+                guidebookResultService.apply(jobId, aiResponse);
+                job = generationJobRepository.findById(jobId)
+                        .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+            } catch (AiClientException exception) {
+                job.fail("{\"code\":\"AI_STATUS_UNAVAILABLE\"}", LocalDateTime.now(clock));
+            }
         }
 
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
