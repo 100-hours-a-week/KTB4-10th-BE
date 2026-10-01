@@ -1,6 +1,6 @@
 name: 기능
 description: 새로운 기능이나 기존 기능 개선을 등록합니다.
-title: "[기능][영역] "
+title: "[feature][domain] "
 labels: [feature]
 body:
   - type: dropdown

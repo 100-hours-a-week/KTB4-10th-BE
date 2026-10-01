@@ -1,6 +1,6 @@
 name: 버그
 description: 재현 가능한 문제와 수정 조건을 등록합니다.
-title: "[버그][영역] "
+title: "[bug][domain] "
 labels: [bug]
 body:
   - type: dropdown

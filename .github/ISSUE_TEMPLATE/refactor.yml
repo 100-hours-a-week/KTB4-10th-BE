@@ -1,6 +1,6 @@
 name: 리팩터링
 description: 외부 동작을 바꾸지 않는 구조 개선을 등록합니다.
-title: "[리팩터링][영역] "
+title: "[refactor][domain] "
 labels: [refactor]
 body:
   - type: dropdown

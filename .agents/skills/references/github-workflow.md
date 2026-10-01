@@ -5,36 +5,36 @@
 - Repository: `100-hours-a-week/KTB4-10th-BE`
 - Default PR base: `dev`
 - Merge method: Squash Merge
-- Issue title: `[<Korean type>][<area>] <summary>`
+- Issue title: `[<type key>][<domain key>] <Korean summary>`
 - Branch: `<branch type>/<issue number>-<lowercase kebab-case slug>`
 - PR title: `<commit type>(<scope>): <Korean summary>`
 - Pair: `dwkim0512` and `Yonduss`
 
 ## Type mapping
 
-| Korean type | Label | Branch and commit type |
-| --- | --- | --- |
-| 기능 | `feature` | `feat` |
-| 버그 | `bug` | `fix` |
-| 리팩터링 | `refactor` | `refactor` |
-| 테스트 | `test` | `test` |
-| 문서 | `documentation` | `docs` |
-| 작업 | `chore` | `chore` |
-| CI | `ci` | `ci` |
+| Meaning | Title key | Label | Branch and commit type |
+| --- | --- | --- | --- |
+| 기능 | `feature` | `feature` | `feat` |
+| 버그 | `bug` | `bug` | `fix` |
+| 리팩터링 | `refactor` | `refactor` | `refactor` |
+| 테스트 | `test` | `test` | `test` |
+| 문서 | `docs` | `documentation` | `docs` |
+| 작업 | `chore` | `chore` | `chore` |
+| CI | `ci` | `ci` | `ci` |
 
 ## Domain mapping
 
 Every Issue has exactly one controlled domain label in addition to its type label.
 
-| Korean area | Domain label |
-| --- | --- |
-| 회원 | `domain:member` |
-| 관광 콘텐츠 | `domain:content` |
-| 가이드북 | `domain:guidebook` |
-| 평가 | `domain:rating` |
-| 생성권 | `domain:credit` |
-| 공통 | `domain:common` |
-| 인프라 | `domain:infra` |
+| Meaning | Title key | Domain label |
+| --- | --- | --- |
+| 회원 | `member` | `domain:member` |
+| 관광 콘텐츠 | `content` | `domain:content` |
+| 가이드북 | `guidebook` | `domain:guidebook` |
+| 평가 | `rating` | `domain:rating` |
+| 생성권 | `credit` | `domain:credit` |
+| 공통 | `common` | `domain:common` |
+| 인프라 | `infra` | `domain:infra` |
 
 Do not invent a new domain during Issue creation. If none fits, ask the user whether the controlled list should change.
 

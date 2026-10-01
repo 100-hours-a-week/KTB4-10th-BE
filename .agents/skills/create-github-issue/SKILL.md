@@ -11,8 +11,8 @@ Read [the shared GitHub workflow policy](../references/github-workflow.md) befor
 
 Collect only missing values. If all values are present, do not ask for confirmation.
 
-- One of the seven Korean Issue types in the mapping
-- One controlled area from the domain mapping and a concise Korean summary
+- One of the seven English title type keys in the mapping
+- One controlled English domain key from the mapping and a concise Korean summary
 - GitHub assignee login
 - Lowercase ASCII kebab-case branch slug
 - Purpose, scope, acceptance criteria, requirement IDs (or `해당 없음`), and impact
@@ -21,7 +21,7 @@ Collect only missing values. If all values are present, do not ask for confirmat
 ## Workflow
 
 1. Confirm the worktree root is this backend repository and run every shared preflight check. Validate both the type label and domain label plus the assignee before creating anything.
-2. Build the exact title `[<type>][<area>] <summary>` and a Markdown body with headings matching the selected Issue Form. Preserve meaningful user wording; never invent requirement IDs or acceptance criteria.
+2. Build the exact title `[<English type key>][<English domain key>] <Korean summary>` and a Markdown body with headings matching the selected Issue Form. For example, `[chore][common] V2 백로그 구조화`. Preserve meaningful user wording; never invent requirement IDs or acceptance criteria.
 3. Create and assign the Issue in one command with `gh issue create --repo 100-hours-a-week/KTB4-10th-BE --title ... --body-file ... --label <type-label> --label <domain-label> --assignee ...`. Capture the returned URL and parse its numeric Issue number.
 4. After Issue creation, check `git status --porcelain`. If it is nonempty, keep the Issue, do not fetch or switch branches, and report the Issue URL plus the dirty-worktree reason.
 5. Run `git fetch origin dev`. Form `<branch-type>/<issue-number>-<slug>`. If that local branch already exists, keep the Issue and stop without switching. Otherwise run `git switch -c <branch> origin/dev`.

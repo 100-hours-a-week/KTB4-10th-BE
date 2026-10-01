@@ -1,6 +1,6 @@
 name: 문서
 description: 문서 추가·수정·동기화 작업을 등록합니다.
-title: "[문서][영역] "
+title: "[docs][domain] "
 labels: [documentation]
 body:
   - type: dropdown

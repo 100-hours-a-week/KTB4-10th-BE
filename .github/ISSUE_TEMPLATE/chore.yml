@@ -1,6 +1,6 @@
 name: 작업
 description: 빌드, 설정, 의존성, 유지보수 작업을 등록합니다.
-title: "[작업][영역] "
+title: "[chore][domain] "
 labels: [chore]
 body:
   - type: dropdown

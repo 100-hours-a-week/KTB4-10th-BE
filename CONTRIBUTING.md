@@ -79,30 +79,30 @@ ci/3-add-pr-check
 Issue 제목은 다음 형식을 사용한다.
 
 ```text
-[타입][영역] 작업 요약
+[type][domain] 작업 요약
 ```
 
 예시:
 
 ```text
-[기능][인증] OAuth 로그인 기능 구현
-[버그][생성권] 동시 요청에서 잔액이 중복 차감되는 문제
-[작업][공통] 정적 분석 도구 설정
+[feature][member] OAuth 로그인 기능 구현
+[bug][credit] 동시 요청에서 잔액이 중복 차감되는 문제
+[chore][common] 정적 분석 도구 설정
 ```
 
 Issue 하나는 가능하면 한 사람이 1~3일 안에 하나의 PR로 완료할 수 있는 크기로 나눈다. 큰 작업은 상위 Issue를 만들고 기능 단위 하위 Issue를 연결한다.
 
 ### 3.1 Issue 타입
 
-| 타입 | Label | 브랜치 Type | 용도 |
-| --- | --- | --- | --- |
-| `기능` | `feature` | `feat` | 새 기능과 기존 기능 개선 |
-| `버그` | `bug` | `fix` | 재현 가능한 오류 수정 |
-| `리팩터링` | `refactor` | `refactor` | 동작 변경 없는 구조 개선 |
-| `테스트` | `test` | `test` | 테스트 추가·개선 |
-| `문서` | `documentation` | `docs` | 문서 추가·수정·동기화 |
-| `작업` | `chore` | `chore` | 빌드·설정·의존성·유지보수 |
-| `CI` | `ci` | `ci` | CI 파이프라인 변경 |
+| 의미 | 제목 Type | Label | 브랜치 Type | 용도 |
+| --- | --- | --- | --- | --- |
+| 기능 | `feature` | `feature` | `feat` | 새 기능과 기존 기능 개선 |
+| 버그 | `bug` | `bug` | `fix` | 재현 가능한 오류 수정 |
+| 리팩터링 | `refactor` | `refactor` | `refactor` | 동작 변경 없는 구조 개선 |
+| 테스트 | `test` | `test` | `test` | 테스트 추가·개선 |
+| 문서 | `docs` | `documentation` | `docs` | 문서 추가·수정·동기화 |
+| 작업 | `chore` | `chore` | `chore` | 빌드·설정·의존성·유지보수 |
+| CI | `ci` | `ci` | `ci` | CI 파이프라인 변경 |
 
 GitHub Issue Form은 타입별로 분리하며 공통으로 작업 목적, 작업 범위, 완료 조건, 관련 자료·요구사항 ID와 영향 범위를 작성한다.
 
@@ -110,15 +110,15 @@ GitHub Issue Form은 타입별로 분리하며 공통으로 작업 목적, 작�
 
 모든 Issue에는 타입 label과 함께 아래 영역 label 하나를 지정한다.
 
-| 영역 | Label |
-| --- | --- |
-| 회원 | `domain:member` |
-| 관광 콘텐츠 | `domain:content` |
-| 가이드북 | `domain:guidebook` |
-| 평가 | `domain:rating` |
-| 생성권 | `domain:credit` |
-| 공통 | `domain:common` |
-| 인프라 | `domain:infra` |
+| 의미 | 제목 Domain | Label |
+| --- | --- | --- |
+| 회원 | `member` | `domain:member` |
+| 관광 콘텐츠 | `content` | `domain:content` |
+| 가이드북 | `guidebook` | `domain:guidebook` |
+| 평가 | `rating` | `domain:rating` |
+| 생성권 | `credit` | `domain:credit` |
+| 공통 | `common` | `domain:common` |
+| 인프라 | `infra` | `domain:infra` |
 
 목록에 없는 영역은 임의로 만들지 않고 팀 합의 후 이 표와 bootstrap 스크립트를 함께 변경한다.
 

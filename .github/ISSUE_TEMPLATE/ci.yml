@@ -1,6 +1,6 @@
 name: CI
 description: GitHub Actions와 자동화 파이프라인 변경을 등록합니다.
-title: "[CI][영역] "
+title: "[ci][domain] "
 labels: [ci]
 body:
   - type: dropdown
