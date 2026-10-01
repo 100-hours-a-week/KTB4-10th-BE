@@ -42,6 +42,8 @@
 9. Squash Merge로 `dev`에 병합하고 작업 브랜치를 삭제한다.
 10. 검증된 기능 묶음은 `dev → main` PR로 병합한다.
 
+GitHub의 기본 브랜치가 `main`이므로 `dev` 대상 PR의 `Close #번호`만으로는 Issue가 즉시 닫히지 않는다. 저장소 워크플로가 PR 병합 후 브랜치의 Issue 번호와 본문의 `Close #번호`가 일치할 때만 해당 Issue를 완료 처리한다.
+
 `main`과 `dev`에는 직접 Push하거나 Force Push하지 않는다.
 
 ### 2.2 브랜치 이름

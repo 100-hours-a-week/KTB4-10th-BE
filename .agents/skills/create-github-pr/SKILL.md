@@ -50,4 +50,6 @@ Stop before tests, push, or PR creation if any preflight check fails.
 5. Create one Draft PR targeting `dev` with `gh pr create --repo 100-hours-a-week/KTB4-10th-BE --base dev --head <branch> --draft --title ... --body-file ... --assignee ...` and add `--reviewer ...` when review is not explicitly omitted.
 6. Return the PR URL, base/head, Draft status, linked Issue, assignee, reviewer, and the three successful checks.
 
+The repository workflow `.github/workflows/close-issue-on-dev-merge.yml` closes the Issue only after the PR is actually merged into `dev`. It requires the branch Issue number and the explicit `Close #<issue-number>` in the PR body to match. Do not close the Issue merely because a Draft PR was created.
+
 If push succeeds but PR creation fails, do not retry blindly or delete the remote branch. Report the pushed branch and exact failure so the user can safely retry.
