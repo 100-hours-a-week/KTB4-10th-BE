@@ -32,15 +32,17 @@
 ### 2.1 작업 흐름
 
 1. 작업할 내용의 Issue를 생성한다.
-2. 최신 `dev`에서 작업 브랜치를 만든다.
+2. `git fetch origin dev` 후 최신 `origin/dev`에서 작업 브랜치를 만든다.
 3. 구현, 테스트와 필요한 문서 수정을 진행한다.
 4. 작업 방향을 일찍 공유할 필요가 있으면 Draft PR을 생성한다.
 5. 로컬에서 `./gradlew test checkstyleMain spotbugsMain`을 실행한다. Checkstyle 위반은 경고로 확인하고, SpotBugs Rank 1~4 문제는 해결한 뒤 PR을 올린다.
 6. 작업 브랜치에서 `dev`를 대상으로 Pull Request를 생성한다.
-7. 상대 팀원에게 리뷰를 요청한다.
-8. 승인 1개와 필수 CI 통과를 확인한다.
+7. 기본적으로 상대 팀원에게 리뷰를 요청한다.
+8. 필수 CI 통과를 확인한다. 리뷰 승인은 권장하지만 병합 필수 조건은 아니다.
 9. Squash Merge로 `dev`에 병합하고 작업 브랜치를 삭제한다.
 10. 검증된 기능 묶음은 `dev → main` PR로 병합한다.
+
+GitHub의 기본 브랜치가 `main`이므로 `dev` 대상 PR의 `Close #번호`만으로는 Issue가 즉시 닫히지 않는다. 저장소 워크플로가 PR 병합 후 브랜치의 Issue 번호와 본문의 `Close #번호`가 일치할 때만 해당 Issue를 완료 처리한다.
 
 `main`과 `dev`에는 직접 Push하거나 Force Push하지 않는다.
 
@@ -77,97 +79,57 @@ ci/3-add-pr-check
 Issue 제목은 다음 형식을 사용한다.
 
 ```text
-[영역] 구현할 기능
-[버그][영역] 발생한 문제
+[type][domain] 작업 요약
 ```
 
 예시:
 
 ```text
-[인증] OAuth 로그인 기능 구현
-[가이드북] 생성 작업 접수 API 구현
-[공통] 정적 분석 도구 설정
-[버그][생성권] 동시 요청에서 잔액이 중복 차감되는 문제
+[feature][member] OAuth 로그인 기능 구현
+[bug][credit] 동시 요청에서 잔액이 중복 차감되는 문제
+[chore][common] 정적 분석 도구 설정
 ```
 
 Issue 하나는 가능하면 한 사람이 1~3일 안에 하나의 PR로 완료할 수 있는 크기로 나눈다. 큰 작업은 상위 Issue를 만들고 기능 단위 하위 Issue를 연결한다.
 
-### 3.1 기능 Issue 본문
+### 3.1 Issue 타입
 
-```markdown
-## 작업 목적
+| 의미 | 제목 Type | Label | 브랜치 Type | 용도 |
+| --- | --- | --- | --- | --- |
+| 기능 | `feature` | `feature` | `feat` | 새 기능과 기존 기능 개선 |
+| 버그 | `bug` | `bug` | `fix` | 재현 가능한 오류 수정 |
+| 리팩터링 | `refactor` | `refactor` | `refactor` | 동작 변경 없는 구조 개선 |
+| 테스트 | `test` | `test` | `test` | 테스트 추가·개선 |
+| 문서 | `docs` | `documentation` | `docs` | 문서 추가·수정·동기화 |
+| 작업 | `chore` | `chore` | `chore` | 빌드·설정·의존성·유지보수 |
+| CI | `ci` | `ci` | `ci` | CI 파이프라인 변경 |
 
-이 작업이 필요한 이유를 작성합니다.
+GitHub Issue Form은 타입별로 분리하며 공통으로 작업 목적, 작업 범위, 완료 조건, 관련 자료·요구사항 ID와 영향 범위를 작성한다.
 
-## 관련 자료
+### 3.2 영역 label
 
-- 요구사항:
-- API 문서:
-- 설계 문서:
+모든 Issue에는 타입 label과 함께 아래 영역 label 하나를 지정한다.
 
-## 작업 범위
+| 의미 | 제목 Domain | Label |
+| --- | --- | --- |
+| 회원 | `member` | `domain:member` |
+| 관광 콘텐츠 | `content` | `domain:content` |
+| 가이드북 | `guidebook` | `domain:guidebook` |
+| 평가 | `rating` | `domain:rating` |
+| 생성권 | `credit` | `domain:credit` |
+| 공통 | `common` | `domain:common` |
+| 인프라 | `infra` | `domain:infra` |
 
-- [ ]
-- [ ]
-- [ ]
+목록에 없는 영역은 임의로 만들지 않고 팀 합의 후 이 표와 bootstrap 스크립트를 함께 변경한다.
 
-## 완료 조건
+### 3.3 Issue 자동 등록
 
-- [ ] 정상 흐름을 구현한다.
-- [ ] 필요한 실패·경계 조건을 처리한다.
-- [ ] 필요한 테스트를 작성한다.
-- [ ] 관련 문서를 갱신한다.
+Codex에서 `$create-github-issue`를 사용하면 Issue 생성·담당자 지정 후 최신 `origin/dev`에서 로컬 브랜치를 만든다. 타입, 영역, 요약, 담당자 GitHub ID, 영문 kebab-case 브랜치 slug와 Issue 본문의 필수 내용을 제공한다. 입력이 완전하면 별도 확인 없이 등록한다.
 
-## 고려할 예외
+최초 label 설정은 유효한 `gh` 인증과 저장소 권한을 준비한 다음 한 번 실행한다.
 
-- 인증·권한:
-- 결과 없음:
-- 중복 요청:
-- 외부 연동 실패:
-- 동시 요청:
-
-## 영향 범위
-
-- API:
-- 데이터:
-- 관련 기능:
-- 문서:
-```
-
-### 3.2 버그 Issue 본문
-
-```markdown
-## 문제
-
-현재 발생하는 문제를 작성합니다.
-
-## 재현 방법
-
-1.
-2.
-3.
-
-## 기대 동작
-
-정상적으로 기대하는 결과를 작성합니다.
-
-## 실제 동작
-
-실제로 발생한 결과를 작성합니다.
-
-## 영향 범위
-
-- 사용자 영향:
-- 데이터 영향:
-- 관련 기능:
-
-## 완료 조건
-
-- [ ] 문제를 재현하는 테스트를 작성한다.
-- [ ] 수정 전 테스트 실패를 확인한다.
-- [ ] 문제를 수정한다.
-- [ ] 수정 후 테스트 성공을 확인한다.
-- [ ] 유사한 경로에 같은 문제가 없는지 확인한다.
+```bash
+.agents/skills/create-github-issue/scripts/bootstrap-labels.sh
 ```
 
 ## 4. 커밋 규칙
@@ -230,8 +192,11 @@ chore(build): Checkstyle과 SpotBugs 적용
 - 기능과 무관한 리팩터링을 같은 PR에 섞지 않는다.
 - 데이터 구조 변경과 이를 사용하는 코드는 함께 제출한다.
 - API나 사용자 동작이 변경되면 관련 문서를 함께 수정한다.
-- PR을 병합하려면 상대 팀원 승인 1개와 필수 CI 통과가 필요하다.
+- 상대 팀원 리뷰 요청을 기본으로 하며 필수 CI는 통과해야 한다. 리뷰 승인은 병합 필수 조건이 아니다.
 - 일반 PR은 `dev`를 대상으로 하고 Squash Merge한다.
+- PR 작성자와 reviewer는 서로 다른 GitHub 사용자여야 한다.
+
+Codex에서 `$create-github-pr`을 사용하면 현재 변경과 연결할 Issue를 먼저 확인한다. Issue가 없으면 실제 diff를 바탕으로 타입·영역·완료 조건을 구성해 Issue를 생성하고 브랜치 이름을 맞춘 뒤, 필수 검사를 순서대로 실행한다. 모든 검사가 성공한 경우에만 현재 브랜치를 push하고 `dev` 대상 Draft PR을 생성한다. assignee가 `dwkim0512`이면 `Yonduss`, 반대이면 `dwkim0512`를 기본 reviewer로 요청하며 명시적으로 생략할 수 있다.
 
 ### 5.1 PR 본문
 
