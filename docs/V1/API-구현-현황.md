@@ -59,7 +59,7 @@
 | 유즈케이스 | Method | Path | 접근 | 현재 동작 | 관련 검증 |
 | --- | --- | --- | --- | --- | --- |
 | 사용자가 남은 가이드북 생성권을 확인한다 | GET | `/credits/wallet` | `ACTIVE` 세션 | 본인 지갑의 현재 생성권 잔액을 반환한다. | `CreditWalletQueryServiceTest` |
-| 운영자가 제공한 쿠폰으로 생성권을 받는다 | POST | `/credits/coupons/redeem` | `ACTIVE` 세션+CSRF | 허용된 쿠폰 코드를 멱등적으로 사용해 잔액과 원장을 갱신한다. | `CouponRedemptionServiceTest` |
+| 운영자가 제공한 쿠폰으로 생성권을 받는다 | POST | `/credits/coupons/redeem` | `ACTIVE` 세션+CSRF | 허용된 쿠폰 코드의 설정 지급량만큼 잔액을 늘리고 새 원장을 기록한다. | `CouponRedemptionServiceTest` |
 
 ## 7. 운영 경로
 
