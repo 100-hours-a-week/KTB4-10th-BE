@@ -85,8 +85,11 @@ tasks.register<JavaExec>("importTourApiData") {
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass = "com.ktb10.kgb.tools.tourapi.TourApiImportApplication"
 
+    val rawDataDirectory = layout.projectDirectory.dir("data/tourism/raw/2026-09-20")
     val areaFile = providers.gradleProperty("areaFile")
+        .orElse(rawDataDirectory.file("areaBasedList2_전량_260920.json").asFile.absolutePath)
     val festivalFile = providers.gradleProperty("festivalFile")
+        .orElse(rawDataDirectory.file("searchFestival2_전기간_260921.json").asFile.absolutePath)
     doFirst {
         args(
             "--area-file=${areaFile.get()}",
