@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
 import com.ktb10.kgb.guidebook.entity.AdministrativeProvince;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -52,13 +53,8 @@ public class TourApiInitialImportService {
     @Transactional
     public ImportSummary importFiles(Path areaFile, Path festivalFile) {
         List<JsonNode> contents = readItems(areaFile);
-        Map<SourceRegionKey, ServiceRegionKey> regionNames =
-                extractRegionNames(contents);
-        Map<AdministrativeProvince, String> provinceCodes =
-                extractProvinceCodes(contents);
-        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
+        ContentImportResult contentResult = synchronizeAndImportContents(contents);
 
-        ContentImportResult contentResult = importContents(contents, regionMappings);
         List<JsonNode> events = readItems(festivalFile);
         EventImportResult eventResult = importEvents(events, contentResult.contentIds());
 
@@ -72,25 +68,59 @@ public class TourApiInitialImportService {
                 eventResult.invalid());
     }
 
+    /** 검증하고 저장한 areaBasedList2 원본을 기존 증분 적재 흐름에 반영합니다. */
+    @Transactional
+    public ImportSummary importAreaSnapshot(byte[] snapshot) {
+        List<JsonNode> contents = readItems(snapshot, "수집한 areaBasedList2 스냅샷");
+        ContentImportResult contentResult = synchronizeAndImportContents(contents);
+        return new ImportSummary(
+                contents.size(),
+                contentResult.imported(),
+                contentResult.missingCoordinates(),
+                contentResult.missingRegionMapping(),
+                0,
+                0,
+                0);
+    }
+
+    private ContentImportResult synchronizeAndImportContents(List<JsonNode> contents) {
+        Map<SourceRegionKey, ServiceRegionKey> regionNames =
+                extractRegionNames(contents);
+        Map<AdministrativeProvince, String> provinceCodes =
+                extractProvinceCodes(contents);
+        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
+        return importContents(contents, regionMappings);
+    }
+
     private List<JsonNode> readItems(Path file) {
         if (!Files.isRegularFile(file)) {
             throw new IllegalArgumentException("JSON 파일을 찾을 수 없습니다: " + file);
         }
         try {
-            JsonNode items = objectMapper.readTree(file.toFile())
+            return readItems(Files.readAllBytes(file), file.toString());
+        } catch (IOException exception) {
+            throw new IllegalStateException("JSON 파일을 읽을 수 없습니다: " + file, exception);
+        }
+    }
+
+    private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
+        try {
+            JsonNode items = objectMapper.readTree(snapshot)
                     .path("response")
                     .path("body")
                     .path("items")
                     .path("item");
             if (!items.isArray()) {
                 throw new IllegalArgumentException(
-                        "TourAPI item 배열을 찾을 수 없습니다: " + file);
+                        "TourAPI item 배열을 찾을 수 없습니다: " + sourceName);
             }
             List<JsonNode> result = new ArrayList<>();
             items.forEach(result::add);
             return result;
         } catch (IOException exception) {
-            throw new IllegalStateException("JSON 파일을 읽을 수 없습니다: " + file, exception);
+            throw new UncheckedIOException(
+                    "TourAPI JSON을 읽을 수 없습니다: " + sourceName,
+                    exception);
         }
     }
 

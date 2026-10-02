@@ -56,3 +56,16 @@ webpush:
     max-attempts: ${WEB_PUSH_MAX_ATTEMPTS:3}
     initial-backoff: ${WEB_PUSH_INITIAL_BACKOFF:1s}
     max-backoff: ${WEB_PUSH_MAX_BACKOFF:10s}
+
+tour-api:
+  collection:
+    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
+    service-key: ${TOUR_API_SERVICE_KEY:}
+    snapshot-location: ${TOUR_API_SNAPSHOT_LOCATION:data/tourism/raw}
+    mobile-os: ETC
+    mobile-app: KGB
+    num-of-rows: 60000
+    connect-timeout: 3s
+    read-timeout: 30s
+    max-response-bytes: 67108864
+    max-attempts: 3

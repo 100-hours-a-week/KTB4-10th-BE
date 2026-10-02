@@ -33,6 +33,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.github.ben-manes.caffeine:caffeine")
+    implementation(platform("software.amazon.awssdk:bom:2.55.10"))
+    implementation("software.amazon.awssdk:s3")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-mysql")
     runtimeOnly("com.mysql:mysql-connector-j")
@@ -98,4 +100,11 @@ tasks.register<JavaExec>("importTourApiData") {
             "--festival-file=${festivalFile.get()}",
         )
     }
+}
+
+tasks.register<JavaExec>("collectTourApiAreaSnapshot") {
+    group = "application"
+    description = "Collects, stores, and incrementally imports a TourAPI area snapshot"
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiSnapshotApplication"
 }

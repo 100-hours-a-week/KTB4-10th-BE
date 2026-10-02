@@ -168,9 +168,35 @@ sys:   1.51초
 1,235건만 upsert해 콘텐츠 SQL이 48,675회에서 1,310회로 감소했다.
 이전 스냅샷에서 사라진 130건의 `INACTIVE` 전환은 아직 구현되지 않았다.
 
+## TourAPI 전국 목록 직접 수집
+
+`areaBasedList2`를 `pageNo=1`, `numOfRows=60000`으로 한 번 호출한다. 응답의
+`totalCount`와 중복을 제거한 `contentid` 수가 일치할 때만 원본 JSON을 저장하고
+위의 증분 적재 로직으로 전달한다. 불완전한 응답은 MySQL을 변경하지 않는다.
+
+로컬 실행:
+
+```bash
+export TOUR_API_SERVICE_KEY='<디코딩된 TourAPI 서비스 키>'
+export TOUR_API_SNAPSHOT_LOCATION='data/tourism/raw'
+export DB_URL='jdbc:mysql://localhost:3306/kgb'
+export DB_USERNAME='<username>'
+export DB_PASSWORD='<password>'
+./gradlew collectTourApiAreaSnapshot
+```
+
+운영에서는 동일한 환경 변수에 S3 URI를 설정한다.
+
+```bash
+export TOUR_API_SNAPSHOT_LOCATION='s3://<bucket>/<prefix>'
+```
+
+스냅샷은 `<location>/<Asia/Seoul 기준 날짜>/<UUID>/areaBasedList2.json`에 저장된다.
+이 실행기는 관광 콘텐츠 목록만 수집하며 `searchFestival2` 행사 기간은 갱신하지 않는다.
+
 ## 현재 제외 범위
 
-- TourAPI 주기 호출과 `@Scheduled`
+- TourAPI `@Scheduled` 주기 호출
 - `detailCommon2`를 통한 소개·프로그램·요금 수집
 - 좌표 누락 콘텐츠의 지오코딩
 - 정보·지도 조회 API 변경
