@@ -65,5 +65,5 @@
 
 | 유즈케이스 | Method | Path | 접근 | 현재 동작 | 관련 검증 |
 | --- | --- | --- | --- | --- | --- |
-| 로드밸런서가 서버 생존 상태를 확인한다 | GET | `/actuator/health` | 운영 설정 | Spring Boot Actuator health를 제공한다. | `KgbApplicationTests` |
-| Prometheus가 애플리케이션 지표를 수집한다 | GET | `/actuator/prometheus` | 운영 설정 | Micrometer Prometheus metric을 노출한다. | `PrometheusMetricsIntegrationTest` |
+| 로드밸런서가 서버 생존 상태를 확인한다 | GET | `:8081/actuator/health` | 내부 관리 포트 | Spring Boot Actuator health를 제공한다. | `PrometheusMetricsIntegrationTest` |
+| Prometheus가 애플리케이션 지표를 수집한다 | GET | `:8081/actuator/prometheus` | 내부 관리 포트 | Micrometer Prometheus metric을 노출하며 업무 API 포트에는 노출하지 않는다. | `PrometheusMetricsIntegrationTest` |

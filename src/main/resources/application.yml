@@ -15,6 +15,8 @@ spring:
     enabled: true
 
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
       exposure:
@@ -22,6 +24,13 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 120s
   prometheus:
     metrics:
       export:
