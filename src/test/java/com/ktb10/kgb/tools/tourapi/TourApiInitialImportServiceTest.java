@@ -11,6 +11,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +41,11 @@ class TourApiInitialImportServiceTest {
                 .thenReturn(10L);
         when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenAnswer(invocation -> {
+                    String sql = invocation.getArgument(0);
+                    if (sql.contains("FROM tourism_contents")
+                            || sql.contains("FROM event_details")) {
+                        return List.of();
+                    }
                     RowMapper<?> rowMapper = invocation.getArgument(1);
                     ResultSet resultSet = mock(ResultSet.class);
                     when(resultSet.getString("name")).thenReturn("청주시");
@@ -149,6 +157,72 @@ class TourApiInitialImportServiceTest {
         assertThat(summary.importedEvents()).isZero();
         assertThat(summary.skippedInvalidEvents()).isEqualTo(1);
         assertThat(batchSizes).containsExactly(0, 0);
+    }
+
+    @Test
+    void skipsUnchangedContentAndEvent() throws Exception {
+        mockExistingContentAndEvent(
+                LocalDateTime.of(2026, 1, 2, 12, 0),
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14));
+        Path areaFile = writeItems("area.json", """
+                {
+                  "contentid": "100",
+                  "contenttypeid": "15",
+                  "title": "청주 행사",
+                  "addr1": "충청북도 청주시 상당구",
+                  "mapx": "127.5",
+                  "mapy": "36.6",
+                  "lDongRegnCd": "43",
+                  "lDongSignguCd": "110",
+                  "lclsSystm1": "EV",
+                  "modifiedtime": "20260102120000"
+                }
+                """);
+        Path festivalFile = writeItems("festival.json", """
+                {
+                  "contentid": "100",
+                  "eventstartdate": "20261012",
+                  "eventenddate": "20261014"
+                }
+                """);
+
+        ImportSummary summary = service.importFiles(areaFile, festivalFile);
+
+        assertThat(summary.importedContents()).isZero();
+        assertThat(summary.importedEvents()).isZero();
+        assertThat(batchSizes).containsExactly(0, 0);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockExistingContentAndEvent(
+            LocalDateTime modifiedAt,
+            LocalDate eventStartDate,
+            LocalDate eventEndDate) {
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenAnswer(invocation -> {
+                    String sql = invocation.getArgument(0);
+                    RowMapper<?> rowMapper = invocation.getArgument(1);
+                    ResultSet resultSet = mock(ResultSet.class);
+                    if (sql.contains("FROM tourism_contents")) {
+                        when(resultSet.getString("source_content_id")).thenReturn("100");
+                        when(resultSet.getTimestamp("source_modified_at"))
+                                .thenReturn(Timestamp.valueOf(modifiedAt));
+                        when(resultSet.getString("status")).thenReturn("ACTIVE");
+                        return List.of(rowMapper.mapRow(resultSet, 0));
+                    }
+                    if (sql.contains("FROM event_details")) {
+                        when(resultSet.getString("source_content_id")).thenReturn("100");
+                        when(resultSet.getDate("start_date"))
+                                .thenReturn(java.sql.Date.valueOf(eventStartDate));
+                        when(resultSet.getDate("end_date"))
+                                .thenReturn(java.sql.Date.valueOf(eventEndDate));
+                        return List.of(rowMapper.mapRow(resultSet, 0));
+                    }
+                    when(resultSet.getString("name")).thenReturn("청주시");
+                    when(resultSet.getLong("id")).thenReturn(20L);
+                    return List.of(rowMapper.mapRow(resultSet, 0));
+                });
     }
 
     private Path writeItems(String fileName, String items) throws Exception {
