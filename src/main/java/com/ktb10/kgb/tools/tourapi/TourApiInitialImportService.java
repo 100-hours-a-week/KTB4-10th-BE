@@ -304,9 +304,32 @@ public class TourApiInitialImportService {
             }
         }
 
-        batchUpsertContents(rows);
+        Map<String, ExistingContent> existingContents = loadExistingContents();
+        List<ContentRow> changedRows = rows.stream()
+                .filter(row -> row.needsUpsert(existingContents.get(row.sourceContentId())))
+                .toList();
+        batchUpsertContents(changedRows);
         return new ContentImportResult(
-                rows.size(), missingCoordinates, missingRegionMapping, contentIds);
+                changedRows.size(), missingCoordinates, missingRegionMapping, contentIds);
+    }
+
+    private Map<String, ExistingContent> loadExistingContents() {
+        Map<String, ExistingContent> result = new HashMap<>();
+        jdbcTemplate.query(
+                """
+                SELECT source_content_id, source_modified_at, status, deleted_at
+                FROM tourism_contents
+                WHERE source_provider = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingContent(
+                        resultSet.getString("source_content_id"),
+                        resultSet.getTimestamp("source_modified_at") == null
+                                ? null
+                                : resultSet.getTimestamp("source_modified_at").toLocalDateTime(),
+                        resultSet.getString("status"),
+                        resultSet.getTimestamp("deleted_at") != null),
+                SOURCE_PROVIDER).forEach(content -> result.put(content.sourceContentId(), content));
+        return result;
     }
 
     private void batchUpsertContents(List<ContentRow> rows) {
@@ -377,6 +400,11 @@ public class TourApiInitialImportService {
             events.add(new EventRow(contentId, startDate, endDate));
         }
 
+        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
+        List<EventRow> changedEvents = events.stream()
+                .filter(event -> !event.matches(existingEvents.get(event.sourceContentId())))
+                .toList();
+
         String sql =
                 """
                 INSERT INTO event_details (
@@ -395,7 +423,7 @@ public class TourApiInitialImportService {
             @Override
             public void setValues(PreparedStatement statement, int index)
                     throws SQLException {
-                EventRow event = events.get(index);
+                EventRow event = changedEvents.get(index);
                 statement.setObject(1, event.startDate());
                 statement.setObject(2, event.endDate());
                 statement.setString(3, SOURCE_PROVIDER);
@@ -404,10 +432,27 @@ public class TourApiInitialImportService {
 
             @Override
             public int getBatchSize() {
-                return events.size();
+                return changedEvents.size();
             }
         });
-        return new EventImportResult(events.size(), invalid);
+        return new EventImportResult(changedEvents.size(), invalid);
+    }
+
+    private Map<String, ExistingEvent> loadExistingEvents() {
+        Map<String, ExistingEvent> result = new HashMap<>();
+        jdbcTemplate.query(
+                """
+                SELECT content.source_content_id, event.start_date, event.end_date
+                FROM event_details event
+                JOIN tourism_contents content ON content.id = event.content_id
+                WHERE content.source_provider = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingEvent(
+                        resultSet.getString("source_content_id"),
+                        resultSet.getDate("start_date").toLocalDate(),
+                        resultSet.getDate("end_date").toLocalDate()),
+                SOURCE_PROVIDER).forEach(event -> result.put(event.sourceContentId(), event));
+        return result;
     }
 
     private SourceRegionKey sourceRegionKey(JsonNode source) {
@@ -494,6 +539,25 @@ public class TourApiInitialImportService {
             String sourceContentId,
             LocalDate startDate,
             LocalDate endDate) {
+
+        private boolean matches(ExistingEvent existing) {
+            return existing != null
+                    && startDate.equals(existing.startDate())
+                    && endDate.equals(existing.endDate());
+        }
+    }
+
+    private record ExistingEvent(
+            String sourceContentId,
+            LocalDate startDate,
+            LocalDate endDate) {
+    }
+
+    private record ExistingContent(
+            String sourceContentId,
+            LocalDateTime sourceModifiedAt,
+            String status,
+            boolean deleted) {
     }
 
     private record ContentRow(
@@ -549,6 +613,14 @@ public class TourApiInitialImportService {
                     limit(thumbnail, 2048),
                     dateTime(source, "createdtime"),
                     dateTime(source, "modifiedtime"));
+        }
+
+        private boolean needsUpsert(ExistingContent existing) {
+            return existing == null
+                    || !"ACTIVE".equals(existing.status())
+                    || existing.deleted()
+                    || sourceModifiedAt == null
+                    || !Objects.equals(sourceModifiedAt, existing.sourceModifiedAt());
         }
 
         private void setValues(PreparedStatement statement) throws SQLException {
