@@ -94,8 +94,8 @@
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
 | API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
-| API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` | 예 | Query/Body 없음; 인프라 내부 |
-| API-OPS-02 | Prometheus 메트릭 수집 | GET | `/actuator/prometheus` | 예 | Query/Body 없음; 인프라 내부 |
+| API-OPS-01 | 로드밸런서 헬스체크 | GET | `:8081/actuator/health` | 예 | Query/Body 없음; 내부 관리 포트 |
+| API-OPS-02 | Prometheus 메트릭 수집 | GET | `:8081/actuator/prometheus` | 예 | Query/Body 없음; 내부 관리 포트 |
 
 ### 2.1 운영 헬스체크
 
@@ -103,7 +103,7 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
+| GET | `:8081/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
 
 - 애플리케이션과 MySQL 연결 같은 필수 의존성의 요청 처리 가능 상태를 확인한다.
 - AI·관광·PG·푸시 공급자는 헬스체크에서 제외하고 별도로 감시한다.
@@ -120,14 +120,14 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/actuator/prometheus` | Prometheus scraper용 공개 경로. 서비스 세션 인증 없음 |
+| GET | `:8081/actuator/prometheus` | Prometheus scraper용 내부 관리 경로. 서비스 세션 인증 없음 |
 
-- 애플리케이션 포트 `8080`에서 Prometheus text format을 반환한다.
+- 업무 API와 분리된 내부 관리 포트 `8081`에서 Prometheus text format을 반환한다.
 - CPU·메모리, JVM Heap·GC·Thread, `http.server.requests`, HikariCP Active·Idle·Pending·Max 메트릭을 포함한다.
 - Actuator 기본 태그 외에 `application=kgb` 공통 태그를 부여한다.
 - 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다.
 - 백엔드는 수집 엔드포인트만 제공하며 Prometheus 서버·Grafana·경보 설정은 인프라 범위다.
-- 애플리케이션 인증을 요구하지 않는 대신 운영에서는 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
+- 애플리케이션 인증을 요구하지 않는 대신 관리 포트를 공용 라우팅에 연결하지 않고 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
 
 ## 3. 회원
 
