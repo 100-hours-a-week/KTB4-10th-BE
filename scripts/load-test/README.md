@@ -2,11 +2,54 @@
 
 로컬 백엔드의 일반 조회 API와 가이드북 생성 흐름을 반복 측정하기 위한 k6 시나리오입니다. 운영 서버에는 이 스크립트를 실행하지 않습니다.
 
-## 사전 준비
+## Docker Compose로 전체 실행
 
-1. MySQL 8.4 로컬 DB와 관광 데이터를 준비합니다.
-2. `local,loadtest` 프로필로 백엔드를 실행합니다.
-3. 애플리케이션 시작 시 fixture가 회원별 취향, 생성권과 인증 세션을 준비합니다.
+Docker Desktop을 실행한 뒤 다음 명령으로 MySQL, 백엔드, Prometheus, Grafana, Loki, Alloy를 한 번에 실행합니다. 백엔드가 시작되면 부하 테스트 회원 fixture를 생성하고 관광 데이터도 자동으로 복원합니다.
+
+```bash
+docker compose -f compose.loadtest.yml up -d --build
+docker compose -f compose.loadtest.yml ps
+```
+
+각 도구는 다음 주소에서 확인합니다.
+
+- 백엔드 API: `http://localhost:8080`
+- 백엔드 health·metrics: `http://localhost:8081/actuator/health`, `http://localhost:8081/actuator/prometheus`
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
+- Prometheus: `http://localhost:9090`
+- Loki: `http://localhost:3100/ready`
+- Alloy: `http://localhost:12345`
+
+일반 API 혼합 부하는 다음처럼 별도 일회성 컨테이너로 실행합니다. 실행 결과는 Prometheus로 전송되므로 Grafana에서 `k6_`로 시작하는 지표를 조회할 수 있습니다.
+
+```bash
+K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-general
+```
+
+가이드북 생성 부하는 동시 사용자 수를 단계적으로 늘려 실행합니다.
+
+```bash
+K6_GENERATION_VUS=1 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-guidebook
+K6_GENERATION_VUS=2 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-guidebook
+```
+
+Grafana의 **Explore → Loki**에서 `{service_name="backend"}`를 입력하면 백엔드 컨테이너 로그를 확인할 수 있습니다. 예외 발생 시 애플리케이션이 기록한 예외 타입, 메시지, stack trace도 같은 로그에서 조회합니다. 요청·응답 원문이나 세션·인증 정보는 별도로 기록하지 않습니다.
+
+종료할 때는 다음 명령을 사용합니다.
+
+```bash
+docker compose -f compose.loadtest.yml down
+```
+
+DB와 Grafana 대시보드 등 로컬 테스트 데이터까지 완전히 초기화할 때만 `down -v`를 사용합니다. 이 명령은 Compose가 만든 로컬 볼륨을 삭제합니다.
+
+```bash
+docker compose -f compose.loadtest.yml down -v
+```
+
+## 백엔드만 직접 실행
+
+Docker를 사용하지 않고 백엔드만 직접 실행할 수도 있습니다. 이 경우 MySQL 8.4 로컬 DB와 관광 데이터를 직접 준비한 뒤 `local,loadtest` 프로필로 실행합니다.
 
 ```bash
 SPRING_PROFILES_ACTIVE=local,loadtest \
@@ -90,7 +133,7 @@ k6 run -e SESSION_PREFIX=my-local-session- scripts/load-test/general-api.js
 
 로컬 프로필의 `FakeGuidebookAiClient`를 사용하므로 실제 AI 서버의 성능을 측정하지 않습니다. 이 시나리오는 백엔드의 생성 접수, 상태 polling, 결과 저장 흐름을 검증합니다.
 
-## Grafana 확인
+## 직접 구성한 Grafana 확인
 
 로컬 백엔드의 `/actuator/prometheus`를 Prometheus가 수집하도록 구성한 경우 Grafana에서 다음 지표를 함께 확인합니다.
 
@@ -99,7 +142,7 @@ k6 run -e SESSION_PREFIX=my-local-session- scripts/load-test/general-api.js
 - JVM heap·GC·thread
 - HikariCP active·idle·pending connection
 
-Prometheus와 Grafana의 설치·수집 설정은 백엔드 저장소의 범위에 포함하지 않습니다. 로컬 Grafana를 사용할 때 Prometheus 컨테이너에서는 호스트 백엔드를 `host.docker.internal:8081`로 수집할 수 있습니다.
+Compose 대신 기존 Grafana를 사용할 때 Prometheus 컨테이너에서는 호스트 백엔드를 `host.docker.internal:8081`로 수집할 수 있습니다.
 
 ## 주의사항
 
