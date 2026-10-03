@@ -12,6 +12,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -141,7 +142,9 @@ class HttpGuidebookAiClientTest {
 
         assertThatThrownBy(() -> client.getGenerationStatus("unknown_job"))
                 .isInstanceOf(AiClientException.class)
-                .hasMessage("AI 서버가 오류 응답을 반환했습니다. status=404");
+                .hasMessage("AI 서버가 오류 응답을 반환했습니다. status=404")
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.UPSTREAM_4XX);
         server.verify();
     }
 
@@ -154,7 +157,69 @@ class HttpGuidebookAiClientTest {
 
         assertThatThrownBy(() -> client.requestGeneration(request()))
                 .isInstanceOf(AiClientException.class)
-                .hasMessage("AI 서버 생성 접수 요청에 실패했습니다.");
+                .hasMessage("AI 서버 요청에 실패했습니다.")
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.CONNECTION_ERROR);
+        server.verify();
+    }
+
+    @Test
+    void classifiesReadTimeout() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("Read timed out");
+                });
+
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOf(AiClientException.class)
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.READ_TIMEOUT);
+        server.verify();
+    }
+
+    @Test
+    void classifiesConnectTimeout() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(request -> {
+                    throw new SocketTimeoutException("connect timed out");
+                });
+
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOf(AiClientException.class)
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.CONNECT_TIMEOUT);
+        server.verify();
+    }
+
+    @Test
+    void classifiesUpstreamServerError() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(withStatus(HttpStatus.BAD_GATEWAY));
+
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOf(AiClientException.class)
+                .satisfies(exception -> {
+                    AiClientException aiException = (AiClientException) exception;
+                    assertThat(aiException.getFailureType())
+                            .isEqualTo(AiFailureType.UPSTREAM_5XX);
+                    assertThat(aiException.getUpstreamStatus()).isEqualTo(502);
+                    assertThat(aiException.getTargetRoute())
+                            .isEqualTo("/guidebooks-generations");
+                });
+        server.verify();
+    }
+
+    @Test
+    void classifiesUnexpectedClientError() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(request -> {
+                    throw new IllegalStateException("unexpected client failure");
+                });
+
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOf(AiClientException.class)
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.UNEXPECTED_ERROR);
         server.verify();
     }
 
@@ -167,7 +232,9 @@ class HttpGuidebookAiClientTest {
 
         assertThatThrownBy(() -> client.requestGeneration(request()))
                 .isInstanceOf(AiClientException.class)
-                .hasMessage("AI 서버 생성 접수 요청에 실패했습니다.");
+                .hasMessage("AI 서버 응답 형식이 올바르지 않습니다.")
+                .extracting(exception -> ((AiClientException) exception).getFailureType())
+                .isEqualTo(AiFailureType.INVALID_RESPONSE);
         server.verify();
     }
 

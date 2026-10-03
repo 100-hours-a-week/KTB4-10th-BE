@@ -46,7 +46,7 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
     private FakeJob findJob(String aiJobId) {
         FakeJob job = jobs.get(aiJobId);
         if (job == null) {
-            throw new AiClientException("AI 생성 작업을 찾을 수 없습니다: " + aiJobId);
+            throw invalidFakeResponse("AI 생성 작업을 찾을 수 없습니다: " + aiJobId);
         }
         return job;
     }
@@ -68,7 +68,7 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
         int dayNumber = Math.toIntExact(
                 ChronoUnit.DAYS.between(request.startDate(), date) + 1);
         if (request.contents().isEmpty()) {
-            throw new AiClientException("Fake AI 생성에 사용할 관광 콘텐츠가 없습니다.");
+            throw invalidFakeResponse("Fake AI 생성에 사용할 관광 콘텐츠가 없습니다.");
         }
         AiGuidebookRequest.Content content = request.contents().get(
                 (dayNumber - 1) % request.contents().size());
@@ -83,6 +83,16 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
                 date,
                 "로컬 개발을 위한 " + dayNumber + "일차 요약입니다.",
                 List.of(place));
+    }
+
+    private AiClientException invalidFakeResponse(String message) {
+        return new AiClientException(
+                message,
+                null,
+                AiFailureType.INVALID_RESPONSE,
+                "/guidebooks-generations/{jobId}",
+                null,
+                0L);
     }
 
     private record FakeJob(
