@@ -15,7 +15,7 @@ docker compose -f compose.loadtest.yml ps
 
 - 백엔드 API: `http://localhost:8080`
 - 백엔드 health·metrics: `http://localhost:8081/actuator/health`, `http://localhost:8081/actuator/prometheus`
-- Grafana: `http://localhost:3000` (`admin` / `admin`)
+- Grafana: `http://localhost:3000` (`admin` / `admin`, `KGB Local Load Test` 대시보드 자동 생성)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100/ready`
 - Alloy: `http://localhost:12345`
@@ -33,7 +33,9 @@ K6_GENERATION_VUS=1 docker compose -f compose.loadtest.yml --profile loadtest ru
 K6_GENERATION_VUS=2 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-guidebook
 ```
 
-Grafana의 **Explore → Loki**에서 `{service_name="backend"}`를 입력하면 백엔드 컨테이너 로그를 확인할 수 있습니다. 예외 발생 시 애플리케이션이 기록한 예외 타입, 메시지, stack trace도 같은 로그에서 조회합니다. 요청·응답 원문이나 세션·인증 정보는 별도로 기록하지 않습니다.
+첫 로그인 후 홈 화면에 `KGB Local Load Test` 대시보드가 표시됩니다. 대시보드는 트래픽, API p95, 5xx 비율, k6 결과, JVM Heap, CPU, DB connection pool과 백엔드 로그를 5초 간격으로 갱신합니다.
+
+Grafana의 **Explore → Loki**에서 `{service_name="backend"}`를 입력해 백엔드 컨테이너 로그만 별도로 검색할 수도 있습니다. 예외 발생 시 애플리케이션이 기록한 예외 타입, 메시지, stack trace도 같은 로그에서 조회합니다. 요청·응답 원문이나 세션·인증 정보는 별도로 기록하지 않습니다.
 
 종료할 때는 다음 명령을 사용합니다.
 
