@@ -1,13 +1,10 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import exec from 'k6/execution';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-const SESSION = __ENV.SESSION;
+const SESSION_PREFIX = __ENV.SESSION_PREFIX || 'k6-local-session-';
 const MAX_VUS = Number(__ENV.VUS || 40);
-
-if (!SESSION) {
-  throw new Error('SESSION 환경변수에 유효한 로컬 KGB_SESSION 원문을 입력해야 합니다.');
-}
 
 if (!Number.isInteger(MAX_VUS) || MAX_VUS < 1 || MAX_VUS > 999) {
   throw new Error('VUS는 1 이상 999 이하의 정수여야 합니다.');
@@ -40,12 +37,6 @@ export const options = {
     http_req_duration: ['p(95)<1000'],
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
-};
-
-const params = {
-  headers: {
-    Cookie: `KGB_SESSION=${SESSION}`,
-  },
 };
 
 const requests = [
@@ -87,10 +78,13 @@ const requests = [
 ];
 
 export default function () {
+  const session = `${SESSION_PREFIX}${String(exec.vu.idInTest).padStart(3, '0')}`;
   const random = Math.random();
   const request = requests.find((candidate) => random < candidate.limit);
   const response = http.get(`${BASE_URL}${request.path}`, {
-    ...params,
+    headers: {
+      Cookie: `KGB_SESSION=${session}`,
+    },
     tags: { request: request.name },
   });
 

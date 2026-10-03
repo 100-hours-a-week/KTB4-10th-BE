@@ -5,13 +5,32 @@
 ## 사전 준비
 
 1. MySQL 8.4 로컬 DB와 관광 데이터를 준비합니다.
-2. `local` 프로필로 백엔드를 실행합니다.
-3. 테스트 회원을 `ACTIVE` 상태로 준비하고 취향과 생성권을 설정합니다.
-4. `auth_sessions.session_id_hash`에는 k6에 전달할 세션 원문의 SHA-256 값이 저장되어 있어야 합니다.
+2. `local,loadtest` 프로필로 백엔드를 실행합니다.
+3. 애플리케이션 시작 시 fixture가 회원별 취향, 생성권과 인증 세션을 준비합니다.
 
 ```bash
-SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
+SPRING_PROFILES_ACTIVE=local,loadtest \
+LOAD_TEST_USER_COUNT=40 \
+./gradlew bootRun
 ```
+
+fixture는 다음 원문 세션을 생성하고 DB에는 SHA-256 해시만 저장합니다.
+
+```text
+k6-local-session-001
+k6-local-session-002
+...
+k6-local-session-040
+```
+
+회원 수는 1~999 범위에서 지정할 수 있습니다. 생성권 기본 잔액과 세션 접두사도 변경할 수 있습니다.
+
+```bash
+LOAD_TEST_CREDIT_BALANCE=100
+LOAD_TEST_SESSION_PREFIX=k6-local-session-
+```
+
+fixture는 `local`과 `loadtest` 프로필이 함께 활성화될 때만 실행되며 외부 테스트용 API를 노출하지 않습니다. 같은 설정으로 다시 실행하면 기존 테스트 회원을 재사용하고 세션을 갱신합니다.
 
 헬스와 Prometheus 메트릭은 별도 관리 포트에서 확인합니다.
 
@@ -22,12 +41,11 @@ http://localhost:8081/actuator/prometheus
 
 ## 일반 API 혼합 부하
 
-유효한 회원 한 명의 세션을 사용해 조회 API를 정해진 비율로 호출합니다.
+각 VU가 fixture로 생성한 서로 다른 회원 세션을 사용해 조회 API를 정해진 비율로 호출합니다.
 
 ```bash
 k6 run \
   -e BASE_URL=http://localhost:8080 \
-  -e SESSION='<로컬 세션 원문>' \
   -e VUS=40 \
   scripts/load-test/general-api.js
 ```
@@ -36,21 +54,31 @@ k6 run \
 
 ## 가이드북 생성 E2E 부하
 
-회원은 동시에 하나의 활성 생성 작업만 가질 수 있으므로 VU마다 서로 다른 회원 세션이 필요합니다. `SESSIONS`에는 쉼표로 구분한 세션 원문을 전달합니다.
+회원은 동시에 하나의 활성 생성 작업만 가질 수 있으므로 VU마다 fixture로 생성한 서로 다른 회원 세션을 사용합니다.
 
 ```bash
 k6 run \
   -e BASE_URL=http://localhost:8080 \
   -e VUS=2 \
-  -e SESSIONS='<회원1 세션>,<회원2 세션>' \
   scripts/load-test/guidebook-generation.js
 ```
 
 필요하면 여행 날짜를 명시할 수 있습니다. 지정하지 않으면 실행일 기준 2일 뒤부터 3일 뒤까지를 사용합니다.
 
 ```bash
--e TRIP_START_DATE=2026-10-10 \
--e TRIP_END_DATE=2026-10-11
+k6 run \
+  -e BASE_URL=http://localhost:8080 \
+  -e VUS=1 \
+  -e TRIP_START_DATE=2026-10-10 \
+  -e TRIP_END_DATE=2026-10-11 \
+  scripts/load-test/guidebook-generation.js
+```
+
+기본값과 다른 세션 접두사를 사용했다면 백엔드와 k6에 동일하게 전달합니다.
+
+```bash
+LOAD_TEST_SESSION_PREFIX=my-local-session- ./gradlew bootRun
+k6 run -e SESSION_PREFIX=my-local-session- scripts/load-test/general-api.js
 ```
 
 가이드북 생성 테스트는 다음을 출력합니다.
@@ -75,7 +103,9 @@ Prometheus와 Grafana의 설치·수집 설정은 백엔드 저장소의 범위�
 
 ## 주의사항
 
-- 세션 원문, 쿠키, DB 비밀번호는 파일이나 Git에 저장하지 않습니다.
+- fixture의 예측 가능한 세션은 로컬 부하 테스트에서만 사용합니다.
+- `VUS`가 백엔드 실행 시 지정한 `LOAD_TEST_USER_COUNT`를 넘지 않게 설정합니다.
+- DB 비밀번호와 실제 사용자 세션은 파일이나 Git에 저장하지 않습니다.
 - 생성 테스트는 DB에 생성 작업과 가이드북 데이터를 남깁니다.
 - 높은 VUS를 바로 적용하지 말고 `1 → 2 → 5 → 10 → 20` 순서로 확인합니다.
 - 테스트 전후 동일한 데이터 조건을 사용해야 결과를 비교할 수 있습니다.

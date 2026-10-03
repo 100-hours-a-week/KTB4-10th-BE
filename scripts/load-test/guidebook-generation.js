@@ -5,17 +5,10 @@ import { Counter, Trend } from 'k6/metrics';
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const VUS = Number(__ENV.VUS || 1);
-const SESSIONS = (__ENV.SESSIONS || '')
-  .split(',')
-  .map((session) => session.trim())
-  .filter(Boolean);
+const SESSION_PREFIX = __ENV.SESSION_PREFIX || 'k6-local-session-';
 
 if (![1, 2, 5, 10, 20].includes(VUS)) {
   throw new Error('VUS는 1, 2, 5, 10, 20 중 하나여야 합니다.');
-}
-
-if (SESSIONS.length < VUS) {
-  throw new Error(`SESSIONS에는 VUS(${VUS})개 이상의 유효한 세션이 필요합니다.`);
 }
 
 const generationDuration = new Trend('generation_e2e_duration', true);
@@ -39,7 +32,7 @@ export const options = {
 };
 
 function sessionForVu() {
-  return SESSIONS[exec.vu.idInTest - 1];
+  return `${SESSION_PREFIX}${String(exec.vu.idInTest).padStart(3, '0')}`;
 }
 
 function dateAfterToday(days) {
