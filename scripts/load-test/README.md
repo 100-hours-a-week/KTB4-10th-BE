@@ -51,12 +51,34 @@ CPU 종류, Docker Desktop VM, 디스크와 네트워크가 운영 환경과 다
 K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-general
 ```
 
+지도 영역 조회만 측정하려면 지도 전용 시나리오를 실행합니다. 서울, 부산, 제주, 대구, 대전, 인천의 클러스터 영역과 상세 영역을 VU마다 순환하며 조회하고, 응답의 이미지 URL을 별도로 다운로드하지 않습니다.
+
+```bash
+K6_MAP_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
+```
+
+전체 테스트 전에 연결과 결과 저장만 빠르게 확인하려면 5초 smoke test를 실행합니다.
+
+```bash
+K6_MAP_VUS=1 docker compose -f compose.loadtest.yml --profile loadtest run --rm -e SMOKE=true k6-map
+```
+
 가이드북 생성 부하는 동시 사용자 수를 단계적으로 늘려 실행합니다.
 
 ```bash
 K6_GENERATION_VUS=1 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-guidebook
 K6_GENERATION_VUS=2 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-guidebook
 ```
+
+모든 Docker k6 실행은 종료 요약을 `results/load-test`에 UTC 실행 시각이 포함된 JSON 파일로 저장합니다.
+
+```text
+results/load-test/general-api-20261003T164000Z.json
+results/load-test/map-contents-20261003T170000Z.json
+results/load-test/guidebook-generation-20261003T173000Z.json
+```
+
+JSON 결과에는 요청 수, check 성공률, 실패율, 평균·p95·p99·최대 응답시간과 threshold 결과가 들어갑니다. 이 파일은 로컬 비교 보고서이므로 Git에는 커밋하지 않습니다. 상세 시계열은 계속 Prometheus에 저장되며 Grafana에서 확인합니다.
 
 첫 로그인 후 홈 화면에 `KGB Local Load Test` 대시보드가 표시됩니다. 대시보드는 트래픽, API p95, 5xx 비율, k6 결과, JVM Heap, CPU, DB connection pool과 백엔드 로그를 5초 간격으로 갱신합니다.
 

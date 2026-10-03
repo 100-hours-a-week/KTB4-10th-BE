@@ -56,7 +56,7 @@
       "gridPos": {"h": 7, "w": 12, "x": 0, "y": 8},
       "id": 5,
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "k6_http_req_duration_p95", "legendFormat": "{{testid}} p95", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "k6_generation_e2e_duration_p95", "legendFormat": "가이드북 E2E p95", "range": true, "refId": "B"}],
+      "targets": [{"editorMode": "code", "expr": "max by (testid, map_mode, region) (k6_http_req_duration_p95)", "legendFormat": "{{testid}} {{map_mode}} {{region}} p95", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "k6_generation_e2e_duration_p95", "legendFormat": "가이드북 E2E p95", "range": true, "refId": "B"}],
       "title": "k6 지연시간",
       "type": "timeseries"
     },

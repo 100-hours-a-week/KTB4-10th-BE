@@ -17,3 +17,7 @@ out/
 # Local environment
 .env
 *.local
+
+# Local load-test result reports
+results/load-test/*.json
+!results/load-test/.gitkeep

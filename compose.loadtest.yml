@@ -154,7 +154,30 @@ services:
       K6_TAGS: environment:local-loadtest,testid:general-api
     volumes:
       - ./scripts/load-test:/scripts:ro
-    command: run /scripts/general-api.js
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["general-api", "/scripts/general-api.js"]
+    depends_on:
+      tourism-data:
+        condition: service_completed_successfully
+
+  k6-map:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_MAP_VUS:-40}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:map-contents
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["map-contents", "/scripts/map-contents.js"]
     depends_on:
       tourism-data:
         condition: service_completed_successfully
@@ -175,7 +198,9 @@ services:
       K6_TAGS: environment:local-loadtest,testid:guidebook-generation
     volumes:
       - ./scripts/load-test:/scripts:ro
-    command: run /scripts/guidebook-generation.js
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["guidebook-generation", "/scripts/guidebook-generation.js"]
     depends_on:
       tourism-data:
         condition: service_completed_successfully
