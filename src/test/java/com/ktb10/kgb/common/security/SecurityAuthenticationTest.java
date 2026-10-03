@@ -239,7 +239,7 @@ class SecurityAuthenticationTest {
                         .header("Access-Control-Request-Method", "POST")
                         .header(
                                 "Access-Control-Request-Headers",
-                                "X-XSRF-TOKEN, Idempotency-Key"))
+                                "X-XSRF-TOKEN, Idempotency-Key, X-Trace-Id"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Access-Control-Allow-Origin", "https://frontend.example"))
                 .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
@@ -248,7 +248,10 @@ class SecurityAuthenticationTest {
                         containsString("X-XSRF-TOKEN")))
                 .andExpect(header().string(
                         "Access-Control-Allow-Headers",
-                        containsString("Idempotency-Key")));
+                        containsString("Idempotency-Key")))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Headers",
+                        containsString("X-Trace-Id")));
 
         mockMvc.perform(options("/api/v1/test/protected-change")
                         .header("Origin", "https://unknown.example")
