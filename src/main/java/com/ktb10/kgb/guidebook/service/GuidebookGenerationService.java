@@ -6,8 +6,9 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.AiClientException;
+import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
+import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -58,6 +59,7 @@ public class GuidebookGenerationService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
     private final GuidebookResultService guidebookResultService;
+    private final AiIntegrationErrorLogger aiIntegrationErrorLogger;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -69,6 +71,7 @@ public class GuidebookGenerationService {
             ApplicationEventPublisher eventPublisher,
             ObjectProvider<GuidebookAiClient> guidebookAiClientProvider,
             GuidebookResultService guidebookResultService,
+            AiIntegrationErrorLogger aiIntegrationErrorLogger,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
@@ -78,6 +81,7 @@ public class GuidebookGenerationService {
         this.eventPublisher = eventPublisher;
         this.guidebookAiClientProvider = guidebookAiClientProvider;
         this.guidebookResultService = guidebookResultService;
+        this.aiIntegrationErrorLogger = aiIntegrationErrorLogger;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -156,6 +160,11 @@ public class GuidebookGenerationService {
                 job = generationJobRepository.findById(jobId)
                         .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
             } catch (AiClientException exception) {
+                aiIntegrationErrorLogger.logFailure(
+                        "ai_generation_status_sync_failed",
+                        job.getId(),
+                        job.getAiJobId(),
+                        exception);
                 job.fail("{\"code\":\"AI_STATUS_UNAVAILABLE\"}", LocalDateTime.now(clock));
             }
         }
