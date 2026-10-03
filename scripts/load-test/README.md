@@ -6,6 +6,8 @@
 
 Docker Desktop을 실행한 뒤 다음 명령으로 MySQL, 백엔드, Prometheus, Grafana, Loki, Alloy를 한 번에 실행합니다. 백엔드가 시작되면 부하 테스트 회원 fixture를 생성하고 관광 데이터도 자동으로 복원합니다.
 
+백엔드는 Spring의 `local,loadtest` 프로필로 실행됩니다. `application-loadtest.yml`은 fixture 회원 수, 생성권 잔액과 세션 접두사를 관리하고, fixture 코드는 `local`과 `loadtest`가 동시에 활성화될 때만 동작합니다. k6 서비스도 Compose의 `loadtest` 프로필에 분리되어 평상시에는 실행되지 않습니다.
+
 반복 측정 결과가 로컬 PC의 남은 자원에 따라 크게 흔들리지 않도록 백엔드와 MySQL은 기본적으로 각각 2 CPU, 2GB 메모리로 제한합니다. 백엔드 JVM은 컨테이너 메모리의 25%로 시작하고 최대 70%를 Heap으로 사용합니다.
 
 ```bash
@@ -47,11 +49,15 @@ CPU 종류, Docker Desktop VM, 디스크와 네트워크가 운영 환경과 다
 
 일반 API 혼합 부하는 다음처럼 별도 일회성 컨테이너로 실행합니다. 실행 결과는 Prometheus로 전송되므로 Grafana에서 `k6_`로 시작하는 지표를 조회할 수 있습니다.
 
+기본 40 VU 실행은 `4 → 10 → 20 → 40 → 0` 순서로 증가하며 총 4분 20초 동안 진행됩니다.
+
 ```bash
 K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-general
 ```
 
 지도 영역 조회만 측정하려면 지도 전용 시나리오를 실행합니다. 서울, 부산, 제주, 대구, 대전, 인천의 클러스터 영역과 상세 영역을 VU마다 순환하며 조회하고, 응답의 이미지 URL을 별도로 다운로드하지 않습니다.
+
+기본 40 VU 실행 시간과 증가 단계는 일반 API 시나리오와 동일한 4분 20초입니다.
 
 ```bash
 K6_MAP_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
