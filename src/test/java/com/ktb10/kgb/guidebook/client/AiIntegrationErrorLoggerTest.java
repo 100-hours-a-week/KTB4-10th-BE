@@ -22,9 +22,10 @@ class AiIntegrationErrorLoggerTest {
     @Test
     void logsFailureWithTraceAndGenerationIdentifiers(CapturedOutput output) {
         MDC.put("traceId", "trace-ai-161");
+        String sensitiveUpstreamBody = "sensitive-ai-response-body";
         AiClientException exception = new AiClientException(
-                "AI 서버가 오류 응답을 반환했습니다. status=502",
-                new IllegalStateException("upstream detail"),
+                "AI 서버가 오류 응답을 반환했습니다. body=" + sensitiveUpstreamBody,
+                new IllegalStateException("upstream detail=" + sensitiveUpstreamBody),
                 AiFailureType.UPSTREAM_5XX,
                 "/guidebooks-generations/{jobId}",
                 502,
@@ -47,6 +48,10 @@ class AiIntegrationErrorLoggerTest {
                 .contains("durationMs=321")
                 .contains("failureType=upstream_5xx")
                 .contains("retryable=true")
-                .contains("rootCauseType=IllegalStateException");
+                .contains("rootCauseType=IllegalStateException")
+                .contains("sanitized exception type=AiClientException")
+                .contains("sanitized exception type=IllegalStateException")
+                .doesNotContain(sensitiveUpstreamBody)
+                .doesNotContain("upstream detail");
     }
 }

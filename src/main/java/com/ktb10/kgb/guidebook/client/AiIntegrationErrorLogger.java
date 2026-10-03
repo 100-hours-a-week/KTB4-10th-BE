@@ -28,7 +28,7 @@ public class AiIntegrationErrorLogger {
         String rootCauseType = rootCause(exception).getClass().getSimpleName();
 
         LoggingEventBuilder eventBuilder = LOGGER.atError()
-                .setCause(exception)
+                .setCause(SanitizedAiLogException.from(exception))
                 .addKeyValue("event", event)
                 .addKeyValue("traceId", traceId)
                 .addKeyValue("generationJobId", generationJobId)
@@ -70,5 +70,23 @@ public class AiIntegrationErrorLogger {
             current = current.getCause();
         }
         return current;
+    }
+
+    /** 원본 메시지는 버리고 예외 타입과 스택 위치만 보존해 로그 노출 범위를 제한합니다. */
+    private static final class SanitizedAiLogException extends RuntimeException {
+
+        private SanitizedAiLogException(Throwable source) {
+            super("sanitized exception type=" + source.getClass().getSimpleName());
+            setStackTrace(source.getStackTrace());
+
+            Throwable sourceCause = source.getCause();
+            if (sourceCause != null && sourceCause != source) {
+                initCause(new SanitizedAiLogException(sourceCause));
+            }
+        }
+
+        private static SanitizedAiLogException from(Throwable source) {
+            return new SanitizedAiLogException(source);
+        }
     }
 }
