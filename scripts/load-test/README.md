@@ -63,7 +63,7 @@ K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-
 
 지역 비중은 서울 35%, 인천 15%, 부산 15%, 제주 15%, 대구 10%, 대전 10%입니다. 요청에는 `flow`, `step`, `region`, `map_mode`, `zoom` 태그가 기록됩니다.
 
-지도 시나리오는 각 부하 단계를 30초간 유지합니다. `10% → 25% → 50% → 100% → 0` 순서로 증가하며, 단계 사이 5초 전환을 포함해 총 2분 20초입니다.
+지도 시나리오의 전체 실행 시간은 30초입니다. `10% 5초 → 25% 5초 → 50% 5초 → 100% 10초 → 종료 5초` 순서로 부하를 변경합니다.
 
 ```bash
 K6_MAP_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
