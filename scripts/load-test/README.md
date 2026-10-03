@@ -55,12 +55,32 @@ CPU 종류, Docker Desktop VM, 디스크와 네트워크가 운영 환경과 다
 K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-general
 ```
 
-지도 영역 조회만 측정하려면 지도 전용 시나리오를 실행합니다. 서울, 부산, 제주, 대구, 대전, 인천의 클러스터 영역과 상세 영역을 VU마다 순환하며 조회하고, 응답의 이미지 URL을 별도로 다운로드하지 않습니다.
+지도 영역 조회만 측정하려면 지도 전용 시나리오를 실행합니다. 각 VU는 다음 사용자 행동 중 하나를 선택하며, 응답의 이미지 URL을 별도로 다운로드하지 않습니다.
+
+- 최초 진입 40%: zoom 12로 넓은 클러스터 영역을 한 번 조회하고 3~5초 머무릅니다.
+- 같은 지역 이동 40%: zoom 16에서 겹치는 인접 영역 세 곳을 좌우로 이동합니다.
+- 단계적 확대 20%: 같은 중심점을 zoom 12 → 14 → 16 순서로 확대합니다.
+
+지역 비중은 서울 35%, 인천 15%, 부산 15%, 제주 15%, 대구 10%, 대전 10%입니다. 요청에는 `flow`, `step`, `region`, `map_mode`, `zoom` 태그가 기록됩니다.
 
 기본 40 VU 실행 시간과 증가 단계는 일반 API 시나리오와 동일한 4분 20초입니다.
 
 ```bash
 K6_MAP_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
+```
+
+VU는 1~999 사이에서 직접 지정할 수 있습니다. Docker 기본 fixture는 200명이므로 100 VU까지는 별도 준비 없이 실행할 수 있습니다.
+loadtest 프로필에서 fixture 세션의 미사용 만료 시간은 기본 30일이며, 운영 프로필의 30분 설정에는 영향을 주지 않습니다.
+
+```bash
+K6_MAP_VUS=100 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
+```
+
+200명을 초과하려면 스택을 올릴 때 fixture 회원 수도 함께 늘립니다.
+
+```bash
+LOAD_TEST_USER_COUNT=300 docker compose -f compose.loadtest.yml up -d
+K6_MAP_VUS=300 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
 ```
 
 전체 테스트 전에 연결과 결과 저장만 빠르게 확인하려면 5초 smoke test를 실행합니다.

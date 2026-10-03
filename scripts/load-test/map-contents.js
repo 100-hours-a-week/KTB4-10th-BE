@@ -15,26 +15,20 @@ const INITIAL_VUS = Math.max(1, Math.ceil(MAX_VUS / 10));
 const QUARTER_VUS = Math.max(1, Math.ceil(MAX_VUS / 4));
 const HALF_VUS = Math.max(1, Math.ceil(MAX_VUS / 2));
 
-const viewports = [
-  { region: 'seoul', mode: 'cluster', south: 37.40, west: 126.80, north: 37.70, east: 127.20, zoom: 12 },
-  { region: 'seoul', mode: 'detail', south: 37.54, west: 126.96, north: 37.58, east: 127.02, zoom: 16 },
-  { region: 'busan', mode: 'cluster', south: 35.00, west: 128.90, north: 35.30, east: 129.30, zoom: 12 },
-  { region: 'busan', mode: 'detail', south: 35.14, west: 129.02, north: 35.20, east: 129.10, zoom: 16 },
-  { region: 'jeju', mode: 'cluster', south: 33.20, west: 126.10, north: 33.60, east: 126.90, zoom: 12 },
-  { region: 'jeju', mode: 'detail', south: 33.47, west: 126.48, north: 33.53, east: 126.58, zoom: 16 },
-  { region: 'daegu', mode: 'cluster', south: 35.75, west: 128.45, north: 36.00, east: 128.75, zoom: 12 },
-  { region: 'daegu', mode: 'detail', south: 35.84, west: 128.56, north: 35.90, east: 128.66, zoom: 16 },
-  { region: 'daejeon', mode: 'cluster', south: 36.20, west: 127.25, north: 36.50, east: 127.55, zoom: 12 },
-  { region: 'daejeon', mode: 'detail', south: 36.32, west: 127.37, north: 36.38, east: 127.47, zoom: 16 },
-  { region: 'incheon', mode: 'cluster', south: 37.30, west: 126.50, north: 37.60, east: 126.80, zoom: 12 },
-  { region: 'incheon', mode: 'detail', south: 37.43, west: 126.65, north: 37.49, east: 126.75, zoom: 16 },
+const regions = [
+  { limit: 0.35, name: 'seoul', latitude: 37.5665, longitude: 126.9780 },
+  { limit: 0.50, name: 'incheon', latitude: 37.4563, longitude: 126.7052 },
+  { limit: 0.65, name: 'busan', latitude: 35.1796, longitude: 129.0756 },
+  { limit: 0.80, name: 'jeju', latitude: 33.4996, longitude: 126.5312 },
+  { limit: 0.90, name: 'daegu', latitude: 35.8714, longitude: 128.6014 },
+  { limit: 1.00, name: 'daejeon', latitude: 36.3504, longitude: 127.3845 },
 ];
 
 export const options = {
   scenarios: {
     map_contents: {
       executor: 'ramping-vus',
-      startVUs: INITIAL_VUS,
+      startVUs: SMOKE ? 1 : INITIAL_VUS,
       stages: SMOKE ? [{ target: 1, duration: '5s' }] : [
         { target: INITIAL_VUS, duration: '1m' },
         { target: QUARTER_VUS, duration: '5s' },
@@ -56,16 +50,28 @@ export const options = {
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
-export default function () {
-  const session = `${SESSION_PREFIX}${String(exec.vu.idInTest).padStart(3, '0')}`;
-  const viewportIndex = (exec.vu.idInTest + exec.scenario.iterationInTest) % viewports.length;
-  const viewport = viewports[viewportIndex];
+function selectRegion() {
+  const random = Math.random();
+  return regions.find((region) => random < region.limit);
+}
+
+function bounds(region, latitudeHalf, longitudeHalf, longitudeOffset = 0) {
+  const longitude = region.longitude + longitudeOffset;
+  return {
+    south: (region.latitude - latitudeHalf).toFixed(5),
+    west: (longitude - longitudeHalf).toFixed(5),
+    north: (region.latitude + latitudeHalf).toFixed(5),
+    east: (longitude + longitudeHalf).toFixed(5),
+  };
+}
+
+function requestMap(session, region, flow, step, zoom, viewport) {
   const query = [
     `south=${viewport.south}`,
     `west=${viewport.west}`,
     `north=${viewport.north}`,
     `east=${viewport.east}`,
-    `zoom=${viewport.zoom}`,
+    `zoom=${zoom}`,
   ].join('&');
 
   const response = http.get(`${BASE_URL}/api/v1/map/contents?${query}`, {
@@ -75,9 +81,11 @@ export default function () {
     tags: {
       name: '/api/v1/map/contents',
       request: 'map_contents',
-      region: viewport.region,
-      map_mode: viewport.mode,
-      zoom: String(viewport.zoom),
+      region: region.name,
+      flow,
+      step,
+      map_mode: zoom <= 14 ? 'cluster' : 'detail',
+      zoom: String(zoom),
     },
   });
 
@@ -85,5 +93,49 @@ export default function () {
     'map_contents returns 200': (result) => result.status === 200,
   });
 
-  sleep(1 + Math.random() * 2);
+  if (response.status !== 200) {
+    console.error(
+      `MAP FAILED | flow=${flow} | region=${region.name} | zoom=${zoom}`
+      + ` | status=${response.status}`,
+    );
+  }
+}
+
+export default function () {
+  const session = `${SESSION_PREFIX}${String(exec.vu.idInTest).padStart(3, '0')}`;
+  const region = selectRegion();
+  const flowRandom = Math.random();
+
+  if (flowRandom < 0.40) {
+    requestMap(session, region, 'initial_entry', 'zoom_12', 12,
+      bounds(region, 0.15, 0.20));
+    sleep(3 + Math.random() * 2);
+    return;
+  }
+
+  if (flowRandom < 0.80) {
+    [-0.06, 0, 0.06].forEach((longitudeOffset, index) => {
+      requestMap(session, region, 'pan', `area_${index + 1}`, 16,
+        bounds(region, 0.03, 0.05, longitudeOffset));
+      if (index < 2) {
+        sleep(0.5 + Math.random());
+      }
+    });
+    sleep(2 + Math.random() * 2);
+    return;
+  }
+
+  [
+    { zoom: 12, latitudeHalf: 0.15, longitudeHalf: 0.20 },
+    { zoom: 14, latitudeHalf: 0.08, longitudeHalf: 0.10 },
+    { zoom: 16, latitudeHalf: 0.03, longitudeHalf: 0.05 },
+  ].forEach((level, index) => {
+    requestMap(session, region, 'zoom_in', `zoom_${level.zoom}`, level.zoom,
+      bounds(region, level.latitudeHalf, level.longitudeHalf));
+    if (index < 2) {
+      sleep(0.75 + Math.random() * 0.75);
+    }
+  });
+
+  sleep(2 + Math.random() * 2);
 }
