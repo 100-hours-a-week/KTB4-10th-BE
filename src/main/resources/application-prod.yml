@@ -14,3 +14,8 @@ ai:
     base-url: ${AI_SERVER_BASE_URL}
     connect-timeout: ${AI_SERVER_CONNECT_TIMEOUT:3s}
     read-timeout: ${AI_SERVER_READ_TIMEOUT:10s}
+
+logging:
+  structured:
+    format:
+      console: logstash

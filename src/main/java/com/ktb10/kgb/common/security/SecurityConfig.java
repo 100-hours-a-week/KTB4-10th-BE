@@ -139,6 +139,7 @@ public class SecurityConfig {
                 "Accept",
                 "Content-Type",
                 "Idempotency-Key",
+                "X-Trace-Id",
                 "X-XSRF-TOKEN"));
         configuration.setExposedHeaders(List.of("X-Trace-Id"));
         configuration.setAllowCredentials(true);

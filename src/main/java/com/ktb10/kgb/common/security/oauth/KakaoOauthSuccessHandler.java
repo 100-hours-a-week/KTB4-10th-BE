@@ -1,5 +1,6 @@
 package com.ktb10.kgb.common.security.oauth;
 
+import com.ktb10.kgb.common.error.StructuredErrorLogger;
 import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
 import com.ktb10.kgb.common.security.SessionCookieManager;
 import jakarta.servlet.ServletException;
@@ -51,9 +52,14 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
         try {
             completeLogin(request, response, authentication);
         } catch (RuntimeException exception) {
-            LOGGER.error(
-                    "OAuth 회원·세션 처리 실패: {}",
-                    exception.getClass().getSimpleName());
+            StructuredErrorLogger.log(
+                    LOGGER,
+                    "oauth_login_completion_failure",
+                    "OAuth member and session completion failed",
+                    request,
+                    HttpServletResponse.SC_FOUND,
+                    OauthErrorCode.OAUTH_INTERNAL_ERROR.name(),
+                    exception);
             failureHandler.redirect(response, OauthErrorCode.OAUTH_INTERNAL_ERROR);
         }
     }

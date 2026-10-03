@@ -1,7 +1,7 @@
 package com.ktb10.kgb.common.security;
 
 import com.ktb10.kgb.common.error.CommonErrorCode;
-import com.ktb10.kgb.common.error.TraceId;
+import com.ktb10.kgb.common.error.StructuredErrorLogger;
 import com.ktb10.kgb.member.service.ServiceSessionService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -62,8 +62,14 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
                     .ifPresent(principal -> setAuthentication(request, principal));
         } catch (RuntimeException exception) {
             SecurityContextHolder.clearContext();
-            String traceId = TraceId.getOrCreate(request);
-            LOGGER.error("Service session authentication failed [traceId={}]", traceId, exception);
+            StructuredErrorLogger.log(
+                    LOGGER,
+                    "service_session_authentication_failure",
+                    "Service session authentication failed",
+                    request,
+                    CommonErrorCode.INTERNAL_SERVER_ERROR.httpStatus().value(),
+                    CommonErrorCode.INTERNAL_SERVER_ERROR.code(),
+                    exception);
             errorWriter.write(request, response, CommonErrorCode.INTERNAL_SERVER_ERROR);
             return;
         }
