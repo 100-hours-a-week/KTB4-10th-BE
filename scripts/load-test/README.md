@@ -6,10 +6,35 @@
 
 Docker Desktop을 실행한 뒤 다음 명령으로 MySQL, 백엔드, Prometheus, Grafana, Loki, Alloy를 한 번에 실행합니다. 백엔드가 시작되면 부하 테스트 회원 fixture를 생성하고 관광 데이터도 자동으로 복원합니다.
 
+반복 측정 결과가 로컬 PC의 남은 자원에 따라 크게 흔들리지 않도록 백엔드와 MySQL은 기본적으로 각각 2 CPU, 2GB 메모리로 제한합니다. 백엔드 JVM은 컨테이너 메모리의 25%로 시작하고 최대 70%를 Heap으로 사용합니다.
+
 ```bash
 docker compose -f compose.loadtest.yml up -d --build
 docker compose -f compose.loadtest.yml ps
 ```
+
+운영 또는 스테이징과 비슷한 자원 조건을 재현하려면 실행 전에 값을 변경합니다.
+
+```bash
+BACKEND_CPUS=1 \
+BACKEND_MEMORY=1g \
+MYSQL_CPUS=2 \
+MYSQL_MEMORY=2g \
+docker compose -f compose.loadtest.yml up -d --build
+```
+
+사용 가능한 설정과 기본값은 다음과 같습니다.
+
+| 환경변수 | 기본값 | 설명 |
+|---|---:|---|
+| `BACKEND_CPUS` | `2` | 백엔드 컨테이너 CPU 한도 |
+| `BACKEND_MEMORY` | `2g` | 백엔드 컨테이너 메모리 한도 |
+| `MYSQL_CPUS` | `2` | MySQL 컨테이너 CPU 한도 |
+| `MYSQL_MEMORY` | `2g` | MySQL 컨테이너 메모리 한도 |
+| `JVM_INITIAL_RAM_PERCENTAGE` | `25` | JVM 초기 Heap 비율 |
+| `JVM_MAX_RAM_PERCENTAGE` | `70` | JVM 최대 Heap 비율 |
+
+CPU 종류, Docker Desktop VM, 디스크와 네트워크가 운영 환경과 다르므로 로컬 결과는 운영 처리량 예측값이 아니라 동일한 조건에서 변경 전후 병목을 비교하는 기준으로 사용합니다.
 
 각 도구는 다음 주소에서 확인합니다.
 

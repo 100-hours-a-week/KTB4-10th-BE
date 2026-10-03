@@ -1,6 +1,8 @@
 services:
   mysql:
     image: mysql:8.4
+    cpus: ${MYSQL_CPUS:-2}
+    mem_limit: ${MYSQL_MEMORY:-2g}
     environment:
       MYSQL_DATABASE: kgb_local
       MYSQL_USER: kgb
@@ -22,7 +24,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    cpus: ${BACKEND_CPUS:-2}
+    mem_limit: ${BACKEND_MEMORY:-2g}
     environment:
+      JAVA_TOOL_OPTIONS: >-
+        -XX:InitialRAMPercentage=${JVM_INITIAL_RAM_PERCENTAGE:-25}
+        -XX:MaxRAMPercentage=${JVM_MAX_RAM_PERCENTAGE:-70}
       SPRING_PROFILES_ACTIVE: local,loadtest
       DB_URL: jdbc:mysql://mysql:3306/kgb_local?useSSL=false&allowPublicKeyRetrieval=true
       DB_USERNAME: kgb
