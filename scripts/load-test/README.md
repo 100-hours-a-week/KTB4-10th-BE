@@ -63,7 +63,7 @@ K6_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-
 
 지역 비중은 서울 35%, 인천 15%, 부산 15%, 제주 15%, 대구 10%, 대전 10%입니다. 요청에는 `flow`, `step`, `region`, `map_mode`, `zoom` 태그가 기록됩니다.
 
-기본 40 VU 실행 시간과 증가 단계는 일반 API 시나리오와 동일한 4분 20초입니다.
+지도 시나리오는 각 부하 단계를 30초간 유지합니다. `10% → 25% → 50% → 100% → 0` 순서로 증가하며, 단계 사이 5초 전환을 포함해 총 2분 20초입니다.
 
 ```bash
 K6_MAP_VUS=40 docker compose -f compose.loadtest.yml --profile loadtest run --rm k6-map
