@@ -19,6 +19,3 @@ logging:
   structured:
     format:
       console: logstash
-    json:
-      rename:
-        "@timestamp": timestamp
