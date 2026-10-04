@@ -4,6 +4,7 @@ import com.ktb10.kgb.guidebook.client.AiClientException;
 import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.service.GuidebookAiTriggerService;
+import com.ktb10.kgb.guidebook.service.GuidebookGenerationFailureService;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -17,12 +18,15 @@ public class GuidebookGenerationEventListener {
     private static final String GENERATIONS_ROUTE = "/guidebooks-generations";
 
     private final GuidebookAiTriggerService guidebookAiTriggerService;
+    private final GuidebookGenerationFailureService generationFailureService;
     private final AiIntegrationErrorLogger errorLogger;
 
     public GuidebookGenerationEventListener(
             GuidebookAiTriggerService guidebookAiTriggerService,
+            GuidebookGenerationFailureService generationFailureService,
             AiIntegrationErrorLogger errorLogger) {
         this.guidebookAiTriggerService = guidebookAiTriggerService;
+        this.generationFailureService = generationFailureService;
         this.errorLogger = errorLogger;
     }
 
@@ -31,11 +35,7 @@ public class GuidebookGenerationEventListener {
         try {
             guidebookAiTriggerService.trigger(event.jobId());
         } catch (AiClientException exception) {
-            errorLogger.logFailure(
-                    "ai_generation_request_failed",
-                    event.jobId(),
-                    null,
-                    exception);
+            recoverAndLog(event.jobId(), exception);
         } catch (RuntimeException exception) {
             AiClientException classifiedException = new AiClientException(
                     "AI 생성 접수 처리 중 예상하지 못한 오류가 발생했습니다.",
@@ -44,11 +44,19 @@ public class GuidebookGenerationEventListener {
                     GENERATIONS_ROUTE,
                     null,
                     0L);
+            recoverAndLog(event.jobId(), classifiedException);
+        }
+    }
+
+    private void recoverAndLog(Long jobId, AiClientException exception) {
+        try {
+            generationFailureService.failInitialSubmission(jobId, exception);
+        } finally {
             errorLogger.logFailure(
                     "ai_generation_request_failed",
-                    event.jobId(),
+                    jobId,
                     null,
-                    classifiedException);
+                    exception);
         }
     }
 }

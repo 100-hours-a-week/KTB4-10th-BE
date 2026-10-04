@@ -132,8 +132,26 @@ class GenerationStatusApiTest {
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
                 .andExpect(jsonPath("$.data.error.code").value("GENERATION_FAILED"))
                 .andExpect(jsonPath("$.data.error.message").value("가이드북 생성에 실패했습니다."))
+                .andExpect(jsonPath("$.data.error.retryable").value(true))
                 .andReturn().getResponse().getContentAsString();
         assertThat(response).doesNotContain("private-ai-secret", "error_payload", "request_payload");
+    }
+
+    @Test
+    void returnsNotRetryableForNonRetryableSubmissionFailure() throws Exception {
+        GenerationJob job = GenerationJob.createInitial(
+                member, "{}", UUID.randomUUID().toString(), LocalDateTime.now(clock));
+        job.fail(
+                "{\"code\":\"AI_SUBMISSION_FAILED\","
+                        + "\"failure_type\":\"upstream_4xx\",\"retryable\":false}",
+                LocalDateTime.now(clock));
+        job = generationJobRepository.saveAndFlush(job);
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebook-generations/{jobId}", job.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.error.retryable").value(false));
     }
 
     @Test
