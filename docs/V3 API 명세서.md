@@ -30,7 +30,7 @@
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일 0~4. THEME:DETAIL은 1:N이며 중복/부모/코드/개수 오류는 422 PREFERENCE_INVALID.
 - 가입월 포함 월 3회 누적 지급, 이월 가능, 탈퇴 소멸·재가입 3회. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
-- GDE-03에는 progress/retryable을 아직 추가하지 않는다. AI와 단계 계약 확정 후 별도 변경한다.
+- GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. FAILED의 error에는 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
@@ -950,7 +950,7 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**현재 구현:** 실패한 자신의 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도는 복구 작업과 함께 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
+**현재 구현:** DB 커밋 후 최초 AI 접수가 실패하면 작업을 `FAILED`로 종료하고 실패 유형과 재시도 가능 여부만 내부 저장한다. 실패한 자신의 작업 중 `error.retryable=true`인 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도·서버 재시작 후 정체 작업 복구는 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
 
 ### API-GDE-03 생성 상태 조회
 
@@ -964,7 +964,7 @@ Body 없음.
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
 - 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
-- error: FAILED이면 {code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다."}, 그 외 상태는 null. 내부 AI error_payload는 반환하지 않는다.
+- error: FAILED이면 `{code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다.",retryable:true|false}`, 그 외 상태는 null. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다. 내부 AI error_payload와 원문은 반환하지 않는다.
 
 **Request Body**
 
