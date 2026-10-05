@@ -65,6 +65,19 @@ class NotificationStreamServiceTest {
     }
 
     @Test
+    void doesNotSendRealtimeEventWhenMemberDisabledNotifications() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        streamService.subscribe(1L);
+        reset(firstEmitter);
+
+        streamService.publish(notificationEvent(1L, "301", false));
+
+        verify(firstEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(streamService.connectionCount(1L)).isOne();
+    }
+
+    @Test
     void removesOnlyFailedConnectionAndContinuesOtherConnections() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter);
@@ -114,6 +127,13 @@ class NotificationStreamServiceTest {
     }
 
     private NotificationCreatedEvent notificationEvent(Long memberId, String notificationId) {
+        return notificationEvent(memberId, notificationId, true);
+    }
+
+    private NotificationCreatedEvent notificationEvent(
+            Long memberId,
+            String notificationId,
+            boolean realtimeDeliveryEnabled) {
         return new NotificationCreatedEvent(
                 memberId,
                 new NotificationItemResponse(
@@ -123,6 +143,7 @@ class NotificationStreamServiceTest {
                         "가이드북을 확인해 주세요.",
                         NotificationReferenceType.GUIDEBOOK,
                         "101",
-                        OffsetDateTime.parse("2026-10-05T00:00:00Z")));
+                        OffsetDateTime.parse("2026-10-05T00:00:00Z")),
+                realtimeDeliveryEnabled);
     }
 }

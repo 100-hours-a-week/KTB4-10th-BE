@@ -68,6 +68,9 @@ public class NotificationStreamService {
     }
 
     public void publish(NotificationCreatedEvent event) {
+        if (!event.realtimeDeliveryEnabled()) {
+            return;
+        }
         ConcurrentMap<String, SseEmitter> connections =
                 memberConnections.get(event.recipientMemberId());
         if (connections == null) {

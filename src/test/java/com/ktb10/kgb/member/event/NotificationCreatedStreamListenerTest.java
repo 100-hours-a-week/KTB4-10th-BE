@@ -29,7 +29,8 @@ class NotificationCreatedStreamListenerTest {
                         "가이드북을 확인해 주세요.",
                         NotificationReferenceType.GUIDEBOOK,
                         "101",
-                        OffsetDateTime.parse("2026-10-05T00:00:00Z")));
+                        OffsetDateTime.parse("2026-10-05T00:00:00Z")),
+                true);
         NotificationCreatedStreamListener listener =
                 new NotificationCreatedStreamListener(notificationStreamService);
 

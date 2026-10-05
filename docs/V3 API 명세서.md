@@ -476,7 +476,7 @@ Body 없음.
 - language_code: 선택 String ≤10자, 지원 코드만
 - push_enabled: 선택 Boolean
 - 최소 1개 필수; 누락은 유지, null 불가
-- push_enabled=false는 푸시 발송만 금지하며, 필요한 인앱 알림 저장에는 영향을 주지 않음
+- push_enabled=false는 열린 웹앱의 SSE와 향후 Web Push 전송을 모두 금지하며, 필요한 인앱 알림 DB 저장에는 영향을 주지 않음
 
 **Request Body**
 
@@ -664,7 +664,8 @@ Body 없음.
 - `notification` 이벤트 ID는 저장된 `notification_id`를 사용한다. 전송 실패는 알림 저장과 원본 업무를 롤백하지 않는다.
 - 기본 15초마다 heartbeat comment를 보내고 기본 25분 후 연결을 만료한다. 완료·타임아웃·오류가 발생한 연결은 서버 메모리에서 제거한다.
 - 현재 단일 인스턴스에서는 연결을 메모리에 보관한다. 다중 인스턴스에서는 Redis Pub/Sub 등 인스턴스 간 이벤트 전달 방식을 별도 도입한다.
-- `push_enabled`는 웹 푸시 설정이므로 SSE 인앱 알림 저장·전달에는 영향을 주지 않는다.
+- `push_enabled=false`이면 SSE와 향후 Web Push를 모두 전송하지 않는다. 알림 DB 저장과 목록 조회는 유지한다.
+- FE는 설정이 false이면 EventSource를 열지 않고, 연결 중 false로 변경하면 닫는다. 서버도 알림 생성 시 설정을 확인해 이미 열린 연결로 실시간 이벤트를 보내지 않는다.
 
 **연결 이벤트 예시**
 

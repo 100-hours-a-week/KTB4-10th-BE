@@ -89,7 +89,8 @@ public class NotificationService {
         trimOldNotifications(recipientMemberId);
         eventPublisher.publishEvent(new NotificationCreatedEvent(
                 recipientMemberId,
-                NotificationItemResponse.from(notification)));
+                NotificationItemResponse.from(notification),
+                recipient.isPushEnabled()));
     }
 
     private void trimOldNotifications(Long recipientMemberId) {
