@@ -419,6 +419,41 @@ class GuidebookGenerationServiceTest {
                 .isEqualTo(GenerationStatus.PENDING);
     }
 
+    @Test
+    void rejectsManualRetryForNonRetryableSubmissionFailure() {
+        GenerationJob job = failedJob(
+                "{\"code\":\"AI_SUBMISSION_FAILED\","
+                        + "\"failure_type\":\"upstream_4xx\",\"retryable\":false}");
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        assertThatThrownBy(() -> service.retry(MEMBER_ID, 301L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void repeatedManualRetryPublishesOnlyOneNewAttempt() {
+        GenerationJob job = failedJob(
+                "{\"code\":\"AI_SUBMISSION_FAILED\","
+                        + "\"failure_type\":\"upstream_5xx\",\"retryable\":true}");
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        service.retry(MEMBER_ID, 301L);
+
+        assertThatThrownBy(() -> service.retry(MEMBER_ID, 301L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
+        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        assertThat(job.getAttemptCount()).isEqualTo((short) 1);
+    }
+
     private GuidebookGenerationRequest validRequest() {
         return new GuidebookGenerationRequest(
                 "경상북도",
@@ -468,5 +503,13 @@ class GuidebookGenerationServiceTest {
         CreditWallet wallet = CreditWallet.open(member, LocalDateTime.now(CLOCK));
         wallet.grant(balance, LocalDateTime.now(CLOCK));
         return wallet;
+    }
+
+    private GenerationJob failedJob(String errorPayload) {
+        GenerationJob job = GenerationJob.createInitial(
+                member(), "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.fail(errorPayload, LocalDateTime.now(CLOCK));
+        return job;
     }
 }

@@ -1,6 +1,7 @@
 package com.ktb10.kgb.guidebook.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
@@ -48,6 +49,7 @@ public class GuidebookGenerationService {
 
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
     private static final int MAX_TRIP_DAYS = 7;
+    private static final int MAX_RETRY_COUNT = 3;
     private static final Set<GenerationStatus> ACTIVE_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
             GenerationStatus.PROCESSING);
@@ -171,7 +173,9 @@ public class GuidebookGenerationService {
 
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
                 ? new GenerationStatusResponse.GenerationError(
-                        "GENERATION_FAILED", "가이드북 생성에 실패했습니다.")
+                        "GENERATION_FAILED",
+                        "가이드북 생성에 실패했습니다.",
+                        isRetryable(job))
                 : null;
         return GenerationStatusResponse.from(job, error);
     }
@@ -189,8 +193,11 @@ public class GuidebookGenerationService {
         if (job.getStatus() != GenerationStatus.FAILED) {
             throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
-        if (job.getAttemptCount() >= 3) {
+        if (job.getAttemptCount() >= MAX_RETRY_COUNT) {
             throw new BusinessException(GuidebookErrorCode.RETRY_LIMIT_EXCEEDED);
+        }
+        if (!isRetryable(job)) {
+            throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
 
         job.retry(LocalDateTime.now(clock));
@@ -202,6 +209,26 @@ public class GuidebookGenerationService {
         return job.getAiJobId() != null
                 && (job.getStatus() == GenerationStatus.PENDING
                 || job.getStatus() == GenerationStatus.PROCESSING);
+    }
+
+    private boolean isRetryable(GenerationJob job) {
+        if (job.getAttemptCount() >= MAX_RETRY_COUNT) {
+            return false;
+        }
+        if (job.getErrorPayload() == null || job.getErrorPayload().isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode payload = objectMapper.readTree(job.getErrorPayload());
+            if (payload != null && payload.isTextual()) {
+                payload = objectMapper.readTree(payload.asText());
+            }
+            return payload == null
+                    || !payload.has("retryable")
+                    || payload.get("retryable").asBoolean();
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private GuidebookGenerationResponse handleRepeatedRequest(

@@ -30,6 +30,6 @@ public record GenerationStatusResponse(
     }
 
     /** 내부 AI 오류 원문 대신 클라이언트에 공개 가능한 오류만 전달합니다. */
-    public record GenerationError(String code, String message) {
+    public record GenerationError(String code, String message, boolean retryable) {
     }
 }
