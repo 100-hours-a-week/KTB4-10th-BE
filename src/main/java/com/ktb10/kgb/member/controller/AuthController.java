@@ -41,7 +41,7 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response) {
         serviceSessionService.revokeCurrent(member.memberId(), member.sessionId());
-        notificationStreamService.disconnectMember(member.memberId());
+        notificationStreamService.disconnectSession(member.memberId(), member.sessionId());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,

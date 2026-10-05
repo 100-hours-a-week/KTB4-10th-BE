@@ -47,7 +47,7 @@ public class NotificationController {
                 .cacheControl(CacheControl.noCache())
                 .header(HttpHeaders.VARY, HttpHeaders.ORIGIN)
                 .header("X-Accel-Buffering", "no")
-                .body(notificationStreamService.subscribe(member.memberId()));
+                .body(notificationStreamService.subscribe(member.memberId(), member.sessionId()));
     }
 
     @GetMapping

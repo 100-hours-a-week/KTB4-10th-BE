@@ -45,16 +45,17 @@ class NotificationStreamServiceTest {
         streamService = new NotificationStreamService(
                 emitterFactory,
                 Duration.ofMinutes(25),
-                3000L);
+                3000L,
+                5);
     }
 
     @Test
     void sendsNotificationToEveryConnectionOwnedByRecipient() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
-        streamService.subscribe(1L);
-        streamService.subscribe(1L);
-        streamService.subscribe(2L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(2L, 22L);
         reset(firstEmitter, secondEmitter, otherMemberEmitter);
 
         streamService.publish(notificationEvent(1L, "301"));
@@ -68,7 +69,7 @@ class NotificationStreamServiceTest {
     void doesNotSendRealtimeEventWhenMemberDisabledNotifications() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter);
-        streamService.subscribe(1L);
+        streamService.subscribe(1L, 11L);
         reset(firstEmitter);
 
         streamService.publish(notificationEvent(1L, "301", false));
@@ -81,8 +82,8 @@ class NotificationStreamServiceTest {
     void removesOnlyFailedConnectionAndContinuesOtherConnections() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter);
-        streamService.subscribe(1L);
-        streamService.subscribe(1L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 11L);
         reset(firstEmitter, secondEmitter);
         doThrow(new IOException("연결 종료"))
                 .when(firstEmitter)
@@ -100,7 +101,7 @@ class NotificationStreamServiceTest {
     void heartbeatRemovesClosedConnection() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter);
-        streamService.subscribe(1L);
+        streamService.subscribe(1L, 11L);
         reset(firstEmitter);
         doThrow(new IllegalStateException("이미 완료된 연결"))
                 .when(firstEmitter)
@@ -116,14 +117,52 @@ class NotificationStreamServiceTest {
     void disconnectsEveryConnectionForMember() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter);
-        streamService.subscribe(1L);
-        streamService.subscribe(1L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 12L);
 
         streamService.disconnectMember(1L);
 
         assertThat(streamService.connectionCount(1L)).isZero();
         verify(firstEmitter).complete();
         verify(secondEmitter).complete();
+    }
+
+    @Test
+    void evictsOldestConnectionWhenMemberExceedsConnectionLimit() throws Exception {
+        streamService = new NotificationStreamService(
+                emitterFactory,
+                Duration.ofMinutes(25),
+                3000L,
+                2);
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
+
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 11L);
+
+        assertThat(streamService.connectionCount(1L)).isEqualTo(2);
+        verify(firstEmitter).complete();
+        verify(secondEmitter, never()).complete();
+        verify(otherMemberEmitter, never()).complete();
+    }
+
+    @Test
+    void disconnectsOnlyConnectionsOwnedByCurrentSession() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 12L);
+
+        streamService.disconnectSession(1L, 11L);
+
+        assertThat(streamService.connectionCount(1L)).isOne();
+        assertThat(streamService.connectionCount(1L, 11L)).isZero();
+        assertThat(streamService.connectionCount(1L, 12L)).isOne();
+        verify(firstEmitter).complete();
+        verify(secondEmitter).complete();
+        verify(otherMemberEmitter, never()).complete();
     }
 
     private NotificationCreatedEvent notificationEvent(Long memberId, String notificationId) {
