@@ -6,6 +6,9 @@ import com.ktb10.kgb.common.error.ErrorDetail;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
 import com.ktb10.kgb.content.repository.MapClusterQueryResult;
+import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapContentPersonalization;
+import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -21,9 +24,13 @@ public class MapContentService {
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
     private final MapContentQuery mapContentQuery;
+    private final MapContentPersonalizationQuery personalizationQuery;
 
-    public MapContentService(MapContentQuery mapContentQuery) {
+    public MapContentService(
+            MapContentQuery mapContentQuery,
+            MapContentPersonalizationQuery personalizationQuery) {
         this.mapContentQuery = mapContentQuery;
+        this.personalizationQuery = personalizationQuery;
     }
 
     @Transactional(readOnly = true)
@@ -40,19 +47,36 @@ public class MapContentService {
                 || diagonalKilometers(south, west, north, east)
                 > DETAIL_MAX_DIAGONAL_KILOMETERS) {
             List<MapClusterQueryResult> results = mapContentQuery.findClustersWithinBounds(
-                    memberId, south, west, north, east,
+                    south, west, north, east,
                     gridSize(zoom, south, west, north, east));
+            List<MapContentCommonData> representatives = results.stream()
+                    .limit(REPRESENTATIVE_LIMIT)
+                    .map(MapClusterQueryResult::representative)
+                    .toList();
             return MapContentResponse.cluster(
                     results.stream().map(MapClusterQueryResult::cluster).toList(),
-                    results.stream()
-                            .limit(REPRESENTATIVE_LIMIT)
-                            .map(MapClusterQueryResult::representative)
-                            .toList());
+                    personalize(memberId, representatives));
         }
 
-        List<MapContentItemResponse> items = mapContentQuery.findWithinBounds(
-                memberId, south, west, north, east);
-        return MapContentResponse.content(items);
+        List<MapContentCommonData> contents = mapContentQuery.findWithinBounds(
+                south, west, north, east);
+        return MapContentResponse.content(personalize(memberId, contents));
+    }
+
+    private List<MapContentItemResponse> personalize(
+            Long memberId,
+            List<MapContentCommonData> contents) {
+        List<Long> contentIds = contents.stream()
+                .map(MapContentCommonData::id)
+                .distinct()
+                .toList();
+        MapContentPersonalization personalization =
+                personalizationQuery.findByMemberAndContentIds(memberId, contentIds);
+        return contents.stream()
+                .map(content -> content.toResponse(
+                        personalization.isFavorite(content.id()),
+                        personalization.isInGuidebook(content.id())))
+                .toList();
     }
 
     private double gridSize(

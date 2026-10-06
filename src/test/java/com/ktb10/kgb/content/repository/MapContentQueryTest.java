@@ -23,7 +23,7 @@ class MapContentQueryTest {
                 .thenReturn(List.of());
         MapContentQuery contentQuery = new MapContentQuery(jdbcTemplate);
 
-        contentQuery.findWithinBounds(7L, 37.39, 127.10, 37.40, 127.12);
+        contentQuery.findWithinBounds(37.39, 127.10, 37.40, 127.12);
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<Object[]> argumentsCaptor = ArgumentCaptor.forClass(Object[].class);
@@ -34,14 +34,14 @@ class MapContentQueryTest {
                 .contains(
                         "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
                         "content.classification_code_1 <> 'EV'",
-                        "event.end_date >= CURRENT_DATE",
-                        "member_guidebook.deleted_at IS NULL",
-                        "AS is_in_guidebook")
-                .doesNotContain("LIMIT ?");
+                        "event.end_date >= CURRENT_DATE")
+                .doesNotContain(
+                        "favorite_contents",
+                        "member_guidebooks",
+                        "AS is_in_guidebook",
+                        "LIMIT ?");
         assertThat(argumentsCaptor.getValue())
                 .containsExactly(
-                        7L,
-                        7L,
                         "NA", "HS", "VE", "EX", "LS", "EV",
                         127.10, 37.39,
                         127.12, 37.39,

@@ -1,6 +1,5 @@
 package com.ktb10.kgb.content.repository;
 
-import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.content.dto.MapClusterResponse;
@@ -9,7 +8,7 @@ import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** MySQL 공간 인덱스를 사용해 지도 화면 영역의 콘텐츠를 조회합니다. */
+/** MySQL 공간 인덱스를 사용해 지도 화면 영역의 공통 콘텐츠를 조회합니다. */
 @Repository
 public class MapContentQuery {
 
@@ -22,8 +21,7 @@ public class MapContentQuery {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<MapContentItemResponse> findWithinBounds(
-            Long memberId,
+    public List<MapContentCommonData> findWithinBounds(
             double south,
             double west,
             double north,
@@ -31,6 +29,7 @@ public class MapContentQuery {
         return jdbcTemplate.query(
                 """
                 SELECT
+                    content.id,
                     content.source_content_id,
                     content.title,
                     content.classification_code_1,
@@ -39,23 +38,9 @@ public class MapContentQuery {
                     ST_Longitude(content.location) AS longitude,
                     content.thumbnail_url,
                     event.start_date,
-                    event.end_date,
-                    favorite.id IS NOT NULL AS is_favorite,
-                    EXISTS (
-                        SELECT 1
-                        FROM itinerary_items item
-                        JOIN itinerary_days day ON day.id = item.itinerary_day_id
-                        JOIN member_guidebooks member_guidebook
-                          ON member_guidebook.guidebook_id = day.guidebook_id
-                        WHERE item.tourism_content_id = content.id
-                          AND member_guidebook.member_id = ?
-                          AND member_guidebook.deleted_at IS NULL
-                    ) AS is_in_guidebook
+                    event.end_date
                 FROM tourism_contents content
                 LEFT JOIN event_details event ON event.content_id = content.id
-                LEFT JOIN favorite_contents favorite
-                  ON favorite.content_id = content.id
-                 AND favorite.member_id = ?
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
                   AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
@@ -78,7 +63,8 @@ public class MapContentQuery {
                       content.location)
                 ORDER BY content.id
                 """,
-                (resultSet, rowNumber) -> new MapContentItemResponse(
+                (resultSet, rowNumber) -> new MapContentCommonData(
+                        resultSet.getLong("id"),
                         resultSet.getString("source_content_id"),
                         resultSet.getString("title"),
                         "EV".equals(resultSet.getString("classification_code_1"))
@@ -90,11 +76,7 @@ public class MapContentQuery {
                         resultSet.getString("thumbnail_url"),
                         eventPeriod(
                                 resultSet.getDate("start_date"),
-                                resultSet.getDate("end_date")),
-                        resultSet.getBoolean("is_favorite"),
-                        resultSet.getBoolean("is_in_guidebook")),
-                memberId,
-                memberId,
+                                resultSet.getDate("end_date"))),
                 SUPPORTED_CLASSIFICATION_CODES.get(0),
                 SUPPORTED_CLASSIFICATION_CODES.get(1),
                 SUPPORTED_CLASSIFICATION_CODES.get(2),
@@ -109,7 +91,6 @@ public class MapContentQuery {
     }
 
     public List<MapClusterQueryResult> findClustersWithinBounds(
-            Long memberId,
             double south,
             double west,
             double north,
@@ -128,17 +109,6 @@ public class MapContentQuery {
                         content.thumbnail_url,
                         event.start_date,
                         event.end_date,
-                        favorite.id IS NOT NULL AS is_favorite,
-                        EXISTS (
-                            SELECT 1
-                            FROM itinerary_items item
-                            JOIN itinerary_days day ON day.id = item.itinerary_day_id
-                            JOIN member_guidebooks member_guidebook
-                              ON member_guidebook.guidebook_id = day.guidebook_id
-                            WHERE item.tourism_content_id = content.id
-                              AND member_guidebook.member_id = ?
-                              AND member_guidebook.deleted_at IS NULL
-                        ) AS is_in_guidebook,
                         FLOOR(ST_Latitude(content.location) / %1$f) AS grid_lat,
                         FLOOR(ST_Longitude(content.location) / %1$f) AS grid_lng,
                         COUNT(*) OVER (
@@ -180,9 +150,6 @@ public class MapContentQuery {
                         ) AS representative_rank
                     FROM tourism_contents content
                     LEFT JOIN event_details event ON event.content_id = content.id
-                    LEFT JOIN favorite_contents favorite
-                      ON favorite.content_id = content.id
-                     AND favorite.member_id = ?
                     WHERE content.status = 'ACTIVE'
                       AND content.deleted_at IS NULL
                       AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
@@ -218,7 +185,8 @@ public class MapContentQuery {
                                 resultSet.getDouble("cluster_latitude"),
                                 resultSet.getDouble("cluster_longitude"),
                                 resultSet.getInt("cluster_count")),
-                        new MapContentItemResponse(
+                        new MapContentCommonData(
+                                resultSet.getLong("id"),
                                 resultSet.getString("source_content_id"),
                                 resultSet.getString("title"),
                                 "EV".equals(resultSet.getString("classification_code_1"))
@@ -230,11 +198,7 @@ public class MapContentQuery {
                                 resultSet.getString("thumbnail_url"),
                                 eventPeriod(
                                         resultSet.getDate("start_date"),
-                                        resultSet.getDate("end_date")),
-                                resultSet.getBoolean("is_favorite"),
-                                resultSet.getBoolean("is_in_guidebook"))),
-                memberId,
-                memberId,
+                                        resultSet.getDate("end_date")))),
                 SUPPORTED_CLASSIFICATION_CODES.get(0),
                 SUPPORTED_CLASSIFICATION_CODES.get(1),
                 SUPPORTED_CLASSIFICATION_CODES.get(2),

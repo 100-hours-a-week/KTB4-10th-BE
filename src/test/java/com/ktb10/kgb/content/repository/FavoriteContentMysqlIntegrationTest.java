@@ -2,7 +2,6 @@ package com.ktb10.kgb.content.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +34,9 @@ class FavoriteContentMysqlIntegrationTest {
 
     @Autowired
     private MapContentQuery mapContentQuery;
+
+    @Autowired
+    private MapContentPersonalizationQuery personalizationQuery;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -79,18 +81,20 @@ class FavoriteContentMysqlIntegrationTest {
     }
 
     @Test
-    void mapLeftJoinReturnsFavoriteStateForEachMember() {
+    void personalizationQueryReturnsFavoriteStateForEachMember() {
         favoriteContentQuery.save(memberId, contentId, NOW);
 
-        List<MapContentItemResponse> favoriteResult = mapContentQuery.findWithinBounds(
-                memberId, 37.39, 127.10, 37.40, 127.12);
-        List<MapContentItemResponse> otherResult = mapContentQuery.findWithinBounds(
-                otherMemberId, 37.39, 127.10, 37.40, 127.12);
+        List<MapContentCommonData> commonContents = mapContentQuery.findWithinBounds(
+                37.39, 127.10, 37.40, 127.12);
+        List<Long> contentIds = commonContents.stream().map(MapContentCommonData::id).toList();
+        MapContentPersonalization favoriteResult =
+                personalizationQuery.findByMemberAndContentIds(memberId, contentIds);
+        MapContentPersonalization otherResult =
+                personalizationQuery.findByMemberAndContentIds(otherMemberId, contentIds);
 
-        assertThat(favoriteResult).singleElement()
-                .satisfies(item -> assertThat(item.favorite()).isTrue());
-        assertThat(otherResult).singleElement()
-                .satisfies(item -> assertThat(item.favorite()).isFalse());
+        assertThat(commonContents).singleElement();
+        assertThat(favoriteResult.isFavorite(contentId)).isTrue();
+        assertThat(otherResult.isFavorite(contentId)).isFalse();
     }
 
     private Long insertMember(String oauthSubject) {
