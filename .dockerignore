@@ -4,6 +4,7 @@
 .dockerignore
 
 # 의존성 및 빌드 결과물
+.gradle
 node_modules
 dist
 build
@@ -13,7 +14,13 @@ coverage
 .env
 *.log
 
+# Docker 이미지 빌드에 필요하지 않은 로컬 자료
+data
+docs
+scripts
+
 # 문서 및 IDE 설정
 README.md
 .vscode
 .idea
+*.iml
