@@ -16,4 +16,14 @@ out/
 
 # Local environment
 .env
+.env.loadtest
 *.local
+
+# Local load-test result reports
+results/load-test/*.json
+!results/load-test/.gitkeep
+
+# Local data collected by scheduled jobs
+data/**/*.sql
+data/**/*.sql.gz
+data/**/*.json
