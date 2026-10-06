@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
@@ -18,6 +20,7 @@ import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import com.ktb10.kgb.member.service.NotificationService;
+import com.ktb10.kgb.member.service.NotificationStreamService;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.Instant;
@@ -33,6 +36,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
@@ -69,6 +73,9 @@ class NotificationApiTest {
 
     @Autowired
     private NotificationService notificationService;
+
+    @Autowired
+    private NotificationStreamService notificationStreamService;
 
     @BeforeEach
     void cleanUp() {
@@ -140,6 +147,27 @@ class NotificationApiTest {
                 .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
 
         mockMvc.perform(get("/api/v1/notifications"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
+    }
+
+    @Test
+    void streamsNotificationsOnlyForAuthenticatedActiveMember() throws Exception {
+        Member member = saveActiveMember("notification-stream-member");
+        issueSession(member, "notification-stream-session");
+
+        mockMvc.perform(get("/api/v1/notifications/stream")
+                        .cookie(sessionCookie("notification-stream-session")))
+                .andExpect(status().isOk())
+                .andExpect(request().asyncStarted())
+                .andExpect(header().string("Cache-Control", "no-cache"))
+                .andExpect(header().string("X-Accel-Buffering", "no"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .content().contentTypeCompatibleWith(MediaType.TEXT_EVENT_STREAM));
+
+        notificationStreamService.disconnectMember(member.getId());
+
+        mockMvc.perform(get("/api/v1/notifications/stream"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
     }

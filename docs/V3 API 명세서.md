@@ -62,6 +62,7 @@
 | API-NOT-01 | 미읽은 알림 목록 | GET | `/notifications` | 예 | Query page,size; Body 없음 |
 | API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` | 예 | Path notification_id; Body 없음 |
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
+| API-NOT-04 | 실시간 인앱 알림 연결 | GET | `/notifications/stream` | 예 | SSE; Body 없음 |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 서버 clusters, 상세 줌은 개별 콘텐츠 반환 |
@@ -475,7 +476,7 @@ Body 없음.
 - language_code: 선택 String ≤10자, 지원 코드만
 - push_enabled: 선택 Boolean
 - 최소 1개 필수; 누락은 유지, null 불가
-- push_enabled=false는 푸시 발송만 금지하며, 필요한 인앱 알림 저장에는 영향을 주지 않음
+- push_enabled=false는 열린 웹앱의 SSE와 향후 Web Push 전송을 모두 금지하며, 필요한 인앱 알림 DB 저장에는 영향을 주지 않음
 
 **Request Body**
 
@@ -650,6 +651,53 @@ Body 없음.
 |---|---|---|
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+
+### API-NOT-04 실시간 인앱 알림 연결
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/notifications/stream` | 세션 쿠키 필수, ACTIVE 회원 |
+
+- 응답 형식은 `text/event-stream`이며 변경 요청이 아니므로 CSRF 토큰은 요구하지 않는다.
+- 같은 회원이 여러 탭에서 연결하면 모든 연결에 같은 알림을 전송한다. 메모리 고갈을 막기 위해 회원당 연결은 기본 5개까지 허용하며, 초과 연결 시 가장 오래된 연결을 종료한다.
+- 연결 직후 `connected` 이벤트를 보내고, 새 알림의 DB 트랜잭션이 커밋된 뒤 `notification` 이벤트를 보낸다.
+- `notification` 이벤트 ID는 저장된 `notification_id`를 사용한다. 전송 실패는 알림 저장과 원본 업무를 롤백하지 않는다.
+- 기본 15초마다 heartbeat comment를 보내고 기본 25분 후 연결을 만료한다. 완료·타임아웃·오류가 발생한 연결은 서버 메모리에서 제거한다.
+- 일반 로그아웃은 현재 서비스 세션에 속한 SSE 연결만 종료한다. 다른 세션의 연결은 유지하며, 회원 탈퇴처럼 모든 세션을 폐기하는 경우에만 해당 회원의 모든 SSE 연결을 종료한다.
+- 현재 단일 인스턴스에서는 연결을 메모리에 보관한다. 다중 인스턴스에서는 Redis Pub/Sub 등 인스턴스 간 이벤트 전달 방식을 별도 도입한다.
+- `push_enabled=false`이면 SSE와 향후 Web Push를 모두 전송하지 않는다. 알림 DB 저장과 목록 조회는 유지한다.
+- FE는 설정이 false이면 EventSource를 열지 않고, 연결 중 false로 변경하면 닫는다. 서버도 알림 생성 시 설정을 확인해 이미 열린 연결로 실시간 이벤트를 보내지 않는다.
+
+**연결 이벤트 예시**
+
+```text
+event:connected
+retry:3000
+data:{"connection_id":"b3b8cc0c-4f22-48ab-9f30-7a621193a00f"}
+```
+
+**알림 이벤트 예시**
+
+```text
+id:301
+event:notification
+retry:3000
+data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북 완성","body":"가이드북을 확인해 주세요.","reference_type":"GUIDEBOOK","reference_id":"101","created_at":"2026-09-04T00:00:00Z"}
+```
+
+**재연결·누락 복구 계약**
+
+- 브라우저 `EventSource`의 자동 재연결을 사용한다. FE·BE가 교차 Origin이면 쿠키 전달을 위해 `withCredentials: true`와 허용된 CORS Origin이 필요하다.
+- 서버는 `Last-Event-ID` 기반 과거 이벤트 재전송을 제공하지 않는다. 연결이 끊겼다가 복구되면 `GET /notifications`를 호출해 DB에 남은 미읽음 알림을 동기화한다.
+- 응답에는 `Cache-Control: no-cache`, `X-Accel-Buffering: no`를 설정한다. 배포 프록시도 SSE 버퍼링과 짧은 응답 타임아웃을 사용하지 않아야 한다.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 최초 연결 시 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | 최초 연결 시 ACTIVE 상태가 아님 |
+| 500 | INTERNAL_SERVER_ERROR | 최초 연결 처리 중 내부 오류 |
+
+연결 수립 이후의 네트워크 오류는 일반 JSON 오류 응답으로 전환할 수 없으므로 FE가 재연결하고 목록 API로 상태를 복구한다.
 
 ## 4. 관광콘텐츠
 

@@ -35,3 +35,10 @@ management:
     metrics:
       export:
         enabled: true
+
+notification:
+  sse:
+    connection-timeout: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT:25m}
+    reconnect-time-millis: ${NOTIFICATION_SSE_RECONNECT_TIME_MILLIS:3000}
+    heartbeat-interval-millis: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MILLIS:15000}
+    max-connections-per-member: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:5}

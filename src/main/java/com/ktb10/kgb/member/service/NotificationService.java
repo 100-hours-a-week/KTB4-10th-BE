@@ -2,16 +2,19 @@ package com.ktb10.kgb.member.service;
 
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.member.dto.response.NotificationItemResponse;
 import com.ktb10.kgb.member.dto.response.NotificationListResponse;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.Notification;
 import com.ktb10.kgb.member.entity.NotificationReferenceType;
 import com.ktb10.kgb.member.entity.NotificationType;
+import com.ktb10.kgb.member.event.NotificationCreatedEvent;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -28,14 +31,17 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final MemberRepository memberRepository;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             MemberRepository memberRepository,
-            Clock clock) {
+            Clock clock,
+            ApplicationEventPublisher eventPublisher) {
         this.notificationRepository = notificationRepository;
         this.memberRepository = memberRepository;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -72,7 +78,7 @@ public class NotificationService {
             String referenceId) {
         Member recipient = memberRepository.findActiveByIdForUpdate(recipientMemberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        notificationRepository.saveAndFlush(Notification.create(
+        Notification notification = notificationRepository.saveAndFlush(Notification.create(
                 recipient,
                 type,
                 title,
@@ -81,6 +87,10 @@ public class NotificationService {
                 referenceId,
                 LocalDateTime.now(clock)));
         trimOldNotifications(recipientMemberId);
+        eventPublisher.publishEvent(new NotificationCreatedEvent(
+                recipientMemberId,
+                NotificationItemResponse.from(notification),
+                recipient.isPushEnabled()));
     }
 
     private void trimOldNotifications(Long recipientMemberId) {

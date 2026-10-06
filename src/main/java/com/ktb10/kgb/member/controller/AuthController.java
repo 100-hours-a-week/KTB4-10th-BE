@@ -3,6 +3,7 @@ package com.ktb10.kgb.member.controller;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
 import com.ktb10.kgb.common.security.SessionCookieManager;
+import com.ktb10.kgb.member.service.NotificationStreamService;
 import com.ktb10.kgb.member.service.ServiceSessionService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -21,14 +22,17 @@ public class AuthController {
     private final ServiceSessionService serviceSessionService;
     private final SessionCookieManager sessionCookieManager;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
+    private final NotificationStreamService notificationStreamService;
 
     public AuthController(
             ServiceSessionService serviceSessionService,
             SessionCookieManager sessionCookieManager,
-            CsrfTokenLifecycle csrfTokenLifecycle) {
+            CsrfTokenLifecycle csrfTokenLifecycle,
+            NotificationStreamService notificationStreamService) {
         this.serviceSessionService = serviceSessionService;
         this.sessionCookieManager = sessionCookieManager;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
+        this.notificationStreamService = notificationStreamService;
     }
 
     @PostMapping("/logout")
@@ -37,6 +41,7 @@ public class AuthController {
             HttpServletRequest request,
             HttpServletResponse response) {
         serviceSessionService.revokeCurrent(member.memberId(), member.sessionId());
+        notificationStreamService.disconnectSession(member.memberId(), member.sessionId());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,
