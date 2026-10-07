@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,19 +19,20 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ServiceSessionService {
 
-    private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(30);
-
     private final AuthSessionRepository authSessionRepository;
     private final SessionIdHasher sessionIdHasher;
     private final Clock clock;
+    private final Duration idleTimeout;
 
     public ServiceSessionService(
             AuthSessionRepository authSessionRepository,
             SessionIdHasher sessionIdHasher,
-            Clock clock) {
+            Clock clock,
+            @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout) {
         this.authSessionRepository = authSessionRepository;
         this.sessionIdHasher = sessionIdHasher;
         this.clock = clock;
+        this.idleTimeout = idleTimeout;
     }
 
     @Transactional
@@ -45,7 +47,7 @@ public class ServiceSessionService {
         AuthSession session = foundSession.get();
         LocalDateTime now = LocalDateTime.now(clock);
         Member member = session.getMember();
-        if (!session.isUsable(now, IDLE_TIMEOUT) || member.isDeleted()) {
+        if (!session.isUsable(now, idleTimeout) || member.isDeleted()) {
             return Optional.empty();
         }
 

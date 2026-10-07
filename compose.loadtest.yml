@@ -1,0 +1,240 @@
+services:
+  mysql:
+    image: mysql:8.4
+    cpus: ${MYSQL_CPUS:-2}
+    mem_limit: ${MYSQL_MEMORY:-2g}
+    environment:
+      MYSQL_DATABASE: kgb_local
+      MYSQL_USER: kgb
+      MYSQL_PASSWORD: kgb-local-password
+      MYSQL_ROOT_PASSWORD: kgb-local-root-password
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    volumes:
+      - loadtest-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    cpus: ${BACKEND_CPUS:-2}
+    mem_limit: ${BACKEND_MEMORY:-2g}
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -XX:InitialRAMPercentage=${JVM_INITIAL_RAM_PERCENTAGE:-25}
+        -XX:MaxRAMPercentage=${JVM_MAX_RAM_PERCENTAGE:-70}
+      SPRING_PROFILES_ACTIVE: local,loadtest
+      DB_URL: jdbc:mysql://mysql:3306/kgb_local?useSSL=false&allowPublicKeyRetrieval=true
+      DB_USERNAME: kgb
+      DB_PASSWORD: kgb-local-password
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_MAXIMUM_POOL_SIZE:-10}
+      MANAGEMENT_SERVER_PORT: 8081
+      LOAD_TEST_USER_COUNT: ${LOAD_TEST_USER_COUNT:-500}
+      LOAD_TEST_CREDIT_BALANCE: ${LOAD_TEST_CREDIT_BALANCE:-100}
+      LOAD_TEST_SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      TOUR_API_SERVICE_KEY: ${TOUR_API_SERVICE_KEY}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
+      KAKAO_ADMIN_KEY: ${KAKAO_ADMIN_KEY}
+      KAKAO_REDIRECT_URI: http://localhost:8080/api/v1/auth/oauth/callback/kakao
+      SESSION_COOKIE_SECURE: "false"
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    labels:
+      observability.logs: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/8081'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-remote-write-receiver
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - loadtest-prometheus-data:/prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  loki:
+    image: grafana/loki:3.7.0
+    command: -config.file=/etc/loki/local-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/observability/loki.yml:/etc/loki/local-config.yml:ro
+      - loadtest-loki-data:/loki
+
+  alloy:
+    image: grafana/alloy:v1.11.3
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    ports:
+      - "12345:12345"
+    volumes:
+      - ./docker/observability/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:12.2.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/kgb-local-load-test.json
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./docker/observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./docker/observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./docker/observability/dashboards:/var/lib/grafana/dashboards:ro
+      - loadtest-grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+
+  k6-general:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_VUS:-40}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:general-api
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["general-api", "/scripts/general-api.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-map:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_MAP_VUS:-40}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:map-contents
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["map-contents", "/scripts/map-contents.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-map-zoom-15:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_MAP_ZOOM_15_VUS:-500}
+      REGION_COUNT: ${K6_MAP_REGION_COUNT:-10}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:map-zoom-15
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["map-zoom-15", "/scripts/map-zoom-15.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-guidebook:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_GENERATION_VUS:-1}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      TRIP_START_DATE: ${TRIP_START_DATE:-}
+      TRIP_END_DATE: ${TRIP_END_DATE:-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:guidebook-generation
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["guidebook-generation", "/scripts/guidebook-generation.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-custom:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_CUSTOM_VUS:-1}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_SCRIPT: ${K6_SCRIPT:-}
+      K6_RESULT_NAME: ${K6_RESULT_NAME:-custom}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:${K6_RESULT_NAME:-custom}
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        test -n "$$K6_SCRIPT" || {
+          echo "K6_SCRIPT is required (example: scenarios/my-scenario.js)" >&2
+          exit 2
+        }
+        exec /scripts/run-with-summary.sh \
+          "$$K6_RESULT_NAME" "/scripts/$$K6_SCRIPT"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  loadtest-mysql-data:
+  loadtest-prometheus-data:
+  loadtest-loki-data:
+  loadtest-grafana-data:

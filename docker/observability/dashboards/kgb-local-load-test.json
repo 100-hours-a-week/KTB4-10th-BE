@@ -1,0 +1,212 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "KGB 로컬 백엔드와 k6 부하 테스트의 트래픽, 지연시간, 에러, 포화도 및 로그를 확인합니다.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "선택한 Grafana 시간 범위 안에서 k6가 누적한 요청 수입니다. 한 번의 테스트 구간만 선택하세요.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 8},
+      "id": 12,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "sum(max_over_time(k6_http_reqs_total{testid=~\"$testid\",query_version=~\"$query_version\"}[$__range]))", "instant": true, "legendFormat": "완료 요청", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — 완료 요청",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "k6가 테스트 종료 시 계산한 전체 요청 평균 지연시간입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 8},
+      "id": 13,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "max(last_over_time(k6_http_req_duration_avg{testid=~\"$testid\",query_version=~\"$query_version\"}[$__range]))", "instant": true, "legendFormat": "평균", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — 평균 지연시간",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "k6가 테스트 종료 시 계산한 전체 요청 p95입니다. 시계열 패널의 Max와 의미가 다릅니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.5}, {"color": "red", "value": 1}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 8},
+      "id": 14,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "max(last_over_time(k6_http_req_duration_p95{testid=~\"$testid\",query_version=~\"$query_version\"}[$__range]))", "instant": true, "legendFormat": "p95", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — p95",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "k6가 테스트 종료 시 계산한 전체 요청 최대 지연시간입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 1}, {"color": "red", "value": 3}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 8},
+      "id": 15,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "max(last_over_time(k6_http_req_duration_max{testid=~\"$testid\",query_version=~\"$query_version\"}[$__range]))", "instant": true, "legendFormat": "최대", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — 최대 지연시간",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "선택한 테스트에서 사용된 최대 동시 VU입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 8},
+      "id": 16,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "max(max_over_time(k6_vus_max{testid=~\"$testid\"}[$__range]))", "instant": true, "legendFormat": "최대 VU", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — 최대 VU",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "k6가 테스트 종료 시 계산한 실패율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "max": 1, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.01}, {"color": "red", "value": 0.05}]}, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 8},
+      "id": 17,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "max(last_over_time(k6_http_req_failed_rate{testid=~\"$testid\",query_version=~\"$query_version\"}[$__range]))", "instant": true, "legendFormat": "실패율", "range": false, "refId": "A"}],
+      "title": "테스트 전체 — 실패율",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "up{job=\"kgb-backend\"}", "legendFormat": "backend", "range": true, "refId": "A"}],
+      "title": "백엔드 상태",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 10, "x": 4, "y": 0},
+      "id": 2,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{application=\"kgb\",uri!~\"/actuator.*\"}[$__rate_interval]))", "legendFormat": "{{method}} {{uri}}", "range": true, "refId": "A"}],
+      "title": "트래픽 — API별 초당 요청 수",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 10, "x": 14, "y": 0},
+      "id": 3,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le, method, uri) (rate(http_server_requests_seconds_bucket{application=\"kgb\",uri!~\"/actuator.*\"}[$__rate_interval])))", "legendFormat": "{{method}} {{uri}}", "range": true, "refId": "A"}],
+      "title": "지연시간 — API별 p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [], "max": 1, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.01}, {"color": "red", "value": 0.05}]}, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 4},
+      "id": 4,
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["max"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "auto", "wideLayout": true},
+      "targets": [{"editorMode": "code", "expr": "sum(rate(http_server_requests_seconds_count{application=\"kgb\",status=~\"5..\"}[$__rate_interval])) / clamp_min(sum(rate(http_server_requests_seconds_count{application=\"kgb\"}[$__rate_interval])), 1e-9)", "legendFormat": "5xx", "range": true, "refId": "A"}],
+      "title": "5xx 에러율 — 조회 구간 최고",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": true, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 12},
+      "id": 5,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "max by (testid, query_version, map_mode, region) (k6_http_req_duration_p95{testid=~\"$testid\",query_version=~\"$query_version\"})", "legendFormat": "{{testid}} {{query_version}} {{map_mode}} {{region}} p95", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "k6_generation_e2e_duration_p95", "legendFormat": "가이드북 E2E p95", "range": true, "refId": "B"}],
+      "title": "k6 지연시간",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "A"}, "properties": [{"id": "unit", "value": "short"}]}, {"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "unit", "value": "reqps"}]}, {"matcher": {"id": "byFrameRefID", "options": "C"}, "properties": [{"id": "unit", "value": "percentunit"}, {"id": "custom.axisPlacement", "value": "right"}]}]},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 12},
+      "id": 6,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "max(k6_vus{testid=~\"$testid\"})", "legendFormat": "현재 VU", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "sum(rate(k6_http_reqs_total{testid=~\"$testid\",query_version=~\"$query_version\"}[$__rate_interval]))", "legendFormat": "전체 k6 RPS", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "sum(rate(k6_http_reqs_total{testid=~\"$testid\",query_version=~\"$query_version\",expected_response=\"false\"}[$__rate_interval])) / clamp_min(sum(rate(k6_http_reqs_total{testid=~\"$testid\",query_version=~\"$query_version\"}[$__rate_interval])), 1e-9)", "legendFormat": "실패율", "range": true, "refId": "C"}],
+      "title": "k6 부하 및 실패",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 19},
+      "id": 7,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum(jvm_memory_used_bytes{application=\"kgb\",area=\"heap\"})", "legendFormat": "Heap used", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "sum(jvm_memory_max_bytes{application=\"kgb\",area=\"heap\"})", "legendFormat": "Heap max", "range": true, "refId": "B"}],
+      "title": "포화도 — JVM Heap",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 19},
+      "id": 8,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "hikaricp_connections_active{application=\"kgb\"}", "legendFormat": "active", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "hikaricp_connections_idle{application=\"kgb\"}", "legendFormat": "idle", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "hikaricp_connections_pending{application=\"kgb\"}", "legendFormat": "pending", "range": true, "refId": "C"}, {"editorMode": "code", "expr": "hikaricp_connections_max{application=\"kgb\"}", "legendFormat": "max", "range": true, "refId": "D"}],
+      "title": "포화도 — DB Connection Pool",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "mappings": [], "max": 1, "min": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 19},
+      "id": 9,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "process_cpu_usage{application=\"kgb\"}", "legendFormat": "process", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "system_cpu_usage{application=\"kgb\"}", "legendFormat": "system", "range": true, "refId": "B"}],
+      "title": "포화도 — CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "지도 요청의 세션 인증, 공통 조회, 개인화 조회, 응답 매핑 단계별 p95입니다. DB 단계에는 커넥션 대기 시간이 포함됩니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 26},
+      "id": 18,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_auth_session_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "세션 인증 p95", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_map_stage_duration_seconds_bucket{stage=\"common_query\"}[$__rate_interval])))", "legendFormat": "공통 지도 쿼리 p95", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_map_stage_duration_seconds_bucket{stage=\"personalization_query\"}[$__rate_interval])))", "legendFormat": "개인화 쿼리 p95", "range": true, "refId": "C"}, {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_map_stage_duration_seconds_bucket{stage=\"response_mapping\"}[$__rate_interval])))", "legendFormat": "응답 매핑 p95", "range": true, "refId": "D"}],
+      "title": "지도 API — 단계별 p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 16, "x": 0, "y": 34},
+      "id": 10,
+      "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"editorMode": "code", "expr": "{service_name=\"backend\"}", "queryType": "range", "refId": "A"}],
+      "title": "백엔드 로그",
+      "type": "logs"
+    },
+    {
+      "datasource": {"type": "loki", "uid": "loki"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 34},
+      "id": 11,
+      "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
+      "targets": [{"editorMode": "code", "expr": "{service_name=\"backend\"} |~ `(?i)error|exception|failed`", "queryType": "range", "refId": "A"}],
+      "title": "에러 로그",
+      "type": "logs"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 42,
+  "tags": ["kgb", "local", "load-test"],
+  "templating": {"list": [{"current": {"text": "map-zoom-15", "value": "map-zoom-15"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total, testid)", "includeAll": false, "label": "테스트", "name": "testid", "options": [], "query": {"query": "label_values(k6_http_reqs_total, testid)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "type": "query"}, {"current": {"text": "decimal_columns", "value": "decimal_columns"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "includeAll": false, "label": "조회 방식", "name": "query_version", "options": [], "query": {"query": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "type": "query"}]},
+  "time": {"from": "now-5m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "KGB Local Load Test",
+  "uid": "kgb-local-load-test",
+  "version": 1,
+  "weekStart": ""
+}
