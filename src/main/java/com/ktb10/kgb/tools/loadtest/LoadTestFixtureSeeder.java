@@ -124,6 +124,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
 
     private void replaceSession(Member member, String rawSessionId, LocalDateTime now) {
         byte[] sessionHash = sessionIdHasher.hash(rawSessionId);
+        authSessionRepository.revokeAllActiveByMemberId(member.getId(), now);
         authSessionRepository.findBySessionIdHash(sessionHash).ifPresent(existing -> {
             authSessionRepository.delete(existing);
             authSessionRepository.flush();
