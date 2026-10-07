@@ -1,13 +1,14 @@
 package com.ktb10.kgb.content.controller;
 
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
-import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
@@ -15,8 +16,12 @@ import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import com.ktb10.kgb.content.repository.MapClusterQueryResult;
+import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapContentPersonalization;
+import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import java.time.LocalDate;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -42,13 +47,22 @@ class MapContentApiTest {
     @MockitoBean
     private MapContentQuery mapContentQuery;
 
+    @MockitoBean
+    private MapContentPersonalizationQuery personalizationQuery;
+
+    @BeforeEach
+    void setUpPersonalization() {
+        when(personalizationQuery.findByMemberAndContentIds(anyLong(), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+    }
+
     @Test
     void returnsPlacesAndEventsWithinBounds() throws Exception {
         when(mapContentQuery.findWithinBounds(
-                org.mockito.ArgumentMatchers.anyLong(),
                 anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(
-                        new MapContentItemResponse(
+                        new MapContentCommonData(
+                                101L,
                                 "126508",
                                 "첨성대",
                                 ContentType.PLACE,
@@ -56,10 +70,9 @@ class MapContentApiTest {
                                 35.8347,
                                 129.219,
                                 null,
-                                null,
-                                true,
-                                true),
-                        new MapContentItemResponse(
+                                null),
+                        new MapContentCommonData(
+                                102L,
                                 "event-1",
                                 "가을 축제",
                                 ContentType.EVENT,
@@ -69,9 +82,11 @@ class MapContentApiTest {
                                 "https://example.com/event.jpg",
                                 new EventPeriod(
                                         LocalDate.of(2026, 10, 1),
-                                        LocalDate.of(2026, 10, 3)),
-                                false,
-                                false)));
+                                        LocalDate.of(2026, 10, 3)))));
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(101L, 102L)))
+                .thenReturn(new MapContentPersonalization(
+                        java.util.Set.of(101L),
+                        java.util.Set.of(101L)));
 
         mockMvc.perform(get("/api/v1/map/contents")
                         .with(authentication(authenticatedMember()))
@@ -99,11 +114,11 @@ class MapContentApiTest {
     @Test
     void returnsServerClustersAndRepresentativesForWideZoom() throws Exception {
         when(mapContentQuery.findClustersWithinBounds(
-                org.mockito.ArgumentMatchers.anyLong(),
                 anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(new MapClusterQueryResult(
                         new MapClusterResponse("37:126", 37.5, 126.9, 120),
-                        new MapContentItemResponse(
+                        new MapContentCommonData(
+                                201L,
                                 "representative-1",
                                 "광역 대표 장소",
                                 ContentType.PLACE,
@@ -111,9 +126,9 @@ class MapContentApiTest {
                                 37.5,
                                 126.9,
                                 null,
-                                null,
-                                false,
-                                false))));
+                                null))));
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(201L)))
+                .thenReturn(MapContentPersonalization.empty());
 
         mockMvc.perform(get("/api/v1/map/contents")
                         .with(authentication(authenticatedMember()))

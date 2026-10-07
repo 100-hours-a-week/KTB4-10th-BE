@@ -13,8 +13,12 @@ import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse.Mode;
 import com.ktb10.kgb.content.repository.MapClusterQueryResult;
+import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapContentPersonalization;
+import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,32 +30,40 @@ class MapContentServiceTest {
 
     @Mock
     private MapContentQuery mapContentQuery;
+    @Mock
+    private MapContentPersonalizationQuery personalizationQuery;
 
     private MapContentService mapContentService;
 
     @BeforeEach
     void setUp() {
-        mapContentService = new MapContentService(mapContentQuery);
+        mapContentService = new MapContentService(mapContentQuery, personalizationQuery);
     }
 
     @Test
     void returnsAllContentsWithinRequestedBounds() {
-        MapContentItemResponse first = content("1");
-        MapContentItemResponse second = content("2");
-        MapContentItemResponse third = content("3");
+        MapContentCommonData first = commonContent(1L);
+        MapContentCommonData second = commonContent(2L);
+        MapContentCommonData third = commonContent(3L);
         when(mapContentQuery.findWithinBounds(
-                1L, 37.35, 127.05, 37.45, 127.15))
+                37.35, 127.05, 37.45, 127.15))
                 .thenReturn(List.of(first, second, third));
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(1L, 2L, 3L)))
+                .thenReturn(new MapContentPersonalization(Set.of(1L), Set.of(2L)));
 
         MapContentResponse response = mapContentService.getContents(
                 1L, 37.35, 127.05, 37.45, 127.15, 16);
 
         assertThat(response.mode()).isEqualTo(Mode.CONTENT);
         assertThat(response.clusters()).isEmpty();
-        assertThat(response.items()).containsExactly(first, second, third);
+        assertThat(response.items()).extracting(MapContentItemResponse::contentId)
+                .containsExactly("1", "2", "3");
+        assertThat(response.items().get(0).favorite()).isTrue();
+        assertThat(response.items().get(1).inGuidebook()).isTrue();
+        assertThat(response.items().get(2).favorite()).isFalse();
         assertThat(response.hasMore()).isFalse();
         verify(mapContentQuery).findWithinBounds(
-                1L, 37.35, 127.05, 37.45, 127.15);
+                37.35, 127.05, 37.45, 127.15);
     }
 
     @Test
@@ -73,8 +85,10 @@ class MapContentServiceTest {
     @Test
     void acceptsLargeValidBoundsFromClient() {
         when(mapContentQuery.findClustersWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0, 1.0))
+                33.0, 124.0, 39.0, 132.0, 1.0))
                 .thenReturn(List.of());
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of()))
+                .thenReturn(MapContentPersonalization.empty());
 
         MapContentResponse response = mapContentService.getContents(
                 1L, 33.0, 124.0, 39.0, 132.0, 16);
@@ -93,11 +107,14 @@ class MapContentServiceTest {
                                 37.0 + index / 100.0,
                                 127.0,
                                 100 - index),
-                        content(String.valueOf(index))))
+                        commonContent((long) index)))
                 .toList();
         when(mapContentQuery.findClustersWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0, 1.0))
+                33.0, 124.0, 39.0, 132.0, 1.0))
                 .thenReturn(results);
+        when(personalizationQuery.findByMemberAndContentIds(
+                1L, java.util.stream.LongStream.rangeClosed(1, 20).boxed().toList()))
+                .thenReturn(MapContentPersonalization.empty());
 
         MapContentResponse response = mapContentService.getContents(
                 1L, 33.0, 124.0, 39.0, 132.0, 14);
@@ -108,7 +125,7 @@ class MapContentServiceTest {
         assertThat(response.items().getFirst().contentId()).isEqualTo("1");
         assertThat(response.hasMore()).isFalse();
         verify(mapContentQuery).findClustersWithinBounds(
-                1L, 33.0, 124.0, 39.0, 132.0, 1.0);
+                33.0, 124.0, 39.0, 132.0, 1.0);
     }
 
     private void assertValidationFailure(Runnable action) {
@@ -118,17 +135,16 @@ class MapContentServiceTest {
                                 .isEqualTo(CommonErrorCode.COMMON_VALIDATION_ERROR));
     }
 
-    private MapContentItemResponse content(String contentId) {
-        return new MapContentItemResponse(
+    private MapContentCommonData commonContent(Long contentId) {
+        return new MapContentCommonData(
                 contentId,
+                String.valueOf(contentId),
                 "장소 " + contentId,
                 ContentType.PLACE,
                 "주소",
                 37.4,
                 127.1,
                 null,
-                null,
-                false,
-                false);
+                null);
     }
 }
