@@ -20,6 +20,14 @@ public interface AuthSessionRepository extends JpaRepository<AuthSession, Long> 
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select session from AuthSession session join fetch session.member "
+            + "where session.id = :sessionId and session.member.id = :memberId "
+            + "and session.revokedAt is null")
+    Optional<AuthSession> findByIdAndMemberIdForPushRegistration(
+            @Param("sessionId") Long sessionId,
+            @Param("memberId") Long memberId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select session from AuthSession session join fetch session.member "
             + "where session.sessionIdHash = :sessionIdHash")
     Optional<AuthSession> findBySessionIdHashForAuthentication(
             @Param("sessionIdHash") byte[] sessionIdHash);
