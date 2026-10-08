@@ -17,6 +17,31 @@ class MapContentQueryTest {
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
+    void loadsAllCacheableContentsWithoutSpatialBounds() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
+                .thenReturn(List.of());
+        MapContentQuery contentQuery = new MapContentQuery(jdbcTemplate);
+
+        contentQuery.findAllCacheable();
+
+        ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<Object[]> argumentsCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(jdbcTemplate).query(
+                sqlCaptor.capture(), any(RowMapper.class), argumentsCaptor.capture());
+
+        assertThat(sqlCaptor.getValue())
+                .contains(
+                        "content.status = 'ACTIVE'",
+                        "content.deleted_at IS NULL",
+                        "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)")
+                .doesNotContain("MBRContains");
+        assertThat(argumentsCaptor.getValue())
+                .containsExactly("NA", "HS", "VE", "EX", "LS", "EV");
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
     void returnsOnlySupportedTopLevelClassifications() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))

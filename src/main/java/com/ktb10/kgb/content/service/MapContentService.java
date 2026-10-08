@@ -3,6 +3,7 @@ package com.ktb10.kgb.content.service;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.error.ErrorDetail;
+import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
 import com.ktb10.kgb.content.repository.MapClusterQueryResult;
@@ -25,12 +26,18 @@ public class MapContentService {
 
     private final MapContentQuery mapContentQuery;
     private final MapContentPersonalizationQuery personalizationQuery;
+    private final MapContentCommonCache commonCache;
+    private final MapPerformanceMetrics performanceMetrics;
 
     public MapContentService(
             MapContentQuery mapContentQuery,
-            MapContentPersonalizationQuery personalizationQuery) {
+            MapContentPersonalizationQuery personalizationQuery,
+            MapContentCommonCache commonCache,
+            MapPerformanceMetrics performanceMetrics) {
         this.mapContentQuery = mapContentQuery;
         this.personalizationQuery = personalizationQuery;
+        this.commonCache = commonCache;
+        this.performanceMetrics = performanceMetrics;
     }
 
     @Transactional(readOnly = true)
@@ -46,9 +53,10 @@ public class MapContentService {
         if (zoom <= CLUSTER_MAX_ZOOM
                 || diagonalKilometers(south, west, north, east)
                 > DETAIL_MAX_DIAGONAL_KILOMETERS) {
-            List<MapClusterQueryResult> results = mapContentQuery.findClustersWithinBounds(
-                    south, west, north, east,
-                    gridSize(zoom, south, west, north, east));
+            List<MapClusterQueryResult> results = performanceMetrics.recordCommonQuery(
+                    () -> mapContentQuery.findClustersWithinBounds(
+                            south, west, north, east,
+                            gridSize(zoom, south, west, north, east)));
             List<MapContentCommonData> representatives = results.stream()
                     .limit(REPRESENTATIVE_LIMIT)
                     .map(MapClusterQueryResult::representative)
@@ -58,7 +66,7 @@ public class MapContentService {
                     personalize(memberId, representatives));
         }
 
-        List<MapContentCommonData> contents = mapContentQuery.findWithinBounds(
+        List<MapContentCommonData> contents = commonCache.get(
                 south, west, north, east);
         return MapContentResponse.content(personalize(memberId, contents));
     }
@@ -70,13 +78,14 @@ public class MapContentService {
                 .map(MapContentCommonData::id)
                 .distinct()
                 .toList();
-        MapContentPersonalization personalization =
-                personalizationQuery.findByMemberAndContentIds(memberId, contentIds);
-        return contents.stream()
-                .map(content -> content.toResponse(
-                        personalization.isFavorite(content.id()),
-                        personalization.isInGuidebook(content.id())))
-                .toList();
+        MapContentPersonalization personalization = performanceMetrics.recordPersonalizationQuery(
+                () -> personalizationQuery.findByMemberAndContentIds(memberId, contentIds));
+        return performanceMetrics.recordResponseMapping(
+                () -> contents.stream()
+                        .map(content -> content.toResponse(
+                                personalization.isFavorite(content.id()),
+                                personalization.isInGuidebook(content.id())))
+                        .toList());
     }
 
     private double gridSize(

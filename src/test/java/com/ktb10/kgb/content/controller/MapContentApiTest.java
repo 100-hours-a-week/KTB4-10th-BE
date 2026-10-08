@@ -76,9 +76,9 @@ class MapContentApiTest {
                                 "event-1",
                                 "가을 축제",
                                 ContentType.EVENT,
-                                "경기도 성남시",
-                                37.395,
-                                127.11,
+                                "경상북도 경주시",
+                                35.85,
+                                129.22,
                                 "https://example.com/event.jpg",
                                 new EventPeriod(
                                         LocalDate.of(2026, 10, 1),

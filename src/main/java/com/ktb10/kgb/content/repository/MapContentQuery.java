@@ -1,11 +1,12 @@
 package com.ktb10.kgb.content.repository;
 
+import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
-import com.ktb10.kgb.content.dto.MapClusterResponse;
 import java.sql.Date;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 /** MySQL 공간 인덱스를 사용해 지도 화면 영역의 공통 콘텐츠를 조회합니다. */
@@ -14,6 +15,21 @@ public class MapContentQuery {
 
     private static final List<String> SUPPORTED_CLASSIFICATION_CODES =
             List.of("NA", "HS", "VE", "EX", "LS", "EV");
+    private static final RowMapper<MapContentCommonData> COMMON_CONTENT_ROW_MAPPER =
+            (resultSet, rowNumber) -> new MapContentCommonData(
+                    resultSet.getLong("id"),
+                    resultSet.getString("source_content_id"),
+                    resultSet.getString("title"),
+                    "EV".equals(resultSet.getString("classification_code_1"))
+                            ? ContentType.EVENT
+                            : ContentType.PLACE,
+                    resultSet.getString("address"),
+                    resultSet.getDouble("latitude"),
+                    resultSet.getDouble("longitude"),
+                    resultSet.getString("thumbnail_url"),
+                    eventPeriod(
+                            resultSet.getDate("start_date"),
+                            resultSet.getDate("end_date")));
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -63,20 +79,7 @@ public class MapContentQuery {
                       content.location)
                 ORDER BY content.id
                 """,
-                (resultSet, rowNumber) -> new MapContentCommonData(
-                        resultSet.getLong("id"),
-                        resultSet.getString("source_content_id"),
-                        resultSet.getString("title"),
-                        "EV".equals(resultSet.getString("classification_code_1"))
-                                ? ContentType.EVENT
-                                : ContentType.PLACE,
-                        resultSet.getString("address"),
-                        resultSet.getDouble("latitude"),
-                        resultSet.getDouble("longitude"),
-                        resultSet.getString("thumbnail_url"),
-                        eventPeriod(
-                                resultSet.getDate("start_date"),
-                                resultSet.getDate("end_date"))),
+                COMMON_CONTENT_ROW_MAPPER,
                 SUPPORTED_CLASSIFICATION_CODES.get(0),
                 SUPPORTED_CLASSIFICATION_CODES.get(1),
                 SUPPORTED_CLASSIFICATION_CODES.get(2),
@@ -90,13 +93,43 @@ public class MapContentQuery {
                 west, south);
     }
 
+    public List<MapContentCommonData> findAllCacheable() {
+        return jdbcTemplate.query(
+                """
+                SELECT
+                    content.id,
+                    content.source_content_id,
+                    content.title,
+                    content.classification_code_1,
+                    content.address,
+                    ST_Latitude(content.location) AS latitude,
+                    ST_Longitude(content.location) AS longitude,
+                    content.thumbnail_url,
+                    event.start_date,
+                    event.end_date
+                FROM tourism_contents content
+                LEFT JOIN event_details event ON event.content_id = content.id
+                WHERE content.status = 'ACTIVE'
+                  AND content.deleted_at IS NULL
+                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
+                  AND (
+                      content.classification_code_1 <> 'EV'
+                      OR event.end_date >= CURRENT_DATE
+                  )
+                ORDER BY content.id
+                """,
+                COMMON_CONTENT_ROW_MAPPER,
+                SUPPORTED_CLASSIFICATION_CODES.toArray());
+    }
+
     public List<MapClusterQueryResult> findClustersWithinBounds(
             double south,
             double west,
             double north,
             double east,
             double gridSize) {
-        String sql = """
+        String sql =
+                """
                 WITH ranked AS (
                     SELECT
                         content.id,
