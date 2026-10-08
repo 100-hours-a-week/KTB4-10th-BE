@@ -21,6 +21,8 @@ scripts/load-test/
 ├─ general-api.js
 ├─ map-contents.js
 ├─ map-zoom-15.js
+├─ map-zoom-15-nationwide-random.js
+├─ map-zoom-15-nationwide-tourism.js
 ├─ guidebook-generation.js
 └─ scenarios/       새 시나리오를 추가하는 위치
 ```
@@ -157,7 +159,29 @@ K6_MAP_ZOOM_15_VUS=100 docker compose \
   --profile loadtest run --rm k6-map-zoom-15
 ```
 
-zoom 15 상세 조회의 구현 변경 전후를 비교할 때 사용합니다. 비교할 때는 VU, 지역 수, 데이터 상태와 애플리케이션 상태를 동일하게 유지합니다.
+zoom 15 상세 조회의 공간 인덱스·캐시 변경 전후를 비교할 때 사용합니다. 비교할 때는 VU, 지역 수, 데이터 상태와 캐시 상태를 동일하게 유지합니다.
+
+### zoom 15 전국 랜덤 조회
+
+```bash
+K6_MAP_ZOOM_15_RANDOM_VUS=500 docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  --profile loadtest run --rm k6-map-zoom-15-nationwide-random
+```
+
+한반도 본토 90%, 제주 10% 범위에서 매 요청마다 서로 다른 zoom 15 bounds를 생성합니다. 캐시 재사용이 낮은 조건에서 hit ratio, eviction, DB 커넥션 대기와 꼬리 지연을 확인할 때 사용합니다.
+
+### zoom 15 전국 관광 지역 탐색
+
+```bash
+K6_MAP_ZOOM_15_TOURISM_VUS=1000 docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  --profile loadtest run --rm k6-map-zoom-15-nationwide-tourism
+```
+
+실제 관광 콘텐츠가 있는 전국 28개 지역에 VU를 고르게 배치합니다. 각 VU는 90%의 요청에서 자신의 시작 지역 주변을 이동하고, 10%의 요청에서만 다른 관광 지역으로 이동합니다. 전국 분산 사용자의 지역 내 탐색을 표현하며, 캐시 ON/OFF 비교의 주 시나리오로 사용합니다.
 
 ### 가이드북 생성
 
@@ -226,7 +250,7 @@ docker compose \
 - HikariCP active, idle, pending과 acquire 시간
 - JVM Heap과 애플리케이션 CPU
 - MySQL CPU
-- 변경 대상 기능에서 별도로 노출한 애플리케이션 지표
+- 캐시 hit ratio, size와 eviction
 
 Grafana 시간 범위에는 한 번의 테스트 구간만 포함합니다. 여러 실행이 섞이면 k6 누적값과 최대값을 잘못 해석할 수 있습니다.
 
