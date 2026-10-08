@@ -19,6 +19,7 @@ import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
+import com.ktb10.kgb.content.service.MapContentCommonCache;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,6 +51,9 @@ class MapContentApiTest {
     @MockitoBean
     private MapContentPersonalizationQuery personalizationQuery;
 
+    @MockitoBean
+    private MapContentCommonCache commonCache;
+
     @BeforeEach
     void setUpPersonalization() {
         when(personalizationQuery.findByMemberAndContentIds(anyLong(), anyList()))
@@ -58,7 +62,7 @@ class MapContentApiTest {
 
     @Test
     void returnsPlacesAndEventsWithinBounds() throws Exception {
-        when(mapContentQuery.findWithinBounds(
+        when(commonCache.get(
                 anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(List.of(
                         new MapContentCommonData(
