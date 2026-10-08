@@ -29,4 +29,5 @@ public class MapContentCommonLoader {
     public List<MapContentCommonData> loadAllCacheable() {
         return List.copyOf(mapContentQuery.findAllCacheable());
     }
+
 }
