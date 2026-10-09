@@ -11,8 +11,10 @@ import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
@@ -32,6 +34,7 @@ public class MemberWithdrawalService {
 
     private final MemberRepository memberRepository;
     private final AuthSessionRepository authSessionRepository;
+    private final WebPushSubscriptionRepository webPushSubscriptionRepository;
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
     private final GenerationJobRepository generationJobRepository;
@@ -41,6 +44,7 @@ public class MemberWithdrawalService {
     public MemberWithdrawalService(
             MemberRepository memberRepository,
             AuthSessionRepository authSessionRepository,
+            WebPushSubscriptionRepository webPushSubscriptionRepository,
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
             GenerationJobRepository generationJobRepository,
@@ -48,6 +52,7 @@ public class MemberWithdrawalService {
             Clock clock) {
         this.memberRepository = memberRepository;
         this.authSessionRepository = authSessionRepository;
+        this.webPushSubscriptionRepository = webPushSubscriptionRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
         this.generationJobRepository = generationJobRepository;
@@ -68,6 +73,11 @@ public class MemberWithdrawalService {
         revokeCredits(memberId, now);
         activeJobs.forEach(job -> job.cancelForWithdrawal(now));
         member.withdraw(DEIDENTIFIED_SUBJECT_PREFIX + memberId, now);
+        webPushSubscriptionRepository.revokeAllActiveByMemberId(
+                memberId,
+                WebPushSubscriptionStatus.ACTIVE,
+                WebPushSubscriptionStatus.REVOKED,
+                now);
         authSessionRepository.revokeAllActiveByMemberId(memberId, now);
     }
 

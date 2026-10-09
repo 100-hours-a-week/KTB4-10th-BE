@@ -63,6 +63,9 @@
 | API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` | 예 | Path notification_id; Body 없음 |
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
 | API-NOT-04 | 실시간 인앱 알림 연결 | GET | `/notifications/stream` | 예 | SSE; Body 없음 |
+| API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
+| API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
+| API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 서버 clusters, 상세 줌은 개별 콘텐츠 반환 |
@@ -698,6 +701,106 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 | 500 | INTERNAL_SERVER_ERROR | 최초 연결 처리 중 내부 오류 |
 
 연결 수립 이후의 네트워크 오류는 일반 JSON 오류 응답으로 전환할 수 없으므로 FE가 재연결하고 목록 API로 상태를 복구한다.
+
+### API-NOT-05 VAPID 공개키 조회
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/push/vapid-public-key` | 세션 쿠키 필수, ACTIVE 회원 |
+
+**응답 200**
+
+```json
+{
+  "message": "push_vapid_public_key_get_success",
+  "data": {
+    "public_key": "Base64URL로 인코딩한 P-256 공개키"
+  }
+}
+```
+
+- 공개키는 브라우저의 `PushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`에 사용한다.
+- VAPID 개인키는 응답하지 않고 배포 Secret으로만 관리한다.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | ACTIVE 상태가 아님 |
+| 503 | WEB_PUSH_CONFIGURATION_UNAVAILABLE | 공개키 누락·형식 오류 |
+
+### API-NOT-06 현재 브라우저 Push 구독 등록·갱신
+
+| Method | URL | 인증 |
+|---|---|---|
+| PUT | `/members/me/push-subscriptions` | 세션 쿠키 + CSRF, ACTIVE 회원 |
+
+**Request Body**
+
+```json
+{
+  "endpoint": "https://push.example.com/subscriptions/browser-token",
+  "expiration_time": null,
+  "keys": {
+    "p256dh": "Base64URL P-256 공개키",
+    "auth": "Base64URL 인증 값"
+  }
+}
+```
+
+- `endpoint`: 필수 HTTPS URL, 최대 4096자
+- `expiration_time`: 선택 epoch milliseconds, 브라우저가 제공하지 않으면 null
+- `keys.p256dh`: 필수 Base64URL, 디코딩한 비압축 P-256 공개키 65바이트
+- `keys.auth`: 필수 Base64URL, 디코딩한 인증 값 16바이트
+- 동일 endpoint는 SHA-256 해시 UNIQUE를 기준으로 갱신한다. 다른 회원의 활성 endpoint는 이전 회원의 명시적인 로그아웃·구독 해제 없이 가져올 수 없다.
+
+**응답 200**
+
+```json
+{
+  "message": "web_push_subscription_upsert_success",
+  "data": {
+    "subscription_id": 21,
+    "status": "ACTIVE",
+    "expiration_time": null
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | 필수값 누락·길이·JSON 형식 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
+| 409 | WEB_PUSH_SUBSCRIPTION_CONFLICT | 다른 회원이 사용 중인 활성 endpoint |
+| 422 | WEB_PUSH_SUBSCRIPTION_INVALID | endpoint·암호화 키·만료 시각 형식 오류 |
+
+### API-NOT-07 현재 브라우저 Push 구독 해제
+
+| Method | URL | 인증 |
+|---|---|---|
+| DELETE | `/members/me/push-subscriptions/{subscription_id}` | 세션 쿠키 + CSRF, ACTIVE 회원 |
+
+- 본인 구독만 `REVOKED`로 변경한다. FE는 성공 후 브라우저의 `PushSubscription.unsubscribe()`를 호출한다.
+- 로그아웃은 현재 서비스 세션에 연결된 활성 구독만 폐기하며 회원 전체 `push_enabled`를 false로 바꾸지 않는다.
+- 회원 탈퇴는 해당 회원의 모든 활성 구독을 폐기한다.
+
+**응답 204**
+
+Body 없음.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
+| 404 | WEB_PUSH_SUBSCRIPTION_NOT_FOUND | 구독이 없거나 현재 회원 소유가 아님 |
+
+**공식 규격 근거**
+
+- [MDN Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
+- [MDN PushSubscription](https://developer.mozilla.org/en-US/docs/Web/API/PushSubscription)
+- [MDN PushManager.subscribe()](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe)
+- [RFC 8291 Message Encryption for Web Push](https://www.rfc-editor.org/rfc/rfc8291.html)
+- [RFC 8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292.html)
 
 ## 4. 관광콘텐츠
 
