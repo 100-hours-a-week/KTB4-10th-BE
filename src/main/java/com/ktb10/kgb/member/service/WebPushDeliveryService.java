@@ -21,7 +21,6 @@ public class WebPushDeliveryService {
     private final WebPushTargetReader targetReader;
     private final WebPushDeliveryRecorder deliveryRecorder;
     private final WebPushBackoffSleeper backoffSleeper;
-    private final NotificationStreamService streamService;
     private final ObjectMapper objectMapper;
     private final int maxAttempts;
     private final Duration initialBackoff;
@@ -32,7 +31,6 @@ public class WebPushDeliveryService {
             WebPushTargetReader targetReader,
             WebPushDeliveryRecorder deliveryRecorder,
             WebPushBackoffSleeper backoffSleeper,
-            NotificationStreamService streamService,
             ObjectMapper objectMapper,
             @Value("${webpush.delivery.max-attempts:3}") int maxAttempts,
             @Value("${webpush.delivery.initial-backoff:1s}") Duration initialBackoff,
@@ -42,7 +40,6 @@ public class WebPushDeliveryService {
         this.targetReader = targetReader;
         this.deliveryRecorder = deliveryRecorder;
         this.backoffSleeper = backoffSleeper;
-        this.streamService = streamService;
         this.objectMapper = objectMapper;
         this.maxAttempts = maxAttempts;
         this.initialBackoff = initialBackoff;
@@ -51,8 +48,7 @@ public class WebPushDeliveryService {
 
     public void deliver(NotificationCreatedEvent event) {
         if (!event.realtimeDeliveryEnabled()
-                || !gateway.isConfigured()
-                || streamService.hasActiveConnection(event.recipientMemberId())) {
+                || !gateway.isConfigured()) {
             return;
         }
 
@@ -70,9 +66,6 @@ public class WebPushDeliveryService {
             byte[] payload) {
         WebPushSendResult result = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            if (streamService.hasActiveConnection(event.recipientMemberId())) {
-                return;
-            }
             try {
                 result = gateway.send(
                         target,

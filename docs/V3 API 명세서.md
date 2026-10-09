@@ -805,7 +805,7 @@ Body 없음.
 ### Web Push 서버 전송 계약
 
 - 브라우저별 구독 API와 달리 서버 발송은 외부 공개 endpoint가 아닌 내부 이벤트 처리다.
-- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리하며, `push_enabled=false`이거나 현재 활성 SSE 연결이 있으면 Web Push를 보내지 않는다.
+- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않고, 이번 알림이 하나 이상의 SSE 연결에 정상적으로 `send()`된 경우에만 Web Push를 생략한다. 연결 객체만 남은 stale 연결이거나 모든 SSE 전송이 실패하면 Web Push를 fallback으로 등록한다.
 - payload는 Service Worker가 기존 알림과 이동 대상을 복원할 최소 필드만 포함한다.
 
 ```json

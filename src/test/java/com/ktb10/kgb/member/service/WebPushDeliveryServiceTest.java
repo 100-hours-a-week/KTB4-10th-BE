@@ -34,9 +34,6 @@ class WebPushDeliveryServiceTest {
     @Mock
     private WebPushBackoffSleeper backoffSleeper;
 
-    @Mock
-    private NotificationStreamService streamService;
-
     private WebPushDeliveryService deliveryService;
 
     @BeforeEach
@@ -46,26 +43,10 @@ class WebPushDeliveryServiceTest {
                 targetReader,
                 deliveryRecorder,
                 backoffSleeper,
-                streamService,
                 new ObjectMapper(),
                 3,
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(10));
-    }
-
-    @Test
-    void skipsWebPushWhenSseConnectionIsActive() {
-        NotificationCreatedEvent event = notificationEvent();
-        given(gateway.isConfigured()).willReturn(true);
-        given(streamService.hasActiveConnection(1L)).willReturn(true);
-
-        deliveryService.deliver(event);
-
-        verify(targetReader, never()).findDeliverableTargets(1L);
-        verify(gateway, never()).send(
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
