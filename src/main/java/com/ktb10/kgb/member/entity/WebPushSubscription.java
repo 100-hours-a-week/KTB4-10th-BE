@@ -166,12 +166,42 @@ public class WebPushSubscription {
         }
     }
 
+    public void markDeliverySucceeded(LocalDateTime now) {
+        ensureActive();
+        failureCount = 0;
+        lastSuccessAt = Objects.requireNonNull(now, "성공 시각은 null일 수 없습니다.");
+        lastFailureAt = null;
+        updatedAt = now;
+    }
+
+    public void markDeliveryFailed(LocalDateTime now) {
+        ensureActive();
+        failureCount += 1;
+        lastFailureAt = Objects.requireNonNull(now, "실패 시각은 null일 수 없습니다.");
+        updatedAt = now;
+    }
+
+    public void invalidate(LocalDateTime now) {
+        if (status == WebPushSubscriptionStatus.ACTIVE) {
+            status = WebPushSubscriptionStatus.INVALID;
+            failureCount += 1;
+            lastFailureAt = Objects.requireNonNull(now, "무효화 시각은 null일 수 없습니다.");
+            updatedAt = now;
+        }
+    }
+
     public boolean isOwnedBy(Long memberId) {
         return member.getId().equals(memberId);
     }
 
     public boolean isActive() {
         return status == WebPushSubscriptionStatus.ACTIVE;
+    }
+
+    private void ensureActive() {
+        if (!isActive()) {
+            throw new IllegalStateException("활성 Web Push 구독만 전송 결과를 기록할 수 있습니다.");
+        }
     }
 
     private static byte[] copyHash(byte[] endpointHash) {

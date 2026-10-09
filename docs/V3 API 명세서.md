@@ -802,6 +802,42 @@ Body 없음.
 - [RFC 8291 Message Encryption for Web Push](https://www.rfc-editor.org/rfc/rfc8291.html)
 - [RFC 8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292.html)
 
+### Web Push 서버 전송 계약
+
+- 브라우저별 구독 API와 달리 서버 발송은 외부 공개 endpoint가 아닌 내부 이벤트 처리다.
+- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리하며, `push_enabled=false`이거나 현재 활성 SSE 연결이 있으면 Web Push를 보내지 않는다.
+- payload는 Service Worker가 기존 알림과 이동 대상을 복원할 최소 필드만 포함한다.
+
+```json
+{
+  "notification_id": "301",
+  "type": "GUIDEBOOK_COMPLETED",
+  "reference_type": "GUIDEBOOK",
+  "reference_id": "101"
+}
+```
+
+- FE Service Worker는 payload를 받아 사용자에게 보이는 알림을 표시하고, 클릭 시 `reference_type`과 `reference_id`로 화면 이동 경로를 결정한다. 세부 경로와 강조 효과는 FE 라우팅 계약에서 관리한다.
+- Push 서비스의 2xx는 전송 접수 성공으로 기록한다. 404·410은 구독을 `INVALID`로 바꾸며, 429·재시도 가능한 5xx·timeout은 전용 제한 큐에서 최대 3회 백오프 재시도한다.
+- Web Push 접수 성공은 사용자의 표시·클릭을 보장하는 delivery receipt가 아니다.
+- VAPID 키 쌍은 애플리케이션 환경별로 한 번 생성해 모든 인스턴스가 공유한다. 공개키는 API로 제공하지만 개인키는 배포 Secret으로만 주입한다.
+- endpoint는 capability URL이므로 endpoint·p256dh·auth·VAPID 개인키·payload 원문을 로그에 남기지 않는다.
+- V2는 단일 인스턴스 메모리에서 알림 ID 중복 작업 등록을 제한한다. 재시작·다중 인스턴스를 넘는 중복 방지와 영속 재처리는 보장하지 않는다.
+
+**서버 설정 환경 변수**
+
+| 환경 변수 | 설명 | 노출 정책 |
+|---|---|---|
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | 브라우저 구독과 서버 서명에 사용하는 공개키 | API 제공 가능 |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | 서버 VAPID 서명 개인키 | Secret, FE·로그·문서 값 노출 금지 |
+| `WEB_PUSH_VAPID_SUBJECT` | Push 서비스 운영 연락처인 `mailto:` 또는 `https:` URI | 서버 설정 |
+| `WEB_PUSH_EXECUTOR_CORE_POOL_SIZE` | 전송 전용 실행기 기본 스레드 수 | 운영 설정 |
+| `WEB_PUSH_EXECUTOR_MAX_POOL_SIZE` | 전송 전용 실행기 최대 스레드 수 | 운영 설정 |
+| `WEB_PUSH_EXECUTOR_QUEUE_CAPACITY` | 전송 대기 큐 상한 | 운영 설정 |
+| `WEB_PUSH_MAX_ATTEMPTS` | 최초 전송을 포함한 최대 시도 횟수 | 운영 설정 |
+| `WEB_PUSH_INITIAL_BACKOFF` | 첫 재시도 대기 시간 | 운영 설정 |
+| `WEB_PUSH_MAX_BACKOFF` | 서버가 준 Retry-After를 포함한 최대 대기 시간 | 운영 설정 |
+
 ## 4. 관광콘텐츠
 
 ### API-CON-01 관광 콘텐츠 검색

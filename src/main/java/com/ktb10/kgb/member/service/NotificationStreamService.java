@@ -133,6 +133,11 @@ public class NotificationStreamService {
         }
     }
 
+    public boolean hasActiveConnection(Long memberId) {
+        ConcurrentMap<String, StreamConnection> connections = memberConnections.get(memberId);
+        return connections != null && !connections.isEmpty();
+    }
+
     public void disconnectSession(Long memberId, Long sessionId) {
         List<SseEmitter> disconnectedEmitters = new ArrayList<>();
         memberConnections.computeIfPresent(memberId, (ignored, connections) -> {

@@ -3,6 +3,7 @@ package com.ktb10.kgb.member.repository;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -16,7 +17,20 @@ public interface WebPushSubscriptionRepository extends JpaRepository<WebPushSubs
 
     Optional<WebPushSubscription> findByIdAndMemberId(Long id, Long memberId);
 
+    Optional<WebPushSubscription> findByIdAndStatus(
+            Long id,
+            WebPushSubscriptionStatus status);
+
     long countByMemberIdAndStatus(Long memberId, WebPushSubscriptionStatus status);
+
+    @Query("select subscription from WebPushSubscription subscription "
+            + "where subscription.member.id = :memberId "
+            + "and subscription.status = :status "
+            + "and (subscription.expirationAt is null or subscription.expirationAt > :now)")
+    List<WebPushSubscription> findDeliverableByMemberId(
+            @Param("memberId") Long memberId,
+            @Param("status") WebPushSubscriptionStatus status,
+            @Param("now") LocalDateTime now);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update WebPushSubscription subscription "
