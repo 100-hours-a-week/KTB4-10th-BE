@@ -39,6 +39,9 @@ services:
       LOAD_TEST_USER_COUNT: ${LOAD_TEST_USER_COUNT:-500}
       LOAD_TEST_CREDIT_BALANCE: ${LOAD_TEST_CREDIT_BALANCE:-100}
       LOAD_TEST_SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      LOAD_TEST_AUTHENTICATION_BYPASS_ENABLED: ${LOAD_TEST_AUTHENTICATION_BYPASS_ENABLED:-false}
+      MAP_COMMON_CACHE_ENABLED: ${MAP_COMMON_CACHE_ENABLED:-true}
+      MAP_COMMON_CACHE_PRELOAD_ENABLED: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:-false}
       TOUR_API_SERVICE_KEY: ${TOUR_API_SERVICE_KEY}
       KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
       KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
@@ -176,6 +179,50 @@ services:
       - ./results/load-test:/results
     entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
     command: ["map-zoom-15", "/scripts/map-zoom-15.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-map-zoom-15-nationwide-random:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_MAP_ZOOM_15_RANDOM_VUS:-500}
+      CACHE_MODE: ${K6_MAP_CACHE_MODE:-cache_on_tile_005}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:map-zoom-15-nationwide-random
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["map-zoom-15-nationwide-random", "/scripts/map-zoom-15-nationwide-random.js"]
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  k6-map-zoom-15-nationwide-tourism:
+    image: grafana/k6:2.3.0
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      VUS: ${K6_MAP_ZOOM_15_TOURISM_VUS:-500}
+      CACHE_MODE: ${K6_MAP_CACHE_MODE:-cache_on_tile_005}
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      K6_OUT: experimental-prometheus-rw
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_STATS: p(90),p(95),p(99),avg,max
+      K6_PROMETHEUS_RW_STALE_MARKERS: "true"
+      K6_TAGS: environment:local-loadtest,testid:map-zoom-15-nationwide-tourism
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+      - ./results/load-test:/results
+    entrypoint: ["/bin/sh", "/scripts/run-with-summary.sh"]
+    command: ["map-zoom-15-nationwide-tourism", "/scripts/map-zoom-15-nationwide-tourism.js"]
     depends_on:
       backend:
         condition: service_healthy

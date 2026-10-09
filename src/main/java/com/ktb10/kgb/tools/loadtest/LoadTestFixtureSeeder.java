@@ -14,6 +14,7 @@ import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoadTestFixtureSeeder implements ApplicationRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadTestFixtureSeeder.class);
-    private static final int MAX_USER_COUNT = 999;
+    private static final int MAX_USER_COUNT = 2_000;
     private static final List<PreferenceCode> DEFAULT_PREFERENCES = List.of(
             PreferenceCode.NATURE,
             PreferenceCode.NATURE_PARK,
@@ -40,6 +41,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
     private final CreditWalletRepository creditWalletRepository;
     private final AuthSessionRepository authSessionRepository;
     private final SessionIdHasher sessionIdHasher;
+    private final Optional<LoadTestSessionAuthenticationBypass> authenticationBypass;
     private final int userCount;
     private final int creditBalance;
     private final String sessionPrefix;
@@ -50,6 +52,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
             CreditWalletRepository creditWalletRepository,
             AuthSessionRepository authSessionRepository,
             SessionIdHasher sessionIdHasher,
+            Optional<LoadTestSessionAuthenticationBypass> authenticationBypass,
             @Value("${load-test.user-count}") int userCount,
             @Value("${load-test.credit-balance}") int creditBalance,
             @Value("${load-test.session-prefix}") String sessionPrefix) {
@@ -58,6 +61,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
         this.creditWalletRepository = creditWalletRepository;
         this.authSessionRepository = authSessionRepository;
         this.sessionIdHasher = sessionIdHasher;
+        this.authenticationBypass = authenticationBypass;
         this.userCount = validateUserCount(userCount);
         this.creditBalance = validateCreditBalance(creditBalance);
         this.sessionPrefix = validateSessionPrefix(sessionPrefix);
@@ -67,11 +71,17 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
     @Transactional
     public void run(ApplicationArguments args) {
         LocalDateTime now = LocalDateTime.now();
+        authenticationBypass.ifPresent(LoadTestSessionAuthenticationBypass::clear);
         for (int sequence = 1; sequence <= userCount; sequence++) {
             Member member = prepareMember(sequence, now);
             preparePreferences(member);
             prepareWallet(member, now);
-            replaceSession(member, rawSessionId(sequence), now);
+            String rawSessionId = rawSessionId(sequence);
+            AuthSession session = replaceSession(member, rawSessionId, now);
+            authenticationBypass.ifPresent(bypass -> bypass.replace(
+                    rawSessionId,
+                    member.getId(),
+                    session.getId()));
         }
 
         LOGGER.info(
@@ -122,14 +132,14 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
         }
     }
 
-    private void replaceSession(Member member, String rawSessionId, LocalDateTime now) {
+    private AuthSession replaceSession(Member member, String rawSessionId, LocalDateTime now) {
         byte[] sessionHash = sessionIdHasher.hash(rawSessionId);
         authSessionRepository.revokeAllActiveByMemberId(member.getId(), now);
         authSessionRepository.findBySessionIdHash(sessionHash).ifPresent(existing -> {
             authSessionRepository.delete(existing);
             authSessionRepository.flush();
         });
-        authSessionRepository.save(AuthSession.issue(
+        return authSessionRepository.save(AuthSession.issue(
                 member,
                 sessionHash,
                 now.plusDays(30),
@@ -146,7 +156,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
 
     private int validateUserCount(int value) {
         if (value < 1 || value > MAX_USER_COUNT) {
-            throw new IllegalArgumentException("부하 테스트 회원 수는 1 이상 999 이하여야 합니다.");
+            throw new IllegalArgumentException("부하 테스트 회원 수는 1 이상 2000 이하여야 합니다.");
         }
         return value;
     }

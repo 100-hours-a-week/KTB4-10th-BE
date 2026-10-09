@@ -7,6 +7,7 @@ load-test:
   user-count: ${LOAD_TEST_USER_COUNT:40}
   credit-balance: ${LOAD_TEST_CREDIT_BALANCE:100}
   session-prefix: ${LOAD_TEST_SESSION_PREFIX:k6-local-session-}
+  authentication-bypass-enabled: ${LOAD_TEST_AUTHENTICATION_BYPASS_ENABLED:false}
 
 auth:
   session:

@@ -152,7 +152,7 @@
       "gridPos": {"h": 7, "w": 8, "x": 8, "y": 19},
       "id": 8,
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "hikaricp_connections_active{application=\"kgb\"}", "legendFormat": "active", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "hikaricp_connections_idle{application=\"kgb\"}", "legendFormat": "idle", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "hikaricp_connections_pending{application=\"kgb\"}", "legendFormat": "pending", "range": true, "refId": "C"}, {"editorMode": "code", "expr": "hikaricp_connections_max{application=\"kgb\"}", "legendFormat": "max", "range": true, "refId": "D"}],
+      "targets": [{"editorMode": "code", "expr": "hikaricp_connections_active{application=\"kgb\"}", "interval": "5s", "legendFormat": "active", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "hikaricp_connections_idle{application=\"kgb\"}", "interval": "5s", "legendFormat": "idle", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "hikaricp_connections_pending{application=\"kgb\"}", "interval": "5s", "legendFormat": "pending", "range": true, "refId": "C"}, {"editorMode": "code", "expr": "hikaricp_connections_max{application=\"kgb\"}", "interval": "5s", "legendFormat": "max", "range": true, "refId": "D"}],
       "title": "포화도 — DB Connection Pool",
       "type": "timeseries"
     },
@@ -162,7 +162,7 @@
       "gridPos": {"h": 7, "w": 8, "x": 16, "y": 19},
       "id": 9,
       "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
-      "targets": [{"editorMode": "code", "expr": "process_cpu_usage{application=\"kgb\"}", "legendFormat": "process", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "system_cpu_usage{application=\"kgb\"}", "legendFormat": "system", "range": true, "refId": "B"}],
+      "targets": [{"editorMode": "code", "expr": "process_cpu_usage{application=\"kgb\"}", "interval": "5s", "legendFormat": "process", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "system_cpu_usage{application=\"kgb\"}", "interval": "5s", "legendFormat": "system", "range": true, "refId": "B"}],
       "title": "포화도 — CPU",
       "type": "timeseries"
     },
@@ -178,9 +178,20 @@
       "type": "timeseries"
     },
     {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "상세 지도 공통 타일 캐시의 적중률, 현재 크기와 누적 퇴거 수입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "A"}, "properties": [{"id": "unit", "value": "percentunit"}]}]},
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 34},
+      "id": 19,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"hideZeros": false, "mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "kgb_map_cache_hit_ratio", "interval": "1s", "legendFormat": "hit ratio", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "kgb_map_cache_size", "interval": "1s", "legendFormat": "size", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "kgb_map_cache_eviction_count", "interval": "1s", "legendFormat": "eviction", "range": true, "refId": "C"}],
+      "title": "지도 API — 공통 타일 캐시",
+      "type": "timeseries"
+    },
+    {
       "datasource": {"type": "loki", "uid": "loki"},
       "fieldConfig": {"defaults": {}, "overrides": []},
-      "gridPos": {"h": 9, "w": 16, "x": 0, "y": 34},
+      "gridPos": {"h": 9, "w": 16, "x": 0, "y": 41},
       "id": 10,
       "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
       "targets": [{"editorMode": "code", "expr": "{service_name=\"backend\"}", "queryType": "range", "refId": "A"}],
@@ -190,7 +201,7 @@
     {
       "datasource": {"type": "loki", "uid": "loki"},
       "fieldConfig": {"defaults": {}, "overrides": []},
-      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 34},
+      "gridPos": {"h": 9, "w": 8, "x": 16, "y": 41},
       "id": 11,
       "options": {"dedupStrategy": "none", "enableInfiniteScrolling": false, "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true},
       "targets": [{"editorMode": "code", "expr": "{service_name=\"backend\"} |~ `(?i)error|exception|failed`", "queryType": "range", "refId": "A"}],
@@ -201,7 +212,7 @@
   "refresh": "5s",
   "schemaVersion": 42,
   "tags": ["kgb", "local", "load-test"],
-  "templating": {"list": [{"current": {"text": "map-zoom-15", "value": "map-zoom-15"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total, testid)", "includeAll": false, "label": "테스트", "name": "testid", "options": [], "query": {"query": "label_values(k6_http_reqs_total, testid)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "type": "query"}, {"current": {"text": "decimal_columns", "value": "decimal_columns"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "includeAll": false, "label": "조회 방식", "name": "query_version", "options": [], "query": {"query": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 1, "regex": "", "type": "query"}]},
+  "templating": {"list": [{"allValue": ".*", "current": {"text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total, testid)", "includeAll": true, "label": "테스트", "name": "testid", "options": [], "query": {"query": "label_values(k6_http_reqs_total, testid)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "type": "query"}, {"allValue": ".*", "current": {"text": "All", "value": "$__all"}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "definition": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "includeAll": true, "label": "조회 방식", "name": "query_version", "options": [], "query": {"query": "label_values(k6_http_reqs_total{testid=~\"$testid\"}, query_version)", "refId": "PrometheusVariableQueryEditor-VariableQuery"}, "refresh": 2, "regex": "", "type": "query"}]},
   "time": {"from": "now-5m", "to": "now"},
   "timepicker": {},
   "timezone": "browser",
