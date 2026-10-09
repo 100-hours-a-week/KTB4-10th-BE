@@ -58,8 +58,9 @@ class NotificationStreamServiceTest {
         streamService.subscribe(2L, 22L);
         reset(firstEmitter, secondEmitter, otherMemberEmitter);
 
-        streamService.publish(notificationEvent(1L, "301"));
+        boolean delivered = streamService.publish(notificationEvent(1L, "301"));
 
+        assertThat(delivered).isTrue();
         verify(firstEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(secondEmitter).send(any(SseEmitter.SseEventBuilder.class));
         verify(otherMemberEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
@@ -72,8 +73,9 @@ class NotificationStreamServiceTest {
         streamService.subscribe(1L, 11L);
         reset(firstEmitter);
 
-        streamService.publish(notificationEvent(1L, "301", false));
+        boolean delivered = streamService.publish(notificationEvent(1L, "301", false));
 
+        assertThat(delivered).isFalse();
         verify(firstEmitter, never()).send(any(SseEmitter.SseEventBuilder.class));
         assertThat(streamService.connectionCount(1L)).isOne();
     }
@@ -95,6 +97,29 @@ class NotificationStreamServiceTest {
         verify(firstEmitter, times(1)).send(any(SseEmitter.SseEventBuilder.class));
         verify(secondEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
         assertThat(streamService.connectionCount(1L)).isEqualTo(1);
+    }
+
+    @Test
+    void reportsFailureWhenEveryStaleConnectionRejectsNotification() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        streamService.subscribe(1L, 11L);
+        reset(firstEmitter);
+        doThrow(new IOException("연결 종료"))
+                .when(firstEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        boolean delivered = streamService.publish(notificationEvent(1L, "301"));
+
+        assertThat(delivered).isFalse();
+        assertThat(streamService.connectionCount(1L)).isZero();
+    }
+
+    @Test
+    void reportsFailureWhenMemberHasNoStreamConnection() {
+        boolean delivered = streamService.publish(notificationEvent(1L, "301"));
+
+        assertThat(delivered).isFalse();
     }
 
     @Test

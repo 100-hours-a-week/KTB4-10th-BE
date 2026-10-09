@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
@@ -95,16 +96,18 @@ public class NotificationStreamService {
         return emitter;
     }
 
-    public void publish(NotificationCreatedEvent event) {
+    /** 알림을 연결된 SSE 스트림에 전송하고, 하나 이상의 전송 호출이 성공했는지 반환합니다. */
+    public boolean publish(NotificationCreatedEvent event) {
         if (!event.realtimeDeliveryEnabled()) {
-            return;
+            return false;
         }
         ConcurrentMap<String, StreamConnection> connections =
                 memberConnections.get(event.recipientMemberId());
         if (connections == null) {
-            return;
+            return false;
         }
 
+        AtomicBoolean delivered = new AtomicBoolean();
         connections.forEach((connectionId, connection) -> {
             SseEmitter emitter = connection.emitter();
             try {
@@ -113,6 +116,7 @@ public class NotificationStreamService {
                         .name(NOTIFICATION_EVENT_NAME)
                         .reconnectTime(reconnectTimeMillis)
                         .data(event.notification()));
+                delivered.set(true);
             } catch (IOException | IllegalStateException exception) {
                 removeConnection(event.recipientMemberId(), connectionId, emitter);
                 emitter.completeWithError(exception);
@@ -122,6 +126,7 @@ public class NotificationStreamService {
                         connectionId);
             }
         });
+        return delivered.get();
     }
 
     public void disconnectMember(Long memberId) {
