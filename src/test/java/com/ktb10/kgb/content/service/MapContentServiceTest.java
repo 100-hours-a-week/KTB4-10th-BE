@@ -2,11 +2,13 @@ package com.ktb10.kgb.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
+import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapClusterResponse;
@@ -17,6 +19,7 @@ import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import com.ktb10.kgb.content.repository.MapContentQuery;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,12 +35,18 @@ class MapContentServiceTest {
     private MapContentQuery mapContentQuery;
     @Mock
     private MapContentPersonalizationQuery personalizationQuery;
+    @Mock
+    private MapContentCommonCache commonCache;
 
     private MapContentService mapContentService;
 
     @BeforeEach
     void setUp() {
-        mapContentService = new MapContentService(mapContentQuery, personalizationQuery);
+        mapContentService = new MapContentService(
+                mapContentQuery,
+                personalizationQuery,
+                commonCache,
+                new MapPerformanceMetrics(new SimpleMeterRegistry()));
     }
 
     @Test
@@ -45,7 +54,7 @@ class MapContentServiceTest {
         MapContentCommonData first = commonContent(1L);
         MapContentCommonData second = commonContent(2L);
         MapContentCommonData third = commonContent(3L);
-        when(mapContentQuery.findWithinBounds(
+        when(commonCache.get(
                 37.35, 127.05, 37.45, 127.15))
                 .thenReturn(List.of(first, second, third));
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of(1L, 2L, 3L)))
@@ -62,7 +71,9 @@ class MapContentServiceTest {
         assertThat(response.items().get(1).inGuidebook()).isTrue();
         assertThat(response.items().get(2).favorite()).isFalse();
         assertThat(response.hasMore()).isFalse();
-        verify(mapContentQuery).findWithinBounds(
+        verify(commonCache).get(
+                37.35, 127.05, 37.45, 127.15);
+        verify(mapContentQuery, never()).findWithinBounds(
                 37.35, 127.05, 37.45, 127.15);
     }
 

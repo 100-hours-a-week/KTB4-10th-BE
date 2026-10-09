@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
     "spring.datasource.password=",
     "spring.jpa.hibernate.ddl-auto=create-drop",
     "spring.flyway.enabled=false",
+    "map.common-cache-preload-enabled=false",
     "load-test.user-count=2",
     "load-test.credit-balance=10",
     "load-test.session-prefix=test-session-"
