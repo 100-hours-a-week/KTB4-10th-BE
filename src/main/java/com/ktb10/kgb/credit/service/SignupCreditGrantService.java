@@ -60,6 +60,10 @@ public class SignupCreditGrantService {
 
     static String idempotencyKey(Long memberId, Clock clock) {
         YearMonth month = YearMonth.from(clock.instant().atZone(SEOUL_ZONE));
+        return idempotencyKey(memberId, month);
+    }
+
+    static String idempotencyKey(Long memberId, YearMonth month) {
         return "monthly-free:" + memberId + ":" + month.toString().replace("-", "");
     }
 }

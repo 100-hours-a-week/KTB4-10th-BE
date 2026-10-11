@@ -56,3 +56,6 @@ webpush:
     max-attempts: ${WEB_PUSH_MAX_ATTEMPTS:3}
     initial-backoff: ${WEB_PUSH_INITIAL_BACKOFF:1s}
     max-backoff: ${WEB_PUSH_MAX_BACKOFF:10s}
+
+credit:
+  monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
