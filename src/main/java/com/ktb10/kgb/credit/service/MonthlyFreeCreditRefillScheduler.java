@@ -1,6 +1,8 @@
 package com.ktb10.kgb.credit.service;
 
 import com.ktb10.kgb.member.repository.MemberRepository;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.YearMonth;
 import java.time.ZoneId;
@@ -13,7 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 매일 당월 미처리 회원을 찾아 월 무료 생성권 보충을 재대사합니다. */
+/** 매월 1일 회원별 무료 생성권을 보충하고 실패를 독립적으로 관측합니다. */
 @Component
 public class MonthlyFreeCreditRefillScheduler {
 
@@ -25,18 +27,23 @@ public class MonthlyFreeCreditRefillScheduler {
     private final MemberRepository memberRepository;
     private final MonthlyFreeCreditRefillService refillService;
     private final Clock clock;
+    private final Counter failureCounter;
 
     public MonthlyFreeCreditRefillScheduler(
             MemberRepository memberRepository,
             MonthlyFreeCreditRefillService refillService,
-            Clock clock) {
+            Clock clock,
+            MeterRegistry meterRegistry) {
         this.memberRepository = memberRepository;
         this.refillService = refillService;
         this.clock = clock;
+        this.failureCounter = Counter.builder("kgb.credit.monthly_free_refill.failures")
+                .description("월 무료 생성권 보충에 실패한 회원 수")
+                .register(meterRegistry);
     }
 
     @Scheduled(
-            cron = "${credit.monthly-free-reconciliation-cron:0 0 0 * * *}",
+            cron = "${credit.monthly-free-reconciliation-cron:0 0 0 1 * *}",
             zone = "Asia/Seoul")
     public void reconcileCurrentMonth() {
         YearMonth targetMonth = YearMonth.from(clock.instant().atZone(SEOUL_ZONE));
@@ -60,6 +67,7 @@ public class MonthlyFreeCreditRefillScheduler {
                     counts.merge(result, 1, Integer::sum);
                 } catch (RuntimeException exception) {
                     failures++;
+                    failureCounter.increment();
                     LOGGER.error(
                             "월 무료 생성권 재대사에 실패했습니다. memberId={}, targetMonth={}",
                             memberId,
