@@ -68,4 +68,5 @@ tour-api:
     connect-timeout: 3s
     read-timeout: 30s
     max-response-bytes: 67108864
-    max-attempts: 3
+    festival-lookback-days: ${TOUR_API_FESTIVAL_LOOKBACK_DAYS:90}
+    festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}

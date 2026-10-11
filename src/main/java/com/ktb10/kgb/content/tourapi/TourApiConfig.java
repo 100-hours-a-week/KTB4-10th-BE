@@ -1,4 +1,4 @@
-package com.ktb10.kgb.tools.tourapi;
+package com.ktb10.kgb.content.tourapi;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -11,13 +11,13 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 /** TourAPI 수집용 HTTP Client와 선택적인 S3 Client를 구성합니다. */
 @Configuration
-@EnableConfigurationProperties(TourApiCollectionProperties.class)
-public class TourApiCollectionConfig {
+@EnableConfigurationProperties(TourApiProperties.class)
+public class TourApiConfig {
 
     @Bean
-    public TourApiAreaClient tourApiAreaClient(
+    public TourApiClient tourApiClient(
             RestClient.Builder builder,
-            TourApiCollectionProperties properties) {
+            TourApiProperties properties) {
         SimpleClientHttpRequestFactory requestFactory =
                 new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(properties.connectTimeout());
@@ -26,7 +26,7 @@ public class TourApiCollectionConfig {
                 .baseUrl(properties.baseUrl().toString())
                 .requestFactory(requestFactory)
                 .build();
-        return new HttpTourApiAreaClient(restClient, properties);
+        return new HttpTourApiClient(restClient, properties);
     }
 
     @Bean(destroyMethod = "close")
@@ -38,7 +38,7 @@ public class TourApiCollectionConfig {
 
     @Bean
     public TourApiSnapshotStorage tourApiSnapshotStorage(
-            TourApiCollectionProperties properties,
+            TourApiProperties properties,
             ObjectProvider<S3Client> s3ClientProvider) {
         return new TourApiSnapshotStorage(properties, s3ClientProvider::getIfAvailable);
     }

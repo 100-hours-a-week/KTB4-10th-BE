@@ -1,4 +1,4 @@
-package com.ktb10.kgb.tools.tourapi;
+package com.ktb10.kgb.content.tourapi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,11 +32,11 @@ class TourApiSnapshotStorageTest {
     void savesSnapshotUnderDateAndRunIdInLocalDirectory() throws Exception {
         byte[] raw = "{\"response\":{}}".getBytes(StandardCharsets.UTF_8);
         TourApiSnapshotStorage storage = new TourApiSnapshotStorage(
-                TourApiAreaSnapshotValidatorTest.properties(tempDirectory.toString()),
+                TourApiTestFixtures.properties(tempDirectory.toString()),
                 () -> null,
                 FIXED_CLOCK);
 
-        String storedAt = storage.save(raw);
+        String storedAt = storage.save("run-id", "areaBasedList2.json", raw);
 
         Path stored = Path.of(storedAt);
         assertThat(stored).exists();
@@ -51,11 +51,14 @@ class TourApiSnapshotStorageTest {
         when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().build());
         TourApiSnapshotStorage storage = new TourApiSnapshotStorage(
-                TourApiAreaSnapshotValidatorTest.properties("s3://kgb-tour/raw"),
+                TourApiTestFixtures.properties("s3://kgb-tour/raw"),
                 () -> s3Client,
                 FIXED_CLOCK);
 
-        String storedAt = storage.save("{}".getBytes(StandardCharsets.UTF_8));
+        String storedAt = storage.save(
+                "run-id",
+                "areaBasedList2.json",
+                "{}".getBytes(StandardCharsets.UTF_8));
 
         ArgumentCaptor<PutObjectRequest> request =
                 ArgumentCaptor.forClass(PutObjectRequest.class);

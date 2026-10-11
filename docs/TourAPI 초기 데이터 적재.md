@@ -2,7 +2,7 @@
 
 ## 목적
 
-`areaBasedList2` 전량 JSON의 공통 관광 콘텐츠와 `searchFestival2` 전기간 JSON의 행사 기간을 로컬 MySQL에 한 번 적재한다. 이 실행기는 초기 데이터용이며 TourAPI 주기 동기화 스케줄러가 아니다.
+`areaBasedList2` 전량 JSON의 공통 관광 콘텐츠와 `searchFestival2` 조회 결과의 행사 기간을 검증하고 적재한다. 수집과 적재는 향후 주기 동기화 스케줄러에서 사용한다.
 
 ## 적재 규칙
 
@@ -29,31 +29,16 @@
 - JDK 21
 - MySQL 8.4
 - 로컬 프로필에 필요한 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` 환경변수
-- `data/tourism/raw/2026-09-20` 경로의 `areaBasedList2`, `searchFestival2` JSON 파일
+- TourAPI 서비스 키와 스냅샷 저장 위치 설정
 
 실행 시 Flyway가 먼저 V2 지역 계층과 V3 TourAPI 적재 컬럼을 적용한다. 이미 적용된 migration 파일은 수정하지 않는다.
 
-## 실행 방법
+## 실행 방식
 
-프로젝트 루트에서 환경변수를 설정한 다음 절대 경로를 전달한다.
-
-```bash
-export DB_URL="jdbc:mysql://localhost:3306/kgb_local"
-export DB_USERNAME="kgb"
-export DB_PASSWORD="로컬 비밀번호"
-
-./gradlew importTourApiData
-```
-
-기본 경로가 아닌 다른 스냅샷을 적재할 때는 절대 경로를 지정한다.
-
-```bash
-./gradlew importTourApiData \
-  -PareaFile="/absolute/path/areaBasedList2.json" \
-  -PfestivalFile="/absolute/path/searchFestival2.json"
-```
-
-성공하면 공통 원본·콘텐츠 upsert·좌표 누락·지역 매핑 실패·행사 upsert·잘못된 행사 건수를 출력한다. 같은 파일로 다시 실행해도 동일 콘텐츠와 행사 상세가 중복 생성되지 않는다.
+별도의 수동 실행기는 제공하지 않는다. 스케줄러가
+`TourApiSyncService.synchronize()`를 호출하면 API 수집, 응답 검증, 스냅샷 저장,
+DB 적재가 순서대로 실행된다. 같은 데이터를 다시 적재해도 동일 콘텐츠와 행사
+상세가 중복 생성되지 않는다.
 
 ## 적재 후 확인
 
@@ -168,31 +153,25 @@ sys:   1.51초
 1,235건만 upsert해 콘텐츠 SQL이 48,675회에서 1,310회로 감소했다.
 이전 스냅샷에서 사라진 130건의 `INACTIVE` 전환은 아직 구현되지 않았다.
 
-## TourAPI 전국 목록 직접 수집
+## TourAPI 전국 목록 수집
 
 `areaBasedList2`를 `pageNo=1`, `numOfRows=60000`으로 한 번 호출한다. 응답의
 `totalCount`와 중복을 제거한 `contentid` 수가 일치할 때만 원본 JSON을 저장하고
 위의 증분 적재 로직으로 전달한다. 불완전한 응답은 MySQL을 변경하지 않는다.
 
-로컬 실행:
-
-```bash
-export TOUR_API_SERVICE_KEY='<디코딩된 TourAPI 서비스 키>'
-export TOUR_API_SNAPSHOT_LOCATION='data/tourism/raw'
-export DB_URL='jdbc:mysql://localhost:3306/kgb'
-export DB_USERNAME='<username>'
-export DB_PASSWORD='<password>'
-./gradlew collectTourApiAreaSnapshot
-```
-
-운영에서는 동일한 환경 변수에 S3 URI를 설정한다.
+수집 진입점은 `TourApiSyncService.synchronize()`이다. 후속 스케줄러 작업에서 이
+메서드를 정해진 주기로 호출한다. 로컬에서는 스냅샷 위치에 파일 경로를, 운영에서는
+S3 URI를 설정한다.
 
 ```bash
 export TOUR_API_SNAPSHOT_LOCATION='s3://<bucket>/<prefix>'
 ```
 
 스냅샷은 `<location>/<Asia/Seoul 기준 날짜>/<UUID>/areaBasedList2.json`에 저장된다.
-이 실행기는 관광 콘텐츠 목록만 수집하며 `searchFestival2` 행사 기간은 갱신하지 않는다.
+이 실행기는 `areaBasedList2`와 `searchFestival2`를 함께 수집하고 두 응답이 모두
+완전한 경우에만 한 트랜잭션으로 증분 적재한다. 행사 조회 기간은 `Asia/Seoul`
+기준 실행일 90일 전부터 2년 후까지이며, 행사 응답에서 사라진 항목은 조회 기간
+밖으로 이동했을 수 있으므로 콘텐츠 비활성화 근거로 사용하지 않는다.
 
 ## 현재 제외 범위
 

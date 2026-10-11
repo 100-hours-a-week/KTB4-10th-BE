@@ -82,29 +82,3 @@ tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
         setStylesheet("fancy-hist.xsl")
     }
 }
-
-tasks.register<JavaExec>("importTourApiData") {
-    group = "application"
-    description = "Imports initial TourAPI area and festival JSON files"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiImportApplication"
-
-    val rawDataDirectory = layout.projectDirectory.dir("data/tourism/raw/2026-09-20")
-    val areaFile = providers.gradleProperty("areaFile")
-        .orElse(rawDataDirectory.file("areaBasedList2_전량_260920.json").asFile.absolutePath)
-    val festivalFile = providers.gradleProperty("festivalFile")
-        .orElse(rawDataDirectory.file("searchFestival2_전기간_260921.json").asFile.absolutePath)
-    doFirst {
-        args(
-            "--area-file=${areaFile.get()}",
-            "--festival-file=${festivalFile.get()}",
-        )
-    }
-}
-
-tasks.register<JavaExec>("collectTourApiAreaSnapshot") {
-    group = "application"
-    description = "Collects, stores, and incrementally imports a TourAPI area snapshot"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiSnapshotApplication"
-}
