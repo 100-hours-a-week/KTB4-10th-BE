@@ -175,7 +175,7 @@ export TOUR_API_SNAPSHOT_LOCATION='s3://<bucket>/<prefix>'
 ## 정기 동기화와 실패 복구
 
 `TOUR_API_SCHEDULER_ENABLED=true`인 환경에서는 기본적으로 Asia/Seoul 기준 매일
-04:00에 동기화한다. `TOUR_API_SCHEDULER_CRON`으로 실행 시각을 변경할 수 있다.
+00:00에 동기화한다. `TOUR_API_SCHEDULER_CRON`으로 실행 시각을 변경할 수 있다.
 애플리케이션 기동 시에도 당일 성공 이력이 없으면 즉시 실행해 서버 중단 중 놓친
 작업을 보충한다.
 
