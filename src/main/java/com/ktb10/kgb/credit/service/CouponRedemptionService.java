@@ -23,6 +23,7 @@ public class CouponRedemptionService {
 
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
+    private final CouponAttemptLimiter couponAttemptLimiter;
     private final Clock clock;
     private final String configuredCode;
     private final int creditAmount;
@@ -30,11 +31,13 @@ public class CouponRedemptionService {
     public CouponRedemptionService(
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
+            CouponAttemptLimiter couponAttemptLimiter,
             Clock clock,
             @Value("${COUPON_CODE:}") String configuredCode,
             @Value("${COUPON_CREDIT_AMOUNT:1}") int creditAmount) {
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
+        this.couponAttemptLimiter = couponAttemptLimiter;
         this.clock = clock;
         this.configuredCode = normalize(configuredCode);
         this.creditAmount = creditAmount;
@@ -46,10 +49,12 @@ public class CouponRedemptionService {
             throw new BusinessException(CreditErrorCode.COUPON_UNAVAILABLE);
         }
 
+        couponAttemptLimiter.checkAllowed(memberId);
         String normalizedCode = normalize(submittedCode);
         if (!MessageDigest.isEqual(
                 configuredCode.getBytes(StandardCharsets.UTF_8),
                 normalizedCode.getBytes(StandardCharsets.UTF_8))) {
+            couponAttemptLimiter.recordFailure(memberId);
             throw new BusinessException(CreditErrorCode.COUPON_INVALID);
         }
 
@@ -63,6 +68,7 @@ public class CouponRedemptionService {
                 balanceAfter,
                 "admin-coupon:" + memberId + ":" + UUID.randomUUID(),
                 now));
+        couponAttemptLimiter.reset(memberId);
         return new CouponRedeemResponse(creditAmount, balanceAfter);
     }
 
