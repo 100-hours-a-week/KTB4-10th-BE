@@ -11,23 +11,28 @@ import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-/** 실제 AI 서버 없이 로컬 생성 흐름을 실행하기 위한 Client입니다. */
+/**
+ * 실제 AI 서버 없이 로컬 생성 흐름을 실행하기 위한 Client입니다.
+ *
+ * <p>작업 ID는 프로세스 재시작 후에도 DB의 기존 값과 충돌하지 않도록 UUID로 생성합니다.
+ * 작업 상태는 메모리에만 보관하므로 애플리케이션을 재시작하면 이전 Fake 작업의 상태 조회는
+ * 이어갈 수 없습니다.
+ */
 @Component
 @Profile("local")
 public class FakeGuidebookAiClient implements GuidebookAiClient {
 
-    private final AtomicLong sequence = new AtomicLong();
     private final Map<String, FakeJob> jobs = new ConcurrentHashMap<>();
 
     @Override
     public AiGenerationAcceptedResponse requestGeneration(AiGuidebookRequest request) {
-        String jobId = "fake-job-" + sequence.incrementAndGet();
+        String jobId = "fake-job-" + UUID.randomUUID();
         jobs.put(jobId, new FakeJob(request));
         return new AiGenerationAcceptedResponse(jobId, AiGenerationStatus.PENDING);
     }
