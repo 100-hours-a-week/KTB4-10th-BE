@@ -3,6 +3,7 @@ package com.ktb10.kgb.content.repository;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
+import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
 
 /** 사용자와 무관하게 모든 요청에서 공유할 수 있는 지도 콘텐츠 데이터입니다. */
 public record MapContentCommonData(
@@ -26,6 +27,17 @@ public record MapContentCommonData(
                 longitude,
                 thumbnailUrl,
                 eventPeriod,
+                favorite,
+                inGuidebook);
+    }
+
+    public MapMarkerItemResponse toMarkerResponse(boolean favorite, boolean inGuidebook) {
+        return new MapMarkerItemResponse(
+                contentId,
+                title,
+                contentType,
+                latitude,
+                longitude,
                 favorite,
                 inGuidebook);
     }

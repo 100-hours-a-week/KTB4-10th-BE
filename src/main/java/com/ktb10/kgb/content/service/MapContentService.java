@@ -5,11 +5,17 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.error.ErrorDetail;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
-import com.ktb10.kgb.content.dto.MapContentResponse;
+import com.ktb10.kgb.content.dto.MapContentListResponse;
+import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
+import com.ktb10.kgb.content.dto.MapMarkerResponse;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
+import java.nio.ByteBuffer;
+import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +26,7 @@ public class MapContentService {
     private static final int MIN_ZOOM = 6;
     private static final int MAX_ZOOM = 21;
     private static final int CLUSTER_MAX_ZOOM = 14;
+    private static final int BOTTOM_SHEET_PAGE_SIZE = 10;
     private static final double DETAIL_MAX_DIAGONAL_KILOMETERS = 20.0;
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
@@ -40,7 +47,7 @@ public class MapContentService {
     }
 
     @Transactional(readOnly = true)
-    public MapContentResponse getContents(
+    public MapMarkerResponse getMarkers(
             Long memberId,
             double south,
             double west,
@@ -56,17 +63,48 @@ public class MapContentService {
             int clusterZoom = wideBounds ? Math.min(zoom, CLUSTER_MAX_ZOOM) : zoom;
             List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(
                     commonCache.get(south, west, north, east), clusterZoom);
-            List<MapContentCommonData> representatives = results.stream()
-                    .map(MapContentRadiusClusterer.Result::representative)
-                    .toList();
-            return MapContentResponse.cluster(
-                    results.stream().map(MapContentRadiusClusterer.Result::cluster).toList(),
-                    personalize(memberId, representatives));
+            return MapMarkerResponse.cluster(
+                    results.stream().map(MapContentRadiusClusterer.Result::cluster).toList());
         }
 
         List<MapContentCommonData> contents = commonCache.get(
                 south, west, north, east);
-        return MapContentResponse.content(personalize(memberId, contents));
+        return MapMarkerResponse.marker(personalizeMarkers(memberId, contents));
+    }
+
+    @Transactional(readOnly = true)
+    public MapContentListResponse getBottomSheetContents(
+            Long memberId,
+            double south,
+            double west,
+            double north,
+            double east,
+            String cursor) {
+        validateBounds(south, west, north, east);
+
+        List<MapContentCommonData> sortedContents = commonCache.get(south, west, north, east)
+                .stream()
+                .sorted(Comparator
+                        .comparingDouble((MapContentCommonData content) -> distanceSquared(
+                                content,
+                                (south + north) / 2.0,
+                                (west + east) / 2.0))
+                        .thenComparing(MapContentCommonData::id))
+                .toList();
+        int boundsHash = Objects.hash(south, west, north, east);
+        int offset = decodeCursor(cursor, boundsHash);
+        if (offset > sortedContents.size()) {
+            throw validationError("cursor", "out_of_range");
+        }
+
+        int endExclusive = Math.min(offset + BOTTOM_SHEET_PAGE_SIZE, sortedContents.size());
+        List<MapContentCommonData> page = sortedContents.subList(offset, endExclusive);
+        boolean hasMore = endExclusive < sortedContents.size();
+        String nextCursor = hasMore ? encodeCursor(endExclusive, boundsHash) : null;
+        return new MapContentListResponse(
+                personalize(memberId, page),
+                nextCursor,
+                hasMore);
     }
 
     private List<MapContentItemResponse> personalize(
@@ -84,6 +122,60 @@ public class MapContentService {
                                 personalization.isFavorite(content.id()),
                                 personalization.isInGuidebook(content.id())))
                         .toList());
+    }
+
+    private List<MapMarkerItemResponse> personalizeMarkers(
+            Long memberId,
+            List<MapContentCommonData> contents) {
+        List<Long> contentIds = contents.stream()
+                .map(MapContentCommonData::id)
+                .distinct()
+                .toList();
+        MapContentPersonalization personalization = performanceMetrics.recordPersonalizationQuery(
+                () -> personalizationQuery.findByMemberAndContentIds(memberId, contentIds));
+        return performanceMetrics.recordResponseMapping(
+                () -> contents.stream()
+                        .map(content -> content.toMarkerResponse(
+                                personalization.isFavorite(content.id()),
+                                personalization.isInGuidebook(content.id())))
+                        .toList());
+    }
+
+    private double distanceSquared(
+            MapContentCommonData content,
+            double centerLatitude,
+            double centerLongitude) {
+        double latitude = content.latitude() - centerLatitude;
+        double longitude = content.longitude() - centerLongitude;
+        return latitude * latitude + longitude * longitude;
+    }
+
+    private String encodeCursor(int offset, int boundsHash) {
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2);
+        buffer.putInt(offset);
+        buffer.putInt(boundsHash);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(buffer.array());
+    }
+
+    private int decodeCursor(String cursor, int boundsHash) {
+        if (cursor == null || cursor.isBlank()) {
+            return 0;
+        }
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(cursor);
+            if (decoded.length != Integer.BYTES * 2) {
+                throw validationError("cursor", "invalid_format");
+            }
+            ByteBuffer buffer = ByteBuffer.wrap(decoded);
+            int offset = buffer.getInt();
+            int cursorBoundsHash = buffer.getInt();
+            if (offset < 0 || cursorBoundsHash != boundsHash) {
+                throw validationError("cursor", "invalid_for_bounds");
+            }
+            return offset;
+        } catch (IllegalArgumentException exception) {
+            throw validationError("cursor", "invalid_format");
+        }
     }
 
     private double diagonalKilometers(

@@ -10,10 +10,11 @@ import static org.mockito.Mockito.when;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
-import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
-import com.ktb10.kgb.content.dto.MapContentResponse;
-import com.ktb10.kgb.content.dto.MapContentResponse.Mode;
+import com.ktb10.kgb.content.dto.MapContentListResponse;
+import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
+import com.ktb10.kgb.content.dto.MapMarkerResponse;
+import com.ktb10.kgb.content.dto.MapMarkerResponse.Mode;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
@@ -56,57 +57,52 @@ class MapContentServiceTest {
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of(1L, 2L, 3L)))
                 .thenReturn(new MapContentPersonalization(Set.of(1L), Set.of(2L)));
 
-        MapContentResponse response = mapContentService.getContents(
+        MapMarkerResponse response = mapContentService.getMarkers(
                 1L, 37.35, 127.05, 37.45, 127.15, 16);
 
-        assertThat(response.mode()).isEqualTo(Mode.CONTENT);
+        assertThat(response.mode()).isEqualTo(Mode.MARKER);
         assertThat(response.clusters()).isEmpty();
-        assertThat(response.items()).extracting(MapContentItemResponse::contentId)
+        assertThat(response.markers()).extracting(MapMarkerItemResponse::contentId)
                 .containsExactly("1", "2", "3");
-        assertThat(response.items().get(0).favorite()).isTrue();
-        assertThat(response.items().get(1).inGuidebook()).isTrue();
-        assertThat(response.items().get(2).favorite()).isFalse();
-        assertThat(response.hasMore()).isFalse();
+        assertThat(response.markers().get(0).favorite()).isTrue();
+        assertThat(response.markers().get(1).inGuidebook()).isTrue();
+        assertThat(response.markers().get(2).favorite()).isFalse();
         verify(commonCache).get(
                 37.35, 127.05, 37.45, 127.15);
     }
 
     @Test
     void rejectsReversedBounds() {
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, 37.45, 127.05, 37.35, 127.15, 16));
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, 37.35, 127.15, 37.45, 127.05, 16));
     }
 
     @Test
     void rejectsOutOfRangeAndNonFiniteCoordinates() {
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, -91.0, 127.05, 37.45, 127.15, 16));
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, 37.35, Double.NaN, 37.45, 127.15, 16));
     }
 
     @Test
     void rejectsZoomOutsideSupportedRange() {
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, 37.35, 127.05, 37.45, 127.15, 5));
-        assertValidationFailure(() -> mapContentService.getContents(
+        assertValidationFailure(() -> mapContentService.getMarkers(
                 1L, 37.35, 127.05, 37.45, 127.15, 22));
     }
 
     @Test
     void acceptsLargeValidBoundsFromClient() {
         when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(List.of());
-        when(personalizationQuery.findByMemberAndContentIds(1L, List.of()))
-                .thenReturn(MapContentPersonalization.empty());
-
-        MapContentResponse response = mapContentService.getContents(
+        MapMarkerResponse response = mapContentService.getMarkers(
                 1L, 33.0, 124.0, 39.0, 132.0, 16);
 
-        assertThat(response.items()).isEmpty();
+        assertThat(response.markers()).isEmpty();
         assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
-        assertThat(response.hasMore()).isFalse();
     }
 
     @Test
@@ -118,18 +114,51 @@ class MapContentServiceTest {
                         124.0 + index * 0.2))
                 .toList();
         when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
-        when(personalizationQuery.findByMemberAndContentIds(
-                eq(1L), anyList()))
-                .thenReturn(MapContentPersonalization.empty());
-
-        MapContentResponse response = mapContentService.getContents(
+        MapMarkerResponse response = mapContentService.getMarkers(
                 1L, 33.0, 124.0, 39.0, 132.0, 14);
 
         assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
         assertThat(response.clusters()).hasSize(21);
-        assertThat(response.items()).hasSize(21);
-        assertThat(response.items().getFirst().contentId()).isEqualTo("1");
-        assertThat(response.hasMore()).isFalse();
+        assertThat(response.markers()).isEmpty();
+    }
+
+    @Test
+    void returnsBottomSheetContentsTenAtATimeAndPersonalizesOnlyCurrentPage() {
+        List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 12)
+                .mapToObj(index -> commonContent((long) index, 37.4, 127.1 + index * 0.001))
+                .toList();
+        when(commonCache.get(37.0, 127.0, 38.0, 128.0)).thenReturn(contents);
+        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+
+        MapContentListResponse first = mapContentService.getBottomSheetContents(
+                1L, 37.0, 127.0, 38.0, 128.0, null);
+        MapContentListResponse second = mapContentService.getBottomSheetContents(
+                1L, 37.0, 127.0, 38.0, 128.0, first.nextCursor());
+
+        assertThat(first.items()).hasSize(10);
+        assertThat(first.hasMore()).isTrue();
+        assertThat(first.nextCursor()).isNotBlank();
+        assertThat(second.items()).hasSize(2);
+        assertThat(second.hasMore()).isFalse();
+        assertThat(second.nextCursor()).isNull();
+        verify(personalizationQuery).findByMemberAndContentIds(
+                1L, first.items().stream().map(item -> Long.valueOf(item.contentId())).toList());
+    }
+
+    @Test
+    void rejectsBottomSheetCursorCreatedForDifferentBounds() {
+        when(commonCache.get(37.0, 127.0, 38.0, 128.0)).thenReturn(
+                java.util.stream.IntStream.rangeClosed(1, 12)
+                        .mapToObj(index -> commonContent((long) index))
+                        .toList());
+        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+        String cursor = mapContentService.getBottomSheetContents(
+                1L, 37.0, 127.0, 38.0, 128.0, null).nextCursor();
+
+        assertValidationFailure(() -> mapContentService.getBottomSheetContents(
+                1L, 37.1, 127.0, 38.0, 128.0, cursor));
     }
 
     @Test
@@ -141,10 +170,7 @@ class MapContentServiceTest {
                         127.0 + index * 0.001))
                 .toList();
         when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
-        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
-                .thenReturn(MapContentPersonalization.empty());
-
-        MapContentResponse response = mapContentService.getContents(
+        MapMarkerResponse response = mapContentService.getMarkers(
                 1L, 33.0, 124.0, 39.0, 132.0, 21);
 
         assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
