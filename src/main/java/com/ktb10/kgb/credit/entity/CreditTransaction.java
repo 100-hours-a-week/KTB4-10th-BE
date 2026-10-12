@@ -98,6 +98,24 @@ public class CreditTransaction {
                 createdAt);
     }
 
+    public static CreditTransaction monthlyFreeRefresh(
+            CreditWallet wallet,
+            int amount,
+            int balanceAfter,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("월 무료 생성권 보충량은 음수일 수 없습니다.");
+        }
+        return new CreditTransaction(
+                wallet,
+                CreditTransactionType.FREE_GRANT,
+                amount,
+                balanceAfter,
+                idempotencyKey,
+                createdAt);
+    }
+
     public static CreditTransaction couponGrant(
             CreditWallet wallet,
             int amount,

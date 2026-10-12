@@ -70,3 +70,5 @@ tour-api:
     max-response-bytes: 67108864
     festival-lookback-days: ${TOUR_API_FESTIVAL_LOOKBACK_DAYS:90}
     festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}
+credit:
+  monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
