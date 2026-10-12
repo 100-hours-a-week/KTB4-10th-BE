@@ -70,5 +70,11 @@ tour-api:
     max-response-bytes: 67108864
     festival-lookback-days: ${TOUR_API_FESTIVAL_LOOKBACK_DAYS:90}
     festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}
+  scheduler:
+    enabled: ${TOUR_API_SCHEDULER_ENABLED:false}
+    cron: ${TOUR_API_SCHEDULER_CRON:0 0 0 * * *}
+    max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
+    retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
+    stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"

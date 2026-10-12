@@ -17,4 +17,9 @@ public class MapContentCacheRefreshService {
     public void refreshAfterBatch(Collection<MapContentCacheLocation> changedLocations) {
         commonCache.refreshByLocations(changedLocations);
     }
+
+    /** 변경 위치 목록을 제공하지 않는 전체 동기화가 끝나면 캐시 전체를 다시 구성합니다. */
+    public void refreshAfterFullSync() {
+        commonCache.refresh();
+    }
 }

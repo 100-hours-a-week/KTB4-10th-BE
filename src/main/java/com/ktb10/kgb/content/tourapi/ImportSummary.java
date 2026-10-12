@@ -6,6 +6,8 @@ public record ImportSummary(
         int importedContents,
         int skippedMissingCoordinates,
         int skippedMissingRegionMapping,
+        int inactiveContents,
+        int reactivatedContents,
         int sourceEvents,
         int importedEvents,
         int skippedInvalidEvents) {

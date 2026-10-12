@@ -60,6 +60,8 @@ public class TourApiImportService {
                 contentResult.imported(),
                 contentResult.missingCoordinates(),
                 contentResult.missingRegionMapping(),
+                contentResult.inactive(),
+                contentResult.reactivated(),
                 events.size(),
                 eventResult.imported(),
                 eventResult.invalid());
@@ -277,10 +279,15 @@ public class TourApiImportService {
             RegionMappings regionMappings) {
         List<ContentRow> rows = new ArrayList<>();
         Set<String> contentIds = new HashSet<>();
+        Set<String> sourceContentIds = new HashSet<>();
         int missingCoordinates = 0;
         int missingRegionMapping = 0;
 
         for (JsonNode source : sourceContents) {
+            String sourceContentId = text(source, "contentid");
+            if (sourceContentId != null) {
+                sourceContentIds.add(sourceContentId);
+            }
             BigDecimal longitude = decimal(source, "mapx");
             BigDecimal latitude = decimal(source, "mapy");
             if (longitude == null || latitude == null) {
@@ -309,9 +316,25 @@ public class TourApiImportService {
         List<ContentRow> changedRows = rows.stream()
                 .filter(row -> row.needsUpsert(existingContents.get(row.sourceContentId())))
                 .toList();
+        int reactivated = (int) changedRows.stream()
+                .map(row -> existingContents.get(row.sourceContentId()))
+                .filter(Objects::nonNull)
+                .filter(existing -> !"ACTIVE".equals(existing.status()) || existing.deleted())
+                .count();
         batchUpsertContents(changedRows);
+        List<String> missingContentIds = existingContents.values().stream()
+                .filter(existing -> "ACTIVE".equals(existing.status()))
+                .map(ExistingContent::sourceContentId)
+                .filter(existingId -> !sourceContentIds.contains(existingId))
+                .toList();
+        batchDeactivateContents(missingContentIds);
         return new ContentImportResult(
-                changedRows.size(), missingCoordinates, missingRegionMapping, contentIds);
+                changedRows.size(),
+                missingCoordinates,
+                missingRegionMapping,
+                missingContentIds.size(),
+                reactivated,
+                contentIds);
     }
 
     private Map<String, ExistingContent> loadExistingContents() {
@@ -380,6 +403,28 @@ public class TourApiImportService {
                 return rows.size();
             }
         });
+    }
+
+    private void batchDeactivateContents(List<String> sourceContentIds) {
+        jdbcTemplate.batchUpdate(
+                """
+                UPDATE tourism_contents
+                SET status = 'INACTIVE', deleted_at = NOW(6), updated_at = NOW(6)
+                WHERE source_provider = ? AND source_content_id = ? AND status = 'ACTIVE'
+                """,
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement statement, int index)
+                            throws SQLException {
+                        statement.setString(1, SOURCE_PROVIDER);
+                        statement.setString(2, sourceContentIds.get(index));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return sourceContentIds.size();
+                    }
+                });
     }
 
     private EventImportResult importEvents(
@@ -530,6 +575,8 @@ public class TourApiImportService {
             int imported,
             int missingCoordinates,
             int missingRegionMapping,
+            int inactive,
+            int reactivated,
             Set<String> contentIds) {
     }
 

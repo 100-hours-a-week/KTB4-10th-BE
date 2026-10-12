@@ -90,7 +90,7 @@ class TourApiImportServiceTest {
         assertThat(summary.skippedMissingCoordinates()).isZero();
         assertThat(summary.skippedMissingRegionMapping()).isZero();
         assertThat(summary.skippedInvalidEvents()).isZero();
-        assertThat(batchSizes).containsExactly(1, 1);
+        assertThat(batchSizes).containsExactly(1, 0, 1);
     }
 
     @Test
@@ -132,15 +132,18 @@ class TourApiImportServiceTest {
         assertThat(summary.sourceEvents()).isEqualTo(1);
         assertThat(summary.importedEvents()).isZero();
         assertThat(summary.skippedInvalidEvents()).isEqualTo(1);
-        assertThat(batchSizes).containsExactly(0, 0);
+        assertThat(batchSizes).containsExactly(0, 0, 0);
     }
 
     @Test
     void skipsUnchangedContentAndEvent() throws Exception {
         mockExistingContentAndEvent(
+                "100",
                 LocalDateTime.of(2026, 1, 2, 12, 0),
                 LocalDate.of(2026, 10, 12),
-                LocalDate.of(2026, 10, 14));
+                LocalDate.of(2026, 10, 14),
+                "ACTIVE",
+                false);
         byte[] areaSnapshot = snapshot("""
                 {
                   "contentid": "100",
@@ -167,28 +170,94 @@ class TourApiImportServiceTest {
 
         assertThat(summary.importedContents()).isZero();
         assertThat(summary.importedEvents()).isZero();
-        assertThat(batchSizes).containsExactly(0, 0);
+        assertThat(batchSizes).containsExactly(0, 0, 0);
+    }
+
+    @Test
+    void deactivatesContentMissingFromCompleteAreaSnapshot() throws Exception {
+        mockExistingContentAndEvent(
+                "100",
+                LocalDateTime.of(2026, 1, 2, 12, 0),
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                "ACTIVE",
+                false);
+        byte[] areaSnapshot = snapshot("""
+                {
+                  "contentid": "200",
+                  "contenttypeid": "12",
+                  "title": "새 관광지",
+                  "addr1": "충청북도 청주시 상당구",
+                  "mapx": "127.5",
+                  "mapy": "36.6",
+                  "lDongRegnCd": "43",
+                  "lDongSignguCd": "110",
+                  "lclsSystm1": "NA",
+                  "modifiedtime": "20261012120000"
+                }
+                """);
+
+        ImportSummary summary = service.importSnapshots(areaSnapshot, snapshot(""));
+
+        assertThat(summary.inactiveContents()).isEqualTo(1);
+        assertThat(batchSizes).containsExactly(1, 1, 0);
+    }
+
+    @Test
+    void reactivatesContentThatAppearsAgain() throws Exception {
+        mockExistingContentAndEvent(
+                "100",
+                LocalDateTime.of(2026, 1, 2, 12, 0),
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                "INACTIVE",
+                true);
+        byte[] areaSnapshot = snapshot("""
+                {
+                  "contentid": "100",
+                  "contenttypeid": "12",
+                  "title": "복구 관광지",
+                  "addr1": "충청북도 청주시 상당구",
+                  "mapx": "127.5",
+                  "mapy": "36.6",
+                  "lDongRegnCd": "43",
+                  "lDongSignguCd": "110",
+                  "lclsSystm1": "NA",
+                  "modifiedtime": "20260102120000"
+                }
+                """);
+
+        ImportSummary summary = service.importSnapshots(areaSnapshot, snapshot(""));
+
+        assertThat(summary.reactivatedContents()).isEqualTo(1);
+        assertThat(summary.inactiveContents()).isZero();
+        assertThat(batchSizes).containsExactly(1, 0, 0);
     }
 
     @SuppressWarnings("unchecked")
     private void mockExistingContentAndEvent(
+            String sourceContentId,
             LocalDateTime modifiedAt,
             LocalDate eventStartDate,
-            LocalDate eventEndDate) {
+            LocalDate eventEndDate,
+            String status,
+            boolean deleted) {
         when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenAnswer(invocation -> {
                     String sql = invocation.getArgument(0);
                     RowMapper<?> rowMapper = invocation.getArgument(1);
                     ResultSet resultSet = mock(ResultSet.class);
                     if (sql.contains("FROM tourism_contents")) {
-                        when(resultSet.getString("source_content_id")).thenReturn("100");
+                        when(resultSet.getString("source_content_id")).thenReturn(sourceContentId);
                         when(resultSet.getTimestamp("source_modified_at"))
                                 .thenReturn(Timestamp.valueOf(modifiedAt));
-                        when(resultSet.getString("status")).thenReturn("ACTIVE");
+                        when(resultSet.getString("status")).thenReturn(status);
+                        when(resultSet.getTimestamp("deleted_at"))
+                                .thenReturn(deleted ? Timestamp.valueOf(modifiedAt) : null);
                         return List.of(rowMapper.mapRow(resultSet, 0));
                     }
                     if (sql.contains("FROM event_details")) {
-                        when(resultSet.getString("source_content_id")).thenReturn("100");
+                        when(resultSet.getString("source_content_id")).thenReturn(sourceContentId);
                         when(resultSet.getDate("start_date"))
                                 .thenReturn(java.sql.Date.valueOf(eventStartDate));
                         when(resultSet.getDate("end_date"))
