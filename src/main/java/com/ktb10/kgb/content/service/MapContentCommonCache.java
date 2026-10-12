@@ -16,12 +16,12 @@ import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-/** 상세 지도를 고정 타일로 나누어 회원과 무관한 조회 결과를 재사용합니다. */
+/** 지도를 고정 타일로 나누어 회원과 무관한 원본 조회 결과를 재사용합니다. */
 @Component
 public class MapContentCommonCache {
 
     private static final long MAXIMUM_SIZE = 5_000L;
-    private static final double TILE_SIZE = 0.05;
+    private static final double TILE_SIZE = 0.5;
     private static final long MAX_TILES_PER_REQUEST = 256L;
 
     private final MapContentCommonLoader loader;
@@ -43,14 +43,14 @@ public class MapContentCommonCache {
                 .build();
         Gauge.builder("kgb.map.cache.hit.ratio", cache,
                         value -> value.stats().hitRate())
-                .description("상세 지도 공통 타일 캐시 적중률")
+                .description("지도 공통 타일 캐시 적중률")
                 .register(meterRegistry);
         Gauge.builder("kgb.map.cache.eviction.count", cache,
                         value -> value.stats().evictionCount())
-                .description("상세 지도 공통 타일 캐시 퇴거 횟수")
+                .description("지도 공통 타일 캐시 퇴거 횟수")
                 .register(meterRegistry);
         Gauge.builder("kgb.map.cache.size", cache, Cache::estimatedSize)
-                .description("상세 지도 공통 타일 캐시 항목 수")
+                .description("지도 공통 타일 캐시 항목 수")
                 .register(meterRegistry);
     }
 

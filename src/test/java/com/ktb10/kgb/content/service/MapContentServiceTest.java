@@ -2,7 +2,8 @@ package com.ktb10.kgb.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -11,14 +12,11 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
-import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse.Mode;
-import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
-import com.ktb10.kgb.content.repository.MapContentQuery;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Set;
@@ -32,8 +30,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MapContentServiceTest {
 
     @Mock
-    private MapContentQuery mapContentQuery;
-    @Mock
     private MapContentPersonalizationQuery personalizationQuery;
     @Mock
     private MapContentCommonCache commonCache;
@@ -43,7 +39,7 @@ class MapContentServiceTest {
     @BeforeEach
     void setUp() {
         mapContentService = new MapContentService(
-                mapContentQuery,
+                new MapContentRadiusClusterer(),
                 personalizationQuery,
                 commonCache,
                 new MapPerformanceMetrics(new SimpleMeterRegistry()));
@@ -73,8 +69,6 @@ class MapContentServiceTest {
         assertThat(response.hasMore()).isFalse();
         verify(commonCache).get(
                 37.35, 127.05, 37.45, 127.15);
-        verify(mapContentQuery, never()).findWithinBounds(
-                37.35, 127.05, 37.45, 127.15);
     }
 
     @Test
@@ -94,10 +88,16 @@ class MapContentServiceTest {
     }
 
     @Test
+    void rejectsZoomOutsideSupportedRange() {
+        assertValidationFailure(() -> mapContentService.getContents(
+                1L, 37.35, 127.05, 37.45, 127.15, 5));
+        assertValidationFailure(() -> mapContentService.getContents(
+                1L, 37.35, 127.05, 37.45, 127.15, 22));
+    }
+
+    @Test
     void acceptsLargeValidBoundsFromClient() {
-        when(mapContentQuery.findClustersWithinBounds(
-                33.0, 124.0, 39.0, 132.0, 1.0))
-                .thenReturn(List.of());
+        when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(List.of());
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of()))
                 .thenReturn(MapContentPersonalization.empty());
 
@@ -110,21 +110,16 @@ class MapContentServiceTest {
     }
 
     @Test
-    void returnsClustersAndAtMostTwentyRepresentativesForWideZoom() {
-        List<MapClusterQueryResult> results = java.util.stream.IntStream.rangeClosed(1, 21)
-                .mapToObj(index -> new MapClusterQueryResult(
-                        new MapClusterResponse(
-                                "cluster-" + index,
-                                37.0 + index / 100.0,
-                                127.0,
-                                100 - index),
-                        commonContent((long) index)))
+    void returnsAllClusterRepresentativesForWideZoom() {
+        List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 21)
+                .mapToObj(index -> commonContent(
+                        (long) index,
+                        33.0 + index * 0.2,
+                        124.0 + index * 0.2))
                 .toList();
-        when(mapContentQuery.findClustersWithinBounds(
-                33.0, 124.0, 39.0, 132.0, 1.0))
-                .thenReturn(results);
+        when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
         when(personalizationQuery.findByMemberAndContentIds(
-                1L, java.util.stream.LongStream.rangeClosed(1, 20).boxed().toList()))
+                eq(1L), anyList()))
                 .thenReturn(MapContentPersonalization.empty());
 
         MapContentResponse response = mapContentService.getContents(
@@ -132,11 +127,29 @@ class MapContentServiceTest {
 
         assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
         assertThat(response.clusters()).hasSize(21);
-        assertThat(response.items()).hasSize(20);
+        assertThat(response.items()).hasSize(21);
         assertThat(response.items().getFirst().contentId()).isEqualTo("1");
         assertThat(response.hasMore()).isFalse();
-        verify(mapContentQuery).findClustersWithinBounds(
-                33.0, 124.0, 39.0, 132.0, 1.0);
+    }
+
+    @Test
+    void capsClusterZoomForNationwideBounds() {
+        List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 12)
+                .mapToObj(index -> commonContent(
+                        (long) index,
+                        37.5,
+                        127.0 + index * 0.001))
+                .toList();
+        when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
+        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+
+        MapContentResponse response = mapContentService.getContents(
+                1L, 33.0, 124.0, 39.0, 132.0, 21);
+
+        assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
+        assertThat(response.clusters()).hasSize(1);
+        assertThat(response.clusters().getFirst().count()).isEqualTo(12);
     }
 
     private void assertValidationFailure(Runnable action) {
@@ -147,14 +160,18 @@ class MapContentServiceTest {
     }
 
     private MapContentCommonData commonContent(Long contentId) {
+        return commonContent(contentId, 37.4, 127.1);
+    }
+
+    private MapContentCommonData commonContent(Long contentId, double latitude, double longitude) {
         return new MapContentCommonData(
                 contentId,
                 String.valueOf(contentId),
                 "장소 " + contentId,
                 ContentType.PLACE,
                 "주소",
-                37.4,
-                127.1,
+                latitude,
+                longitude,
                 null,
                 null);
     }

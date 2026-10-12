@@ -183,6 +183,16 @@ K6_MAP_ZOOM_15_TOURISM_VUS=1000 docker compose \
 
 실제 관광 콘텐츠가 있는 전국 28개 지역에 VU를 고르게 배치합니다. 각 VU는 90%의 요청에서 자신의 시작 지역 주변을 이동하고, 10%의 요청에서만 다른 관광 지역으로 이동합니다. 전국 분산 사용자의 지역 내 탐색을 표현하며, 캐시 ON/OFF 비교의 주 시나리오로 사용합니다.
 
+`K6_MAP_TOURISM_ZOOM`으로 줌을 변경하면 zoom 15의 화면 범위를 기준으로 단계마다 위·경도 span을 2배씩 조정합니다. 광역 클러스터 조회 비교는 다음처럼 같은 시나리오와 VU를 유지해 실행합니다.
+
+```bash
+K6_MAP_ZOOM_15_TOURISM_VUS=1000 \
+K6_MAP_TOURISM_ZOOM=11 \
+K6_MAP_CACHE_MODE=cache_on_tile_005_zoom_11 \
+docker compose --env-file .env.loadtest -f compose.loadtest.yml \
+  --profile loadtest run --rm k6-map-zoom-15-nationwide-tourism
+```
+
 ### 가이드북 생성
 
 ```bash
