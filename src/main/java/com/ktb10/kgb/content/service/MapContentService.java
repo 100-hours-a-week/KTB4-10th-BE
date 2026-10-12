@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MapContentService {
 
+    private static final int MIN_ZOOM = 6;
+    private static final int MAX_ZOOM = 21;
     private static final int CLUSTER_MAX_ZOOM = 14;
     private static final double DETAIL_MAX_DIAGONAL_KILOMETERS = 20.0;
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
@@ -46,12 +48,14 @@ public class MapContentService {
             double east,
             int zoom) {
         validateBounds(south, west, north, east);
+        validateZoom(zoom);
 
-        if (zoom <= CLUSTER_MAX_ZOOM
-                || diagonalKilometers(south, west, north, east)
-                > DETAIL_MAX_DIAGONAL_KILOMETERS) {
+        boolean wideBounds = diagonalKilometers(south, west, north, east)
+                > DETAIL_MAX_DIAGONAL_KILOMETERS;
+        if (zoom <= CLUSTER_MAX_ZOOM || wideBounds) {
+            int clusterZoom = wideBounds ? Math.min(zoom, CLUSTER_MAX_ZOOM) : zoom;
             List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(
-                    commonCache.get(south, west, north, east), zoom);
+                    commonCache.get(south, west, north, east), clusterZoom);
             List<MapContentCommonData> representatives = results.stream()
                     .map(MapContentRadiusClusterer.Result::representative)
                     .toList();
@@ -111,6 +115,12 @@ public class MapContentService {
         }
         if (west >= east) {
             throw validationError("west,east", "invalid_bounds");
+        }
+    }
+
+    private void validateZoom(int zoom) {
+        if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) {
+            throw validationError("zoom", "out_of_range");
         }
     }
 

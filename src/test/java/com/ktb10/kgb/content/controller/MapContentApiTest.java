@@ -170,7 +170,7 @@ class MapContentApiTest {
     }
 
     @Test
-    void acceptsClientZoomAndIgnoresLegacyLimit() throws Exception {
+    void rejectsZoomOutsideSupportedRangeAndIgnoresLegacyLimit() throws Exception {
         mockMvc.perform(get("/api/v1/map/contents")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
@@ -179,7 +179,8 @@ class MapContentApiTest {
                         .param("east", "127.15")
                         .param("zoom", "22")
                         .param("limit", "201"))
-                .andExpect(status().isOk());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
     }
 
     @Test

@@ -88,6 +88,14 @@ class MapContentServiceTest {
     }
 
     @Test
+    void rejectsZoomOutsideSupportedRange() {
+        assertValidationFailure(() -> mapContentService.getContents(
+                1L, 37.35, 127.05, 37.45, 127.15, 5));
+        assertValidationFailure(() -> mapContentService.getContents(
+                1L, 37.35, 127.05, 37.45, 127.15, 22));
+    }
+
+    @Test
     void acceptsLargeValidBoundsFromClient() {
         when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(List.of());
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of()))
@@ -122,6 +130,26 @@ class MapContentServiceTest {
         assertThat(response.items()).hasSize(21);
         assertThat(response.items().getFirst().contentId()).isEqualTo("1");
         assertThat(response.hasMore()).isFalse();
+    }
+
+    @Test
+    void capsClusterZoomForNationwideBounds() {
+        List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 12)
+                .mapToObj(index -> commonContent(
+                        (long) index,
+                        37.5,
+                        127.0 + index * 0.001))
+                .toList();
+        when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
+        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+
+        MapContentResponse response = mapContentService.getContents(
+                1L, 33.0, 124.0, 39.0, 132.0, 21);
+
+        assertThat(response.mode()).isEqualTo(Mode.CLUSTER);
+        assertThat(response.clusters()).hasSize(1);
+        assertThat(response.clusters().getFirst().count()).isEqualTo(12);
     }
 
     private void assertValidationFailure(Runnable action) {
