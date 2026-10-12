@@ -114,6 +114,14 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void rateLimitExceptionReturnsRetryAfterHeader() throws Exception {
+        mockMvc.perform(get("/test/rate-limit"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.error.code").value("RATE_LIMIT_EXCEEDED"));
+    }
+
+    @Test
     void malformedJsonBecomesValidationError() throws Exception {
         mockMvc.perform(post("/test/validation")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -198,6 +206,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/business-error")
         void businessError() {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+        }
+
+        @GetMapping("/rate-limit")
+        void rateLimit() {
+            throw new RateLimitExceededException(37L);
         }
 
         @GetMapping("/unexpected-error")

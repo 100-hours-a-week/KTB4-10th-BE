@@ -1,7 +1,6 @@
 package com.ktb10.kgb.credit.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
