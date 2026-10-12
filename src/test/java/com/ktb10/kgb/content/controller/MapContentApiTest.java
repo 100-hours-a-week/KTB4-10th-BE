@@ -9,13 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
-import com.ktb10.kgb.content.dto.MapClusterResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.content.repository.MapContentQuery;
-import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
@@ -117,10 +115,8 @@ class MapContentApiTest {
 
     @Test
     void returnsServerClustersAndRepresentativesForWideZoom() throws Exception {
-        when(mapContentQuery.findClustersWithinBounds(
-                anyDouble(), anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(List.of(new MapClusterQueryResult(
-                        new MapClusterResponse("37:126", 37.5, 126.9, 120),
+        when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(
                         new MapContentCommonData(
                                 201L,
                                 "representative-1",
@@ -130,7 +126,17 @@ class MapContentApiTest {
                                 37.5,
                                 126.9,
                                 null,
-                                null))));
+                                null),
+                        new MapContentCommonData(
+                                202L,
+                                "nearby-2",
+                                "인근 장소",
+                                ContentType.PLACE,
+                                "서울",
+                                37.5001,
+                                126.9001,
+                                null,
+                                null)));
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of(201L)))
                 .thenReturn(MapContentPersonalization.empty());
 
@@ -144,7 +150,7 @@ class MapContentApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("CLUSTER"))
                 .andExpect(jsonPath("$.data.clusters.length()").value(1))
-                .andExpect(jsonPath("$.data.clusters[0].count").value(120))
+                .andExpect(jsonPath("$.data.clusters[0].count").value(2))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].content_id")
                         .value("representative-1"))

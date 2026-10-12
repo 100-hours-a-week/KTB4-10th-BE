@@ -5,17 +5,22 @@ import exec from 'k6/execution';
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
 const SESSION_PREFIX = __ENV.SESSION_PREFIX || 'k6-local-session-';
 const MAX_VUS = Number(__ENV.VUS || 500);
+const ZOOM = Number(__ENV.ZOOM || 15);
 const CACHE_MODE = __ENV.CACHE_MODE || 'cache_on_tile_005';
 
 if (!Number.isInteger(MAX_VUS) || MAX_VUS < 1 || MAX_VUS > 2000) {
   throw new Error('VUS는 1 이상 2000 이하의 정수여야 합니다.');
 }
+if (!Number.isInteger(ZOOM) || ZOOM < 6 || ZOOM > 21) {
+  throw new Error('ZOOM은 6 이상 21 이하의 정수여야 합니다.');
+}
 
 const INITIAL_VUS = Math.max(1, Math.ceil(MAX_VUS / 10));
 const QUARTER_VUS = Math.max(1, Math.ceil(MAX_VUS / 4));
 const HALF_VUS = Math.max(1, Math.ceil(MAX_VUS / 2));
-const VIEWPORT_LATITUDE_SPAN = 0.0300;
-const VIEWPORT_LONGITUDE_SPAN = 0.0600;
+const VIEWPORT_SCALE = 2 ** (15 - ZOOM);
+const VIEWPORT_LATITUDE_SPAN = 0.0300 * VIEWPORT_SCALE;
+const VIEWPORT_LONGITUDE_SPAN = 0.0600 * VIEWPORT_SCALE;
 const REGION_CHANGE_RATE = 0.10;
 const MAX_RANDOM_CENTER_OFFSET = 0.0002;
 
@@ -80,8 +85,10 @@ function viewportForVu(vuId, hub, step) {
   const column = (position % 5) - 2;
   const latitudeOffset = (Math.random() * 2 - 1) * MAX_RANDOM_CENTER_OFFSET;
   const longitudeOffset = (Math.random() * 2 - 1) * MAX_RANDOM_CENTER_OFFSET;
-  const centerLatitude = hub.latitude + row * 0.0012 + step.latitudeOffset + latitudeOffset;
-  const centerLongitude = hub.longitude + column * 0.0018 + step.longitudeOffset + longitudeOffset;
+  const centerLatitude = hub.latitude
+    + (row * 0.0012 + step.latitudeOffset + latitudeOffset) * VIEWPORT_SCALE;
+  const centerLongitude = hub.longitude
+    + (column * 0.0018 + step.longitudeOffset + longitudeOffset) * VIEWPORT_SCALE;
 
   return {
     south: (centerLatitude - VIEWPORT_LATITUDE_SPAN / 2).toFixed(5),
@@ -125,7 +132,7 @@ export default function () {
     `west=${viewport.west}`,
     `north=${viewport.north}`,
     `east=${viewport.east}`,
-    'zoom=15',
+    `zoom=${ZOOM}`,
   ].join('&');
   const response = http.get(`${BASE_URL}/api/v1/map/contents?${query}`, {
     headers: { Cookie: `KGB_SESSION=${session}` },
@@ -135,14 +142,14 @@ export default function () {
       region: selected.hub.name,
       movement: selected.movement,
       flow: step.name,
-      map_mode: 'detail',
-      zoom: '15',
-      query_version: `zoom_15_nationwide_tourism_${CACHE_MODE}`,
+      map_mode: ZOOM <= 14 ? 'cluster' : 'detail',
+      zoom: String(ZOOM),
+      query_version: `zoom_${ZOOM}_nationwide_tourism_${CACHE_MODE}`,
     },
   });
 
   check(response, {
-    'map zoom 15 nationwide tourism returns 200': (result) => result.status === 200,
+    'map nationwide tourism returns 200': (result) => result.status === 200,
   });
 
   if (response.status !== 200) {

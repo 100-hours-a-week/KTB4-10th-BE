@@ -6,11 +6,9 @@ import com.ktb10.kgb.common.error.ErrorDetail;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentResponse;
-import com.ktb10.kgb.content.repository.MapClusterQueryResult;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
-import com.ktb10.kgb.content.repository.MapContentQuery;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,21 +18,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class MapContentService {
 
     private static final int CLUSTER_MAX_ZOOM = 14;
-    private static final int REPRESENTATIVE_LIMIT = 20;
     private static final double DETAIL_MAX_DIAGONAL_KILOMETERS = 20.0;
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
-    private final MapContentQuery mapContentQuery;
+    private final MapContentRadiusClusterer radiusClusterer;
     private final MapContentPersonalizationQuery personalizationQuery;
     private final MapContentCommonCache commonCache;
     private final MapPerformanceMetrics performanceMetrics;
 
     public MapContentService(
-            MapContentQuery mapContentQuery,
+            MapContentRadiusClusterer radiusClusterer,
             MapContentPersonalizationQuery personalizationQuery,
             MapContentCommonCache commonCache,
             MapPerformanceMetrics performanceMetrics) {
-        this.mapContentQuery = mapContentQuery;
+        this.radiusClusterer = radiusClusterer;
         this.personalizationQuery = personalizationQuery;
         this.commonCache = commonCache;
         this.performanceMetrics = performanceMetrics;
@@ -53,16 +50,13 @@ public class MapContentService {
         if (zoom <= CLUSTER_MAX_ZOOM
                 || diagonalKilometers(south, west, north, east)
                 > DETAIL_MAX_DIAGONAL_KILOMETERS) {
-            List<MapClusterQueryResult> results = performanceMetrics.recordCommonQuery(
-                    () -> mapContentQuery.findClustersWithinBounds(
-                            south, west, north, east,
-                            gridSize(zoom, south, west, north, east)));
+            List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(
+                    commonCache.get(south, west, north, east), zoom);
             List<MapContentCommonData> representatives = results.stream()
-                    .limit(REPRESENTATIVE_LIMIT)
-                    .map(MapClusterQueryResult::representative)
+                    .map(MapContentRadiusClusterer.Result::representative)
                     .toList();
             return MapContentResponse.cluster(
-                    results.stream().map(MapClusterQueryResult::cluster).toList(),
+                    results.stream().map(MapContentRadiusClusterer.Result::cluster).toList(),
                     personalize(memberId, representatives));
         }
 
@@ -86,34 +80,6 @@ public class MapContentService {
                                 personalization.isFavorite(content.id()),
                                 personalization.isInGuidebook(content.id())))
                         .toList());
-    }
-
-    private double gridSize(
-            int zoom,
-            double south,
-            double west,
-            double north,
-            double east) {
-        double maximumSpan = Math.max(north - south, east - west);
-        if (maximumSpan > 4.0) {
-            return 1.0;
-        }
-        if (maximumSpan > 2.0) {
-            return 0.5;
-        }
-        if (maximumSpan > 0.8) {
-            return 0.2;
-        }
-        if (zoom <= 8) {
-            return 1.0;
-        }
-        if (zoom <= 10) {
-            return 0.5;
-        }
-        if (zoom <= 12) {
-            return 0.2;
-        }
-        return 0.05;
     }
 
     private double diagonalKilometers(
