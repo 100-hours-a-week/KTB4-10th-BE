@@ -33,6 +33,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.github.ben-manes.caffeine:caffeine")
+    implementation(platform("software.amazon.awssdk:bom:2.55.10"))
+    implementation("software.amazon.awssdk:s3")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-mysql")
     runtimeOnly("com.mysql:mysql-connector-j")
@@ -78,24 +80,5 @@ tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
         required = true
         outputLocation = layout.buildDirectory.file("reports/spotbugs/main.html")
         setStylesheet("fancy-hist.xsl")
-    }
-}
-
-tasks.register<JavaExec>("importTourApiData") {
-    group = "application"
-    description = "Imports initial TourAPI area and festival JSON files"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiImportApplication"
-
-    val rawDataDirectory = layout.projectDirectory.dir("data/tourism/raw/2026-09-20")
-    val areaFile = providers.gradleProperty("areaFile")
-        .orElse(rawDataDirectory.file("areaBasedList2_전량_260920.json").asFile.absolutePath)
-    val festivalFile = providers.gradleProperty("festivalFile")
-        .orElse(rawDataDirectory.file("searchFestival2_전기간_260921.json").asFile.absolutePath)
-    doFirst {
-        args(
-            "--area-file=${areaFile.get()}",
-            "--festival-file=${festivalFile.get()}",
-        )
     }
 }

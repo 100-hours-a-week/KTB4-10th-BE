@@ -1,13 +1,12 @@
-package com.ktb10.kgb.tools.tourapi;
+package com.ktb10.kgb.content.tourapi;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
 import com.ktb10.kgb.guidebook.entity.AdministrativeProvince;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -29,9 +28,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-/** 제공받은 TourAPI 목록 JSON을 서비스 테이블에 최초 적재합니다. */
+/** 검증된 TourAPI 목록 JSON을 서비스 테이블에 증분 반영합니다. */
 @Service
-public class TourApiInitialImportService {
+public class TourApiImportService {
 
     private static final String SOURCE_PROVIDER = "TOUR_API";
     private static final DateTimeFormatter SOURCE_DATE_TIME =
@@ -42,26 +41,20 @@ public class TourApiInitialImportService {
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
 
-    public TourApiInitialImportService(
+    public TourApiImportService(
             ObjectMapper objectMapper,
             JdbcTemplate jdbcTemplate) {
         this.objectMapper = objectMapper;
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /** 검증된 areaBasedList2와 searchFestival2 응답을 한 트랜잭션으로 증분 반영합니다. */
     @Transactional
-    public ImportSummary importFiles(Path areaFile, Path festivalFile) {
-        List<JsonNode> contents = readItems(areaFile);
-        Map<SourceRegionKey, ServiceRegionKey> regionNames =
-                extractRegionNames(contents);
-        Map<AdministrativeProvince, String> provinceCodes =
-                extractProvinceCodes(contents);
-        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
-
-        ContentImportResult contentResult = importContents(contents, regionMappings);
-        List<JsonNode> events = readItems(festivalFile);
+    public ImportSummary importSnapshots(byte[] areaSnapshot, byte[] festivalSnapshot) {
+        List<JsonNode> contents = readItems(areaSnapshot, "수집한 areaBasedList2 스냅샷");
+        ContentImportResult contentResult = synchronizeAndImportContents(contents);
+        List<JsonNode> events = readItems(festivalSnapshot, "수집한 searchFestival2 스냅샷");
         EventImportResult eventResult = importEvents(events, contentResult.contentIds());
-
         return new ImportSummary(
                 contents.size(),
                 contentResult.imported(),
@@ -72,25 +65,33 @@ public class TourApiInitialImportService {
                 eventResult.invalid());
     }
 
-    private List<JsonNode> readItems(Path file) {
-        if (!Files.isRegularFile(file)) {
-            throw new IllegalArgumentException("JSON 파일을 찾을 수 없습니다: " + file);
-        }
+    private ContentImportResult synchronizeAndImportContents(List<JsonNode> contents) {
+        Map<SourceRegionKey, ServiceRegionKey> regionNames =
+                extractRegionNames(contents);
+        Map<AdministrativeProvince, String> provinceCodes =
+                extractProvinceCodes(contents);
+        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
+        return importContents(contents, regionMappings);
+    }
+
+    private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
         try {
-            JsonNode items = objectMapper.readTree(file.toFile())
+            JsonNode items = objectMapper.readTree(snapshot)
                     .path("response")
                     .path("body")
                     .path("items")
                     .path("item");
             if (!items.isArray()) {
                 throw new IllegalArgumentException(
-                        "TourAPI item 배열을 찾을 수 없습니다: " + file);
+                        "TourAPI item 배열을 찾을 수 없습니다: " + sourceName);
             }
             List<JsonNode> result = new ArrayList<>();
             items.forEach(result::add);
             return result;
         } catch (IOException exception) {
-            throw new IllegalStateException("JSON 파일을 읽을 수 없습니다: " + file, exception);
+            throw new UncheckedIOException(
+                    "TourAPI JSON을 읽을 수 없습니다: " + sourceName,
+                    exception);
         }
     }
 

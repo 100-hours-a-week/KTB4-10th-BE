@@ -1,15 +1,13 @@
-package com.ktb10.kgb.tools.tourapi;
+package com.ktb10.kgb.content.tourapi;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -18,24 +16,20 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
-class TourApiInitialImportServiceTest {
+class TourApiImportServiceTest {
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final List<Integer> batchSizes = new ArrayList<>();
-    private TourApiInitialImportService service;
-
-    @TempDir
-    Path tempDir;
+    private TourApiImportService service;
 
     @BeforeEach
     @SuppressWarnings({"rawtypes", "unchecked"})
     void setUp() throws Exception {
-        service = new TourApiInitialImportService(new ObjectMapper(), jdbcTemplate);
+        service = new TourApiImportService(new ObjectMapper(), jdbcTemplate);
         when(jdbcTemplate.update(anyString(), any(Object[].class))).thenReturn(1);
         when(jdbcTemplate.queryForObject(anyString(), any(Class.class), any(Object[].class)))
                 .thenReturn(10L);
@@ -62,26 +56,8 @@ class TourApiInitialImportServiceTest {
     }
 
     @Test
-    void rejectsMissingJsonFile() {
-        Path missing = tempDir.resolve("missing.json");
-
-        assertThatThrownBy(() -> service.importFiles(missing, missing))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("JSON 파일을 찾을 수 없습니다");
-    }
-
-    @Test
-    void rejectsResponseWithoutItemArray() throws Exception {
-        Path areaFile = write("area.json", "{\"response\":{\"body\":{\"items\":{}}}}");
-
-        assertThatThrownBy(() -> service.importFiles(areaFile, areaFile))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("TourAPI item 배열을 찾을 수 없습니다");
-    }
-
-    @Test
     void importsContentAndMatchingEvent() throws Exception {
-        Path areaFile = writeItems("area.json", """
+        byte[] areaSnapshot = snapshot("""
                 {
                   "contentid": "100",
                   "contenttypeid": "12",
@@ -98,7 +74,7 @@ class TourApiInitialImportServiceTest {
                   "modifiedtime": "20260102120000"
                 }
                 """);
-        Path festivalFile = writeItems("festival.json", """
+        byte[] festivalSnapshot = snapshot("""
                 {
                   "contentid": "100",
                   "eventstartdate": "20261012",
@@ -106,7 +82,7 @@ class TourApiInitialImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importFiles(areaFile, festivalFile);
+        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
 
         assertThat(summary.sourceContents()).isEqualTo(1);
         assertThat(summary.importedContents()).isEqualTo(1);
@@ -119,7 +95,7 @@ class TourApiInitialImportServiceTest {
 
     @Test
     void countsSkippedContentsAndInvalidEvents() throws Exception {
-        Path areaFile = writeItems("area.json", """
+        byte[] areaSnapshot = snapshot("""
                 {
                   "contentid": "101",
                   "title": "좌표 없는 콘텐츠",
@@ -139,7 +115,7 @@ class TourApiInitialImportServiceTest {
                   "lclsSystm1": "NA"
                 }
                 """);
-        Path festivalFile = writeItems("festival.json", """
+        byte[] festivalSnapshot = snapshot("""
                 {
                   "contentid": "101",
                   "eventstartdate": "20261014",
@@ -147,7 +123,7 @@ class TourApiInitialImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importFiles(areaFile, festivalFile);
+        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
 
         assertThat(summary.sourceContents()).isEqualTo(2);
         assertThat(summary.importedContents()).isZero();
@@ -165,7 +141,7 @@ class TourApiInitialImportServiceTest {
                 LocalDateTime.of(2026, 1, 2, 12, 0),
                 LocalDate.of(2026, 10, 12),
                 LocalDate.of(2026, 10, 14));
-        Path areaFile = writeItems("area.json", """
+        byte[] areaSnapshot = snapshot("""
                 {
                   "contentid": "100",
                   "contenttypeid": "15",
@@ -179,7 +155,7 @@ class TourApiInitialImportServiceTest {
                   "modifiedtime": "20260102120000"
                 }
                 """);
-        Path festivalFile = writeItems("festival.json", """
+        byte[] festivalSnapshot = snapshot("""
                 {
                   "contentid": "100",
                   "eventstartdate": "20261012",
@@ -187,7 +163,7 @@ class TourApiInitialImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importFiles(areaFile, festivalFile);
+        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
 
         assertThat(summary.importedContents()).isZero();
         assertThat(summary.importedEvents()).isZero();
@@ -225,8 +201,8 @@ class TourApiInitialImportServiceTest {
                 });
     }
 
-    private Path writeItems(String fileName, String items) throws Exception {
-        return write(fileName, """
+    private byte[] snapshot(String items) {
+        return """
                 {
                   "response": {
                     "body": {
@@ -236,10 +212,6 @@ class TourApiInitialImportServiceTest {
                     }
                   }
                 }
-                """.formatted(items));
-    }
-
-    private Path write(String fileName, String content) throws Exception {
-        return Files.writeString(tempDir.resolve(fileName), content);
+                """.formatted(items).getBytes(StandardCharsets.UTF_8);
     }
 }
