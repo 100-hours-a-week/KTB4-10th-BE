@@ -20,6 +20,18 @@ public enum GuidebookErrorCode implements ErrorCode {
     GUIDEBOOK_NOT_READY(
             HttpStatus.CONFLICT,
             "가이드북 본문이 아직 준비되지 않았습니다."),
+    PDF_EXPORT_FAILED(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "PDF 파일을 생성하지 못했습니다."),
+    PDF_EXPORT_TIMEOUT(
+            HttpStatus.GATEWAY_TIMEOUT,
+            "PDF 생성 시간이 초과되었습니다."),
+    PDF_EXPORT_BUSY(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "PDF 생성 요청이 많아 잠시 후 다시 시도해 주세요."),
+    PDF_EXPORT_TOO_LARGE(
+            HttpStatus.BAD_GATEWAY,
+            "생성된 PDF 파일 크기가 허용 범위를 초과했습니다."),
     CREDIT_INSUFFICIENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "가이드북 생성권이 부족합니다."),

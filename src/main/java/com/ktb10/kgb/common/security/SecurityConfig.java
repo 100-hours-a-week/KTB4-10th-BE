@@ -141,7 +141,7 @@ public class SecurityConfig {
                 "Idempotency-Key",
                 "X-Trace-Id",
                 "X-XSRF-TOKEN"));
-        configuration.setExposedHeaders(List.of("X-Trace-Id"));
+        configuration.setExposedHeaders(List.of("Content-Disposition", "X-Trace-Id"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 

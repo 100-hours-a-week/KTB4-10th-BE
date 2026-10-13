@@ -1,0 +1,13 @@
+services:
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      CHROMIUM_DENY_PRIVATE_IPS: "true"
+      CHROMIUM_DENY_PUBLIC_IPS: "true"
+      CHROMIUM_ALLOW_LIST: "(^file:///tmp/.*)|(^https://(cdn\\.jsdelivr\\.net|tong\\.visitkorea\\.or\\.kr)(:[0-9]+)?(/|$))"
+      CHROMIUM_DISABLE_JAVASCRIPT: "true"
+      CHROMIUM_MAX_CONCURRENCY: "2"
+      CHROMIUM_MAX_QUEUE_SIZE: "2"
+    restart: unless-stopped

@@ -78,3 +78,11 @@ tour-api:
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
+
+guidebook:
+  pdf:
+    base-url: ${GOTENBERG_BASE_URL:http://localhost:3000}
+    connect-timeout: ${GOTENBERG_CONNECT_TIMEOUT:3s}
+    read-timeout: ${GOTENBERG_READ_TIMEOUT:30s}
+    max-concurrent-conversions: ${GUIDEBOOK_PDF_MAX_CONCURRENT_CONVERSIONS:2}
+    max-result-size: ${GUIDEBOOK_PDF_MAX_RESULT_SIZE:20MB}
