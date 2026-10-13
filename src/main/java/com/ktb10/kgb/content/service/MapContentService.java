@@ -27,6 +27,8 @@ public class MapContentService {
     private static final int MAX_ZOOM = 21;
     private static final int CLUSTER_MAX_ZOOM = 14;
     private static final int BOTTOM_SHEET_PAGE_SIZE = 10;
+    private static final int MAX_TILES_PER_REQUEST = 500;
+    private static final double TILE_SIZE = 0.5;
     private static final double DETAIL_MAX_DIAGONAL_KILOMETERS = 20.0;
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
@@ -208,6 +210,15 @@ public class MapContentService {
         if (west >= east) {
             throw validationError("west,east", "invalid_bounds");
         }
+        long latitudeTileCount = cellOf(north) - cellOf(south) + 1;
+        long longitudeTileCount = cellOf(east) - cellOf(west) + 1;
+        if (latitudeTileCount * longitudeTileCount > MAX_TILES_PER_REQUEST) {
+            throw validationError("bounds", "too_wide");
+        }
+    }
+
+    private long cellOf(double coordinate) {
+        return (long) Math.floor(coordinate / TILE_SIZE);
     }
 
     private void validateZoom(int zoom) {

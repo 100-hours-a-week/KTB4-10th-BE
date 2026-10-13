@@ -190,6 +190,19 @@ class MapContentApiTest {
     }
 
     @Test
+    void rejectsBoundsExceedingMaximumTileCount() throws Exception {
+        mockMvc.perform(get("/api/v1/map/markers")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "-90.0")
+                        .param("west", "-180.0")
+                        .param("north", "90.0")
+                        .param("east", "180.0")
+                        .param("zoom", "6"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+    }
+
+    @Test
     void returnsBottomSheetContentsInFixedTenItemPages() throws Exception {
         when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(java.util.stream.IntStream.rangeClosed(1, 12)

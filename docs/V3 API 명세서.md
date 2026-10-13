@@ -939,6 +939,7 @@ Body 없음.
 - Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
 - 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이어야 함
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)
 - zoom: 필수 Integer. FE가 카카오맵 레벨을 변환한 값으로 전달
 - zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
 - `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
@@ -989,6 +990,7 @@ Body 없음.
 
 - Query `south`, `west`, `north`, `east`는 필수이며 `cursor`는 첫 페이지에서 생략한다.
 - 페이지 크기는 서버가 10개로 고정하며 클라이언트 크기 파라미터를 받지 않는다.
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)을 반환한다.
 - 현재 bounds 중심과 가까운 순서, 동률이면 내부 콘텐츠 ID 순서로 정렬한다.
 - `next_cursor`는 같은 bounds에서만 사용할 수 있는 불투명 커서다.
 - 사용자가 실제 목록 끝에 도달했을 때만 다음 커서를 요청한다.

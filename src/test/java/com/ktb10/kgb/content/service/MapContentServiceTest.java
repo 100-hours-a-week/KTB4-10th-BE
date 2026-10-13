@@ -106,6 +106,14 @@ class MapContentServiceTest {
     }
 
     @Test
+    void rejectsBoundsExceedingMaximumTileCount() {
+        assertValidationFailure(() -> mapContentService.getMarkers(
+                1L, -90.0, -180.0, 90.0, 180.0, 6));
+        assertValidationFailure(() -> mapContentService.getBottomSheetContents(
+                1L, -90.0, -180.0, 90.0, 180.0, null));
+    }
+
+    @Test
     void returnsAllClusterRepresentativesForWideZoom() {
         List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 21)
                 .mapToObj(index -> commonContent(
