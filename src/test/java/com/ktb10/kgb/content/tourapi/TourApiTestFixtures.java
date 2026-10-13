@@ -9,9 +9,13 @@ final class TourApiTestFixtures {
     }
 
     static TourApiProperties properties(String snapshotLocation) {
+        return properties(snapshotLocation, "service-key");
+    }
+
+    static TourApiProperties properties(String snapshotLocation, String serviceKey) {
         return new TourApiProperties(
                 URI.create("https://apis.data.go.kr/B551011/KorService2"),
-                "service-key",
+                serviceKey,
                 snapshotLocation,
                 "ETC",
                 "KGB",

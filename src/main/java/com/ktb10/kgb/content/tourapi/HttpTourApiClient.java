@@ -14,6 +14,7 @@ import org.springframework.web.util.UriBuilder;
 public class HttpTourApiClient implements TourApiClient {
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.BASIC_ISO_DATE;
+    private static final String SERVICE_KEY_VARIABLE = "{serviceKey}";
 
     private final RestClient restClient;
     private final TourApiProperties properties;
@@ -26,7 +27,7 @@ public class HttpTourApiClient implements TourApiClient {
     @Override
     public byte[] fetchAreaSnapshot() {
         return fetch(uriBuilder -> commonParameters(uriBuilder.pathSegment("areaBasedList2"))
-                .build());
+                .build(properties.serviceKey()));
     }
 
     @Override
@@ -34,12 +35,12 @@ public class HttpTourApiClient implements TourApiClient {
         return fetch(uriBuilder -> commonParameters(uriBuilder.pathSegment("searchFestival2"))
                 .queryParam("eventStartDate", startDate.format(DATE))
                 .queryParam("eventEndDate", endDate.format(DATE))
-                .build());
+                .build(properties.serviceKey()));
     }
 
     private UriBuilder commonParameters(UriBuilder uriBuilder) {
         return uriBuilder
-                .queryParam("serviceKey", properties.serviceKey())
+                .queryParam("serviceKey", SERVICE_KEY_VARIABLE)
                 .queryParam("MobileOS", properties.mobileOs())
                 .queryParam("MobileApp", properties.mobileApp())
                 .queryParam("_type", "json")
