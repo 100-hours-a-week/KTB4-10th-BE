@@ -806,7 +806,7 @@ Body 없음.
 ### Web Push 서버 전송 계약
 
 - 브라우저별 구독 API와 달리 서버 발송은 외부 공개 endpoint가 아닌 내부 이벤트 처리다.
-- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않고, 이번 알림이 하나 이상의 SSE 연결에 정상적으로 `send()`된 경우에만 Web Push를 생략한다. 연결 객체만 남은 stale 연결이거나 모든 SSE 전송이 실패하면 Web Push를 fallback으로 등록한다.
+- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않는다. true이면 SSE와 Web Push를 독립적으로 시도하고, FE는 동일 `notification_id`의 중복 표시를 막는다. 보이는 KGB 화면에서는 SSE 토스트만 표시하고 Service Worker가 시스템 알림을 생략한다.
 - payload는 Service Worker가 기존 알림과 이동 대상을 복원할 최소 필드만 포함한다.
 
 ```json
