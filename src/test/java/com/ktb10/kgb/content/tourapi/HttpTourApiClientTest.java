@@ -22,6 +22,8 @@ class HttpTourApiClientTest {
         byte[] response = "{\"response\":{}}".getBytes(StandardCharsets.UTF_8);
         server.expect(request -> {
             assertThat(request.getURI().getPath()).endsWith("/areaBasedList2");
+            assertThat(request.getURI().getRawQuery())
+                    .contains("serviceKey=service%2Bkey%2F%3D");
             assertThat(request.getURI().getQuery())
                     .contains("pageNo=1")
                     .contains("numOfRows=60000");
@@ -34,7 +36,7 @@ class HttpTourApiClientTest {
         }).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
         TourApiClient client = new HttpTourApiClient(
                 builder.build(),
-                TourApiTestFixtures.properties("data/tourism/raw"));
+                TourApiTestFixtures.properties("data/tourism/raw", "service+key/="));
 
         assertThat(client.fetchAreaSnapshot()).isEqualTo(response);
         assertThat(client.fetchFestivalSnapshot(

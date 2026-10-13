@@ -90,7 +90,7 @@ class MapContentApiTest {
                         java.util.Set.of(101L),
                         java.util.Set.of(101L)));
 
-        mockMvc.perform(get("/api/v1/map/contents")
+        mockMvc.perform(get("/api/v1/map/markers")
                         .with(authentication(authenticatedMember()))
                         .param("south", "35.80")
                         .param("west", "129.18")
@@ -98,18 +98,15 @@ class MapContentApiTest {
                         .param("east", "129.28")
                         .param("zoom", "16"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("map_content_success"))
-                .andExpect(jsonPath("$.data.mode").value("CONTENT"))
-                .andExpect(jsonPath("$.data.items.length()").value(2))
-                .andExpect(jsonPath("$.data.items[0].content_id").value("126508"))
-                .andExpect(jsonPath("$.data.items[0].content_type").value("PLACE"))
-                .andExpect(jsonPath("$.data.items[0].is_favorite").value(true))
-                .andExpect(jsonPath("$.data.items[0].is_in_guidebook").value(true))
-                .andExpect(jsonPath("$.data.items[0].event_period").doesNotExist())
-                .andExpect(jsonPath("$.data.items[1].content_type").value("EVENT"))
-                .andExpect(jsonPath("$.data.items[1].event_period.start_date")
-                        .value("2026-10-01"))
-                .andExpect(jsonPath("$.data.has_more").value(false))
+                .andExpect(jsonPath("$.message").value("map_marker_success"))
+                .andExpect(jsonPath("$.data.mode").value("MARKER"))
+                .andExpect(jsonPath("$.data.markers.length()").value(2))
+                .andExpect(jsonPath("$.data.markers[0].content_id").value("126508"))
+                .andExpect(jsonPath("$.data.markers[0].content_type").value("PLACE"))
+                .andExpect(jsonPath("$.data.markers[0].is_favorite").value(true))
+                .andExpect(jsonPath("$.data.markers[0].is_in_guidebook").value(true))
+                .andExpect(jsonPath("$.data.markers[0].address").doesNotExist())
+                .andExpect(jsonPath("$.data.markers[0].thumbnail_url").doesNotExist())
                 .andExpect(jsonPath("$.data.clusters").isEmpty());
     }
 
@@ -140,7 +137,7 @@ class MapContentApiTest {
         when(personalizationQuery.findByMemberAndContentIds(1L, List.of(201L)))
                 .thenReturn(MapContentPersonalization.empty());
 
-        mockMvc.perform(get("/api/v1/map/contents")
+        mockMvc.perform(get("/api/v1/map/markers")
                         .with(authentication(authenticatedMember()))
                         .param("south", "33.0")
                         .param("west", "124.0")
@@ -151,15 +148,12 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.mode").value("CLUSTER"))
                 .andExpect(jsonPath("$.data.clusters.length()").value(1))
                 .andExpect(jsonPath("$.data.clusters[0].count").value(2))
-                .andExpect(jsonPath("$.data.items.length()").value(1))
-                .andExpect(jsonPath("$.data.items[0].content_id")
-                        .value("representative-1"))
-                .andExpect(jsonPath("$.data.has_more").value(false));
+                .andExpect(jsonPath("$.data.markers").isEmpty());
     }
 
     @Test
     void rejectsMissingBoundsParameter() throws Exception {
-        mockMvc.perform(get("/api/v1/map/contents")
+        mockMvc.perform(get("/api/v1/map/markers")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
                         .param("west", "127.05")
@@ -171,7 +165,7 @@ class MapContentApiTest {
 
     @Test
     void rejectsZoomOutsideSupportedRangeAndIgnoresLegacyLimit() throws Exception {
-        mockMvc.perform(get("/api/v1/map/contents")
+        mockMvc.perform(get("/api/v1/map/markers")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.35")
                         .param("west", "127.05")
@@ -185,7 +179,7 @@ class MapContentApiTest {
 
     @Test
     void acceptsLargeValidBounds() throws Exception {
-        mockMvc.perform(get("/api/v1/map/contents")
+        mockMvc.perform(get("/api/v1/map/markers")
                         .with(authentication(authenticatedMember()))
                         .param("south", "37.0")
                         .param("west", "127.0")
@@ -193,6 +187,48 @@ class MapContentApiTest {
                         .param("east", "127.3")
                         .param("zoom", "16"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void rejectsBoundsExceedingMaximumTileCount() throws Exception {
+        mockMvc.perform(get("/api/v1/map/markers")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "-90.0")
+                        .param("west", "-180.0")
+                        .param("north", "90.0")
+                        .param("east", "180.0")
+                        .param("zoom", "6"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
+    }
+
+    @Test
+    void returnsBottomSheetContentsInFixedTenItemPages() throws Exception {
+        when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(java.util.stream.IntStream.rangeClosed(1, 12)
+                        .mapToObj(index -> new MapContentCommonData(
+                                (long) index,
+                                String.valueOf(index),
+                                "장소 " + index,
+                                ContentType.PLACE,
+                                "주소",
+                                37.4,
+                                127.1 + index * 0.001,
+                                null,
+                                null))
+                        .toList());
+
+        mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "37.0")
+                        .param("west", "127.0")
+                        .param("north", "38.0")
+                        .param("east", "128.0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("map_content_success"))
+                .andExpect(jsonPath("$.data.items.length()").value(10))
+                .andExpect(jsonPath("$.data.next_cursor").isString())
+                .andExpect(jsonPath("$.data.has_more").value(true));
     }
 
     private UsernamePasswordAuthenticationToken authenticatedMember() {
