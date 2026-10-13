@@ -52,7 +52,7 @@ class MemberSchemaMysqlIntegrationTest {
         assertThat(flyway.info().pending()).isEmpty();
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE",
-                Integer.class)).isGreaterThanOrEqualTo(4);
+                Integer.class)).isGreaterThanOrEqualTo(5);
     }
 
     @Test
@@ -98,6 +98,27 @@ class MemberSchemaMysqlIntegrationTest {
                 .hasMessageContaining("ck_notifications_reference_pair");
     }
 
+    @Test
+    void enforcesWebPushEndpointUniquenessAndReferences() {
+        long memberId = insertMember("web-push-schema-member");
+        long sessionId = insertSession(memberId, filledHash((byte) 1));
+        byte[] endpointHash = filledHash((byte) 2);
+        insertWebPushSubscription(memberId, sessionId, endpointHash);
+
+        assertThatThrownBy(() -> insertWebPushSubscription(memberId, sessionId, endpointHash))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertWebPushSubscription(
+                Long.MAX_VALUE,
+                sessionId,
+                filledHash((byte) 3)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertWebPushSubscription(
+                memberId,
+                Long.MAX_VALUE,
+                filledHash((byte) 4)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
     private long insertMember(String oauthSubject) {
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
@@ -120,16 +141,22 @@ class MemberSchemaMysqlIntegrationTest {
         return keyHolder.getKey().longValue();
     }
 
-    private void insertSession(long memberId, byte[] sessionHash) {
-        jdbcTemplate.update(
-                """
-                INSERT INTO auth_sessions (
-                    member_id, session_id_hash, expires_at, last_used_at, created_at
-                ) VALUES (?, ?, '2026-09-28 12:00:00', '2026-09-27 12:00:00',
-                          '2026-09-27 12:00:00')
-                """,
-                memberId,
-                sessionHash);
+    private long insertSession(long memberId, byte[] sessionHash) {
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    """
+                    INSERT INTO auth_sessions (
+                        member_id, session_id_hash, expires_at, last_used_at, created_at
+                    ) VALUES (?, ?, '2026-09-28 12:00:00', '2026-09-27 12:00:00',
+                              '2026-09-27 12:00:00')
+                    """,
+                    Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, memberId);
+            statement.setBytes(2, sessionHash);
+            return statement;
+        }, keyHolder);
+        return keyHolder.getKey().longValue();
     }
 
     private void insertPreference(long memberId, String type, String code) {
@@ -158,5 +185,29 @@ class MemberSchemaMysqlIntegrationTest {
                 memberId,
                 referenceType,
                 referenceId);
+    }
+
+    private void insertWebPushSubscription(
+            long memberId,
+            long sessionId,
+            byte[] endpointHash) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO web_push_subscriptions (
+                    member_id, auth_session_id, endpoint, endpoint_hash,
+                    p256dh, auth_secret, status, failure_count, created_at, updated_at
+                ) VALUES (?, ?, 'https://push.example.test/subscription', ?,
+                          'p256dh', 'auth', 'ACTIVE', 0,
+                          '2026-09-27 12:00:00', '2026-09-27 12:00:00')
+                """,
+                memberId,
+                sessionId,
+                endpointHash);
+    }
+
+    private byte[] filledHash(byte value) {
+        byte[] hash = new byte[32];
+        Arrays.fill(hash, value);
+        return hash;
     }
 }

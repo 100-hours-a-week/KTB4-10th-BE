@@ -12,12 +12,16 @@ import com.ktb10.kgb.member.entity.MemberStatus;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
+@ExtendWith(OutputCaptureExtension.class)
 class KakaoOauthSuccessHandlerTest {
 
     @Test
@@ -62,5 +66,44 @@ class KakaoOauthSuccessHandlerTest {
                 .doesNotContain("Secure");
         assertThat(request.getSession(false)).isNull();
         verify(csrfTokenLifecycle).clear(request, response);
+    }
+
+    @Test
+    void internalLoginFailureUsesStructuredErrorFields(CapturedOutput output) throws Exception {
+        OauthLoginService loginService = mock(OauthLoginService.class);
+        when(loginService.login(any()))
+                .thenThrow(new IllegalStateException("database unavailable"));
+        KakaoOauthFailureHandler failureHandler =
+                new KakaoOauthFailureHandler("/api/v1/auth/oauth/error");
+        KakaoOauthSuccessHandler handler = new KakaoOauthSuccessHandler(
+                new KakaoOauthUserMapper(),
+                loginService,
+                failureHandler,
+                mock(CsrfTokenLifecycle.class),
+                new SessionCookieManager(false),
+                "/api/v1/members/me");
+        var principal = new DefaultOAuth2User(
+                List.of(),
+                Map.of(
+                        "id", 123L,
+                        "kakao_account", Map.of(
+                                "profile", Map.of("nickname", "여행자"))),
+                "id");
+        var authentication = new OAuth2AuthenticationToken(principal, List.of(), "kakao");
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "GET", "/api/v1/auth/oauth/callback/kakao");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        handler.onAuthenticationSuccess(request, response, authentication);
+
+        assertThat(response.getStatus()).isEqualTo(302);
+        assertThat(response.getRedirectedUrl())
+                .contains("/api/v1/auth/oauth/error?code=OAUTH_INTERNAL_ERROR");
+        assertThat(output)
+                .contains("event=oauth_login_completion_failure")
+                .contains("method=GET")
+                .contains("route=/api/v1/auth/oauth/callback/kakao")
+                .contains("status=302")
+                .contains("errorCode=OAUTH_INTERNAL_ERROR");
     }
 }

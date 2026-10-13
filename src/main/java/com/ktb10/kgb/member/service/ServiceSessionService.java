@@ -6,11 +6,14 @@ import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
+import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,19 +21,23 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ServiceSessionService {
 
-    private static final Duration IDLE_TIMEOUT = Duration.ofMinutes(30);
-
     private final AuthSessionRepository authSessionRepository;
+    private final WebPushSubscriptionRepository webPushSubscriptionRepository;
     private final SessionIdHasher sessionIdHasher;
     private final Clock clock;
+    private final Duration idleTimeout;
 
     public ServiceSessionService(
             AuthSessionRepository authSessionRepository,
+            WebPushSubscriptionRepository webPushSubscriptionRepository,
             SessionIdHasher sessionIdHasher,
-            Clock clock) {
+            Clock clock,
+            @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout) {
         this.authSessionRepository = authSessionRepository;
+        this.webPushSubscriptionRepository = webPushSubscriptionRepository;
         this.sessionIdHasher = sessionIdHasher;
         this.clock = clock;
+        this.idleTimeout = idleTimeout;
     }
 
     @Transactional
@@ -45,7 +52,7 @@ public class ServiceSessionService {
         AuthSession session = foundSession.get();
         LocalDateTime now = LocalDateTime.now(clock);
         Member member = session.getMember();
-        if (!session.isUsable(now, IDLE_TIMEOUT) || member.isDeleted()) {
+        if (!session.isUsable(now, idleTimeout) || member.isDeleted()) {
             return Optional.empty();
         }
 
@@ -61,6 +68,12 @@ public class ServiceSessionService {
         AuthSession session = authSessionRepository
                 .findByIdAndMemberIdAndRevokedAtIsNull(sessionId, memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
-        session.revoke(LocalDateTime.now(clock));
+        LocalDateTime now = LocalDateTime.now(clock);
+        session.revoke(now);
+        webPushSubscriptionRepository.revokeAllActiveByAuthSessionId(
+                sessionId,
+                WebPushSubscriptionStatus.ACTIVE,
+                WebPushSubscriptionStatus.REVOKED,
+                now);
     }
 }

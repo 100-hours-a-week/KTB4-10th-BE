@@ -60,6 +60,30 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void validClientTraceIdIsReusedInHeaderAndErrorBody() throws Exception {
+        mockMvc.perform(get("/test/business-error")
+                        .header(TraceId.HEADER_NAME, "frontend-request_123"))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string(TraceId.HEADER_NAME, "frontend-request_123"))
+                .andExpect(jsonPath("$.error.trace_id").value("frontend-request_123"));
+    }
+
+    @Test
+    void unsafeClientTraceIdIsReplacedWithServerGeneratedValue() throws Exception {
+        MvcResult result = mockMvc.perform(get("/test/business-error")
+                        .header(TraceId.HEADER_NAME, "unsafe trace id"))
+                .andExpect(status().isNotFound())
+                .andReturn();
+
+        String traceId = result.getResponse().getHeader(TraceId.HEADER_NAME);
+        assertThat(traceId)
+                .isNotBlank()
+                .isNotEqualTo("unsafe trace id");
+        assertThat(result.getResponse().getContentAsString())
+                .contains("\"trace_id\":\"" + traceId + "\"");
+    }
+
+    @Test
     void beanValidationErrorContainsStableFieldDetailAndTraceId() throws Exception {
         MvcResult result = mockMvc.perform(post("/test/validation")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -87,6 +111,14 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.error.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.error.details").isEmpty())
                 .andExpect(jsonPath("$.error.trace_id").isNotEmpty());
+    }
+
+    @Test
+    void rateLimitExceptionReturnsRetryAfterHeader() throws Exception {
+        mockMvc.perform(get("/test/rate-limit"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().string("Retry-After", "37"))
+                .andExpect(jsonPath("$.error.code").value("RATE_LIMIT_EXCEEDED"));
     }
 
     @Test
@@ -130,8 +162,20 @@ class GlobalExceptionHandlerTest {
 
         assertThat(output).contains("Unhandled application exception");
         assertThat(output).contains("method=GET");
-        assertThat(output).contains("uri=/test/unexpected-error");
+        assertThat(output).contains("route=/test/unexpected-error");
+        assertThat(output).contains("status=500");
+        assertThat(output).contains("errorCode=INTERNAL_SERVER_ERROR");
         assertThat(output).contains("rootCauseType=IllegalStateException");
+    }
+
+    @Test
+    void unexpectedExceptionUsesRouteTemplateInsteadOfConcretePath(CapturedOutput output)
+            throws Exception {
+        mockMvc.perform(get("/test/unexpected-error/42"))
+                .andExpect(status().isInternalServerError());
+
+        assertThat(output).contains("route=/test/unexpected-error/{id}");
+        assertThat(output).doesNotContain("route=/test/unexpected-error/42");
     }
 
     @Test
@@ -141,7 +185,7 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.error.code").value("UPSTREAM_SERVICE_ERROR"));
 
         assertThat(output).contains("Handled server error");
-        assertThat(output).contains("code=UPSTREAM_SERVICE_ERROR");
+        assertThat(output).contains("errorCode=UPSTREAM_SERVICE_ERROR");
         assertThat(output).contains("rootCauseType=IllegalStateException");
     }
 
@@ -164,9 +208,19 @@ class GlobalExceptionHandlerTest {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
 
+        @GetMapping("/rate-limit")
+        void rateLimit() {
+            throw new RateLimitExceededException(37L);
+        }
+
         @GetMapping("/unexpected-error")
         void unexpectedError() {
             throw new IllegalStateException("sensitive database detail");
+        }
+
+        @GetMapping("/unexpected-error/{id}")
+        void unexpectedErrorWithId(@PathVariable Long id) {
+            throw new IllegalStateException("unexpected error for resource");
         }
 
         @GetMapping("/upstream-error")

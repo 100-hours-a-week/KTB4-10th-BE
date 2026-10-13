@@ -9,6 +9,7 @@ import com.ktb10.kgb.member.dto.response.MemberResponse;
 import com.ktb10.kgb.member.dto.response.MemberSettingsResponse;
 import com.ktb10.kgb.member.service.MemberService;
 import com.ktb10.kgb.member.service.MemberWithdrawalService;
+import com.ktb10.kgb.member.service.NotificationStreamService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -33,16 +34,19 @@ public class MemberController {
 
     private final MemberService memberService;
     private final MemberWithdrawalService memberWithdrawalService;
+    private final NotificationStreamService notificationStreamService;
     private final SessionCookieManager sessionCookieManager;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
 
     public MemberController(
             MemberService memberService,
             MemberWithdrawalService memberWithdrawalService,
+            NotificationStreamService notificationStreamService,
             SessionCookieManager sessionCookieManager,
             CsrfTokenLifecycle csrfTokenLifecycle) {
         this.memberService = memberService;
         this.memberWithdrawalService = memberWithdrawalService;
+        this.notificationStreamService = notificationStreamService;
         this.sessionCookieManager = sessionCookieManager;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
     }
@@ -78,6 +82,7 @@ public class MemberController {
             HttpServletRequest request,
             HttpServletResponse response) {
         memberWithdrawalService.withdraw(member.memberId());
+        notificationStreamService.disconnectMember(member.memberId());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,

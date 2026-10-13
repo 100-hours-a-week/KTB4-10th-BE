@@ -7,6 +7,9 @@ import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 
 class FakeGuidebookAiClientTest {
@@ -39,6 +42,51 @@ class FakeGuidebookAiClientTest {
     }
 
     @Test
+    void createsDifferentAiJobIdsAcrossClientInstances() {
+        var firstClient = new FakeGuidebookAiClient();
+        var restartedClient = new FakeGuidebookAiClient();
+
+        var first = firstClient.requestGeneration(request());
+        var afterRestart = restartedClient.requestGeneration(request());
+
+        assertThat(first.jobId()).startsWith("fake-job-");
+        assertThat(afterRestart.jobId()).startsWith("fake-job-");
+        assertThat(afterRestart.jobId()).isNotEqualTo(first.jobId());
+    }
+
+    @Test
+    void createsUniqueAiJobIdsForConcurrentRequests() {
+        int requestCount = 500;
+
+        Set<String> jobIds = IntStream.range(0, requestCount)
+                .parallel()
+                .mapToObj(ignored -> client.requestGeneration(request()).jobId())
+                .collect(Collectors.toSet());
+
+        assertThat(jobIds).hasSize(requestCount);
+    }
+
+    @Test
+    void cannotFindInMemoryJobAfterClientRestart() {
+        var accepted = client.requestGeneration(request());
+        var restartedClient = new FakeGuidebookAiClient();
+
+        assertThatThrownBy(() -> restartedClient.getGenerationStatus(accepted.jobId()))
+                .isInstanceOf(AiClientException.class)
+                .hasMessageContaining(accepted.jobId());
+    }
+
+    @Test
+    void rejectsCompletionWhenTourismContentsAreEmpty() {
+        var accepted = client.requestGeneration(request(List.of()));
+        client.getGenerationStatus(accepted.jobId());
+
+        assertThatThrownBy(() -> client.getGenerationStatus(accepted.jobId()))
+                .isInstanceOf(AiClientException.class)
+                .hasMessageContaining("관광 콘텐츠가 없습니다");
+    }
+
+    @Test
     void rejectsUnknownAiJobId() {
         assertThatThrownBy(() -> client.getGenerationStatus("unknown-job"))
                 .isInstanceOf(AiClientException.class)
@@ -46,6 +94,20 @@ class FakeGuidebookAiClientTest {
     }
 
     private AiGuidebookRequest request() {
+        return request(List.of(new AiGuidebookRequest.Content(
+                "126508",
+                AiGuidebookRequest.ContentType.PLACE,
+                "첨성대",
+                "HS",
+                "HS01",
+                "HS010100",
+                "경상북도 경주시 인왕동",
+                new AiGuidebookRequest.Coordinates(35.8347, 129.219),
+                null,
+                null)));
+    }
+
+    private AiGuidebookRequest request(List<AiGuidebookRequest.Content> contents) {
         return new AiGuidebookRequest(
                 "301-0",
                 new AiGuidebookRequest.Region("경상북도", "경주시"),
@@ -57,16 +119,6 @@ class FakeGuidebookAiClientTest {
                         List.of("힐링"),
                         Map.of("힐링", List.of("조용한 곳")),
                         List.of("여유롭게")),
-                List.of(new AiGuidebookRequest.Content(
-                        "126508",
-                        AiGuidebookRequest.ContentType.PLACE,
-                        "첨성대",
-                        "HS",
-                        "HS01",
-                        "HS010100",
-                        "경상북도 경주시 인왕동",
-                        new AiGuidebookRequest.Coordinates(35.8347, 129.219),
-                        null,
-                        null)));
+                contents);
     }
 }

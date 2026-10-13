@@ -2,12 +2,16 @@ package com.ktb10.kgb.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
+import java.util.regex.Pattern;
+import org.slf4j.MDC;
 
 /** 요청 범위의 서버 생성 추적 ID를 관리합니다. */
 public final class TraceId {
 
     public static final String ATTRIBUTE_NAME = TraceId.class.getName();
     public static final String HEADER_NAME = "X-Trace-Id";
+    private static final int MAX_LENGTH = 64;
+    private static final Pattern SAFE_VALUE = Pattern.compile("[A-Za-z0-9._-]{1," + MAX_LENGTH + "}");
 
     private TraceId() {
     }
@@ -22,8 +26,19 @@ public final class TraceId {
             return traceId;
         }
 
-        String traceId = create();
+        String requestedTraceId = request.getHeader(HEADER_NAME);
+        String traceId = isValid(requestedTraceId) ? requestedTraceId : create();
         request.setAttribute(ATTRIBUTE_NAME, traceId);
         return traceId;
+    }
+
+    /** HTTP 요청 객체가 없는 이벤트 처리 경계에서 현재 trace ID를 조회합니다. */
+    public static String currentOrCreate() {
+        String traceId = MDC.get("traceId");
+        return isValid(traceId) ? traceId : create();
+    }
+
+    static boolean isValid(String value) {
+        return value != null && SAFE_VALUE.matcher(value).matches();
     }
 }

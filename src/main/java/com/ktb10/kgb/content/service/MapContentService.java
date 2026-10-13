@@ -3,11 +3,19 @@ package com.ktb10.kgb.content.service;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.error.ErrorDetail;
+import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
-import com.ktb10.kgb.content.dto.MapContentResponse;
-import com.ktb10.kgb.content.repository.MapClusterQueryResult;
-import com.ktb10.kgb.content.repository.MapContentQuery;
+import com.ktb10.kgb.content.dto.MapContentListResponse;
+import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
+import com.ktb10.kgb.content.dto.MapMarkerResponse;
+import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapContentPersonalization;
+import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
+import java.nio.ByteBuffer;
+import java.util.Base64;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,19 +23,33 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MapContentService {
 
+    private static final int MIN_ZOOM = 6;
+    private static final int MAX_ZOOM = 21;
     private static final int CLUSTER_MAX_ZOOM = 14;
-    private static final int REPRESENTATIVE_LIMIT = 20;
+    private static final int BOTTOM_SHEET_PAGE_SIZE = 10;
+    private static final int MAX_TILES_PER_REQUEST = 500;
+    private static final double TILE_SIZE = 0.5;
     private static final double DETAIL_MAX_DIAGONAL_KILOMETERS = 20.0;
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
-    private final MapContentQuery mapContentQuery;
+    private final MapContentRadiusClusterer radiusClusterer;
+    private final MapContentPersonalizationQuery personalizationQuery;
+    private final MapContentCommonCache commonCache;
+    private final MapPerformanceMetrics performanceMetrics;
 
-    public MapContentService(MapContentQuery mapContentQuery) {
-        this.mapContentQuery = mapContentQuery;
+    public MapContentService(
+            MapContentRadiusClusterer radiusClusterer,
+            MapContentPersonalizationQuery personalizationQuery,
+            MapContentCommonCache commonCache,
+            MapPerformanceMetrics performanceMetrics) {
+        this.radiusClusterer = radiusClusterer;
+        this.personalizationQuery = personalizationQuery;
+        this.commonCache = commonCache;
+        this.performanceMetrics = performanceMetrics;
     }
 
     @Transactional(readOnly = true)
-    public MapContentResponse getContents(
+    public MapMarkerResponse getMarkers(
             Long memberId,
             double south,
             double west,
@@ -35,52 +57,127 @@ public class MapContentService {
             double east,
             int zoom) {
         validateBounds(south, west, north, east);
+        validateZoom(zoom);
 
-        if (zoom <= CLUSTER_MAX_ZOOM
-                || diagonalKilometers(south, west, north, east)
-                > DETAIL_MAX_DIAGONAL_KILOMETERS) {
-            List<MapClusterQueryResult> results = mapContentQuery.findClustersWithinBounds(
-                    memberId, south, west, north, east,
-                    gridSize(zoom, south, west, north, east));
-            return MapContentResponse.cluster(
-                    results.stream().map(MapClusterQueryResult::cluster).toList(),
-                    results.stream()
-                            .limit(REPRESENTATIVE_LIMIT)
-                            .map(MapClusterQueryResult::representative)
-                            .toList());
+        boolean wideBounds = diagonalKilometers(south, west, north, east)
+                > DETAIL_MAX_DIAGONAL_KILOMETERS;
+        if (zoom <= CLUSTER_MAX_ZOOM || wideBounds) {
+            int clusterZoom = wideBounds ? Math.min(zoom, CLUSTER_MAX_ZOOM) : zoom;
+            List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(
+                    commonCache.get(south, west, north, east), clusterZoom);
+            return MapMarkerResponse.cluster(
+                    results.stream().map(MapContentRadiusClusterer.Result::cluster).toList());
         }
 
-        List<MapContentItemResponse> items = mapContentQuery.findWithinBounds(
-                memberId, south, west, north, east);
-        return MapContentResponse.content(items);
+        List<MapContentCommonData> contents = commonCache.get(
+                south, west, north, east);
+        return MapMarkerResponse.marker(personalizeMarkers(memberId, contents));
     }
 
-    private double gridSize(
-            int zoom,
+    @Transactional(readOnly = true)
+    public MapContentListResponse getBottomSheetContents(
+            Long memberId,
             double south,
             double west,
             double north,
-            double east) {
-        double maximumSpan = Math.max(north - south, east - west);
-        if (maximumSpan > 4.0) {
-            return 1.0;
+            double east,
+            String cursor) {
+        validateBounds(south, west, north, east);
+
+        List<MapContentCommonData> sortedContents = commonCache.get(south, west, north, east)
+                .stream()
+                .sorted(Comparator
+                        .comparingDouble((MapContentCommonData content) -> distanceSquared(
+                                content,
+                                (south + north) / 2.0,
+                                (west + east) / 2.0))
+                        .thenComparing(MapContentCommonData::id))
+                .toList();
+        int boundsHash = Objects.hash(south, west, north, east);
+        int offset = decodeCursor(cursor, boundsHash);
+        if (offset > sortedContents.size()) {
+            throw validationError("cursor", "out_of_range");
         }
-        if (maximumSpan > 2.0) {
-            return 0.5;
+
+        int endExclusive = Math.min(offset + BOTTOM_SHEET_PAGE_SIZE, sortedContents.size());
+        List<MapContentCommonData> page = sortedContents.subList(offset, endExclusive);
+        boolean hasMore = endExclusive < sortedContents.size();
+        String nextCursor = hasMore ? encodeCursor(endExclusive, boundsHash) : null;
+        return new MapContentListResponse(
+                personalize(memberId, page),
+                nextCursor,
+                hasMore);
+    }
+
+    private List<MapContentItemResponse> personalize(
+            Long memberId,
+            List<MapContentCommonData> contents) {
+        List<Long> contentIds = contents.stream()
+                .map(MapContentCommonData::id)
+                .distinct()
+                .toList();
+        MapContentPersonalization personalization = performanceMetrics.recordPersonalizationQuery(
+                () -> personalizationQuery.findByMemberAndContentIds(memberId, contentIds));
+        return performanceMetrics.recordResponseMapping(
+                () -> contents.stream()
+                        .map(content -> content.toResponse(
+                                personalization.isFavorite(content.id()),
+                                personalization.isInGuidebook(content.id())))
+                        .toList());
+    }
+
+    private List<MapMarkerItemResponse> personalizeMarkers(
+            Long memberId,
+            List<MapContentCommonData> contents) {
+        List<Long> contentIds = contents.stream()
+                .map(MapContentCommonData::id)
+                .distinct()
+                .toList();
+        MapContentPersonalization personalization = performanceMetrics.recordPersonalizationQuery(
+                () -> personalizationQuery.findByMemberAndContentIds(memberId, contentIds));
+        return performanceMetrics.recordResponseMapping(
+                () -> contents.stream()
+                        .map(content -> content.toMarkerResponse(
+                                personalization.isFavorite(content.id()),
+                                personalization.isInGuidebook(content.id())))
+                        .toList());
+    }
+
+    private double distanceSquared(
+            MapContentCommonData content,
+            double centerLatitude,
+            double centerLongitude) {
+        double latitude = content.latitude() - centerLatitude;
+        double longitude = content.longitude() - centerLongitude;
+        return latitude * latitude + longitude * longitude;
+    }
+
+    private String encodeCursor(int offset, int boundsHash) {
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES * 2);
+        buffer.putInt(offset);
+        buffer.putInt(boundsHash);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(buffer.array());
+    }
+
+    private int decodeCursor(String cursor, int boundsHash) {
+        if (cursor == null || cursor.isBlank()) {
+            return 0;
         }
-        if (maximumSpan > 0.8) {
-            return 0.2;
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(cursor);
+            if (decoded.length != Integer.BYTES * 2) {
+                throw validationError("cursor", "invalid_format");
+            }
+            ByteBuffer buffer = ByteBuffer.wrap(decoded);
+            int offset = buffer.getInt();
+            int cursorBoundsHash = buffer.getInt();
+            if (offset < 0 || cursorBoundsHash != boundsHash) {
+                throw validationError("cursor", "invalid_for_bounds");
+            }
+            return offset;
+        } catch (IllegalArgumentException exception) {
+            throw validationError("cursor", "invalid_format");
         }
-        if (zoom <= 8) {
-            return 1.0;
-        }
-        if (zoom <= 10) {
-            return 0.5;
-        }
-        if (zoom <= 12) {
-            return 0.2;
-        }
-        return 0.05;
     }
 
     private double diagonalKilometers(
@@ -112,6 +209,21 @@ public class MapContentService {
         }
         if (west >= east) {
             throw validationError("west,east", "invalid_bounds");
+        }
+        long latitudeTileCount = cellOf(north) - cellOf(south) + 1;
+        long longitudeTileCount = cellOf(east) - cellOf(west) + 1;
+        if (latitudeTileCount * longitudeTileCount > MAX_TILES_PER_REQUEST) {
+            throw validationError("bounds", "too_wide");
+        }
+    }
+
+    private long cellOf(double coordinate) {
+        return (long) Math.floor(coordinate / TILE_SIZE);
+    }
+
+    private void validateZoom(int zoom) {
+        if (zoom < MIN_ZOOM || zoom > MAX_ZOOM) {
+            throw validationError("zoom", "out_of_range");
         }
     }
 

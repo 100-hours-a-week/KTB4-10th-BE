@@ -15,6 +15,8 @@ spring:
     enabled: true
 
 management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
     web:
       exposure:
@@ -22,7 +24,57 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 120s
   prometheus:
     metrics:
       export:
         enabled: true
+
+notification:
+  sse:
+    connection-timeout: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT:25m}
+    reconnect-time-millis: ${NOTIFICATION_SSE_RECONNECT_TIME_MILLIS:3000}
+    heartbeat-interval-millis: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MILLIS:15000}
+    max-connections-per-member: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:5}
+
+webpush:
+  vapid:
+    public-key: ${WEB_PUSH_VAPID_PUBLIC_KEY:}
+    private-key: ${WEB_PUSH_VAPID_PRIVATE_KEY:}
+    subject: ${WEB_PUSH_VAPID_SUBJECT:}
+  executor:
+    core-pool-size: ${WEB_PUSH_EXECUTOR_CORE_POOL_SIZE:2}
+    max-pool-size: ${WEB_PUSH_EXECUTOR_MAX_POOL_SIZE:4}
+    queue-capacity: ${WEB_PUSH_EXECUTOR_QUEUE_CAPACITY:100}
+  delivery:
+    max-attempts: ${WEB_PUSH_MAX_ATTEMPTS:3}
+    initial-backoff: ${WEB_PUSH_INITIAL_BACKOFF:1s}
+    max-backoff: ${WEB_PUSH_MAX_BACKOFF:10s}
+
+tour-api:
+  collection:
+    base-url: ${TOUR_API_BASE_URL:https://apis.data.go.kr/B551011/KorService2}
+    service-key: ${TOUR_API_SERVICE_KEY:}
+    snapshot-location: ${TOUR_API_SNAPSHOT_LOCATION:data/tourism/raw}
+    mobile-os: ETC
+    mobile-app: KGB
+    num-of-rows: 60000
+    connect-timeout: 3s
+    read-timeout: 30s
+    max-response-bytes: 67108864
+    festival-lookback-days: ${TOUR_API_FESTIVAL_LOOKBACK_DAYS:90}
+    festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}
+  scheduler:
+    enabled: ${TOUR_API_SCHEDULER_ENABLED:false}
+    cron: ${TOUR_API_SCHEDULER_CRON:0 0 0 * * *}
+    max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
+    retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
+    stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
+credit:
+  monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"

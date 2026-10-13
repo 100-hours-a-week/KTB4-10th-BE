@@ -29,8 +29,8 @@
 - 미지원 Body/Query 필드는 400 COMMON_VALIDATION_ERROR. V1 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일 0~4. THEME:DETAIL은 1:N이며 중복/부모/코드/개수 오류는 422 PREFERENCE_INVALID.
-- 가입월 포함 월 3회 누적 지급, 이월 가능, 탈퇴 소멸·재가입 3회. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
-- GDE-03에는 progress/retryable을 아직 추가하지 않는다. AI와 단계 계약 확정 후 별도 변경한다.
+- 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
+- GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. FAILED의 error에는 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
@@ -62,9 +62,14 @@
 | API-NOT-01 | 미읽은 알림 목록 | GET | `/notifications` | 예 | Query page,size; Body 없음 |
 | API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` | 예 | Path notification_id; Body 없음 |
 | API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
+| API-NOT-04 | 실시간 인앱 알림 연결 | GET | `/notifications/stream` | 예 | SSE; Body 없음 |
+| API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
+| API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
+| API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 서버 clusters, 상세 줌은 개별 콘텐츠 반환 |
+| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
+| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -94,8 +99,8 @@
 | API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
 | API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
 | API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
-| API-OPS-01 | 로드밸런서 헬스체크 | GET | `/actuator/health` | 예 | Query/Body 없음; 인프라 내부 |
-| API-OPS-02 | Prometheus 메트릭 수집 | GET | `/actuator/prometheus` | 예 | Query/Body 없음; 인프라 내부 |
+| API-OPS-01 | 로드밸런서 헬스체크 | GET | `:8081/actuator/health` | 예 | Query/Body 없음; 내부 관리 포트 |
+| API-OPS-02 | Prometheus 메트릭 수집 | GET | `:8081/actuator/prometheus` | 예 | Query/Body 없음; 내부 관리 포트 |
 
 ### 2.1 운영 헬스체크
 
@@ -103,7 +108,7 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
+| GET | `:8081/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
 
 - 애플리케이션과 MySQL 연결 같은 필수 의존성의 요청 처리 가능 상태를 확인한다.
 - AI·관광·PG·푸시 공급자는 헬스체크에서 제외하고 별도로 감시한다.
@@ -120,14 +125,14 @@
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/actuator/prometheus` | Prometheus scraper용 공개 경로. 서비스 세션 인증 없음 |
+| GET | `:8081/actuator/prometheus` | Prometheus scraper용 내부 관리 경로. 서비스 세션 인증 없음 |
 
-- 애플리케이션 포트 `8080`에서 Prometheus text format을 반환한다.
+- 업무 API와 분리된 내부 관리 포트 `8081`에서 Prometheus text format을 반환한다.
 - CPU·메모리, JVM Heap·GC·Thread, `http.server.requests`, HikariCP Active·Idle·Pending·Max 메트릭을 포함한다.
 - Actuator 기본 태그 외에 `application=kgb` 공통 태그를 부여한다.
 - 일반 업무 API의 `{message,data}` wrapper를 적용하지 않는다.
 - 백엔드는 수집 엔드포인트만 제공하며 Prometheus 서버·Grafana·경보 설정은 인프라 범위다.
-- 애플리케이션 인증을 요구하지 않는 대신 운영에서는 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
+- 애플리케이션 인증을 요구하지 않는 대신 관리 포트를 공용 라우팅에 연결하지 않고 보안 그룹·프록시 등 인프라 계층에서 접근 대상을 제한한다.
 
 ## 3. 회원
 
@@ -475,7 +480,7 @@ Body 없음.
 - language_code: 선택 String ≤10자, 지원 코드만
 - push_enabled: 선택 Boolean
 - 최소 1개 필수; 누락은 유지, null 불가
-- push_enabled=false는 푸시 발송만 금지하며, 필요한 인앱 알림 저장에는 영향을 주지 않음
+- push_enabled=false는 열린 웹앱의 SSE와 향후 Web Push 전송을 모두 금지하며, 필요한 인앱 알림 DB 저장에는 영향을 주지 않음
 
 **Request Body**
 
@@ -651,6 +656,189 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
+### API-NOT-04 실시간 인앱 알림 연결
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/notifications/stream` | 세션 쿠키 필수, ACTIVE 회원 |
+
+- 응답 형식은 `text/event-stream`이며 변경 요청이 아니므로 CSRF 토큰은 요구하지 않는다.
+- 같은 회원이 여러 탭에서 연결하면 모든 연결에 같은 알림을 전송한다. 메모리 고갈을 막기 위해 회원당 연결은 기본 5개까지 허용하며, 초과 연결 시 가장 오래된 연결을 종료한다.
+- 연결 직후 `connected` 이벤트를 보내고, 새 알림의 DB 트랜잭션이 커밋된 뒤 `notification` 이벤트를 보낸다.
+- `notification` 이벤트 ID는 저장된 `notification_id`를 사용한다. 전송 실패는 알림 저장과 원본 업무를 롤백하지 않는다.
+- 기본 15초마다 heartbeat comment를 보내고 기본 25분 후 연결을 만료한다. 완료·타임아웃·오류가 발생한 연결은 서버 메모리에서 제거한다.
+- 일반 로그아웃은 현재 서비스 세션에 속한 SSE 연결만 종료한다. 다른 세션의 연결은 유지하며, 회원 탈퇴처럼 모든 세션을 폐기하는 경우에만 해당 회원의 모든 SSE 연결을 종료한다.
+- 현재 단일 인스턴스에서는 연결을 메모리에 보관한다. 다중 인스턴스에서는 Redis Pub/Sub 등 인스턴스 간 이벤트 전달 방식을 별도 도입한다.
+- `push_enabled=false`이면 SSE와 향후 Web Push를 모두 전송하지 않는다. 알림 DB 저장과 목록 조회는 유지한다.
+- FE는 설정이 false이면 EventSource를 열지 않고, 연결 중 false로 변경하면 닫는다. 서버도 알림 생성 시 설정을 확인해 이미 열린 연결로 실시간 이벤트를 보내지 않는다.
+
+**연결 이벤트 예시**
+
+```text
+event:connected
+retry:3000
+data:{"connection_id":"b3b8cc0c-4f22-48ab-9f30-7a621193a00f"}
+```
+
+**알림 이벤트 예시**
+
+```text
+id:301
+event:notification
+retry:3000
+data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북 완성","body":"가이드북을 확인해 주세요.","reference_type":"GUIDEBOOK","reference_id":"101","created_at":"2026-09-04T00:00:00Z"}
+```
+
+**재연결·누락 복구 계약**
+
+- 브라우저 `EventSource`의 자동 재연결을 사용한다. FE·BE가 교차 Origin이면 쿠키 전달을 위해 `withCredentials: true`와 허용된 CORS Origin이 필요하다.
+- 서버는 `Last-Event-ID` 기반 과거 이벤트 재전송을 제공하지 않는다. 연결이 끊겼다가 복구되면 `GET /notifications`를 호출해 DB에 남은 미읽음 알림을 동기화한다.
+- 응답에는 `Cache-Control: no-cache`, `X-Accel-Buffering: no`를 설정한다. 배포 프록시도 SSE 버퍼링과 짧은 응답 타임아웃을 사용하지 않아야 한다.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 최초 연결 시 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | 최초 연결 시 ACTIVE 상태가 아님 |
+| 500 | INTERNAL_SERVER_ERROR | 최초 연결 처리 중 내부 오류 |
+
+연결 수립 이후의 네트워크 오류는 일반 JSON 오류 응답으로 전환할 수 없으므로 FE가 재연결하고 목록 API로 상태를 복구한다.
+
+### API-NOT-05 VAPID 공개키 조회
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/push/vapid-public-key` | 세션 쿠키 필수, ACTIVE 회원 |
+
+**응답 200**
+
+```json
+{
+  "message": "push_vapid_public_key_get_success",
+  "data": {
+    "public_key": "Base64URL로 인코딩한 P-256 공개키"
+  }
+}
+```
+
+- 공개키는 브라우저의 `PushManager.subscribe({ userVisibleOnly: true, applicationServerKey })`에 사용한다.
+- VAPID 개인키는 응답하지 않고 배포 Secret으로만 관리한다.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | ACTIVE 상태가 아님 |
+| 503 | WEB_PUSH_CONFIGURATION_UNAVAILABLE | 공개키 누락·형식 오류 |
+
+### API-NOT-06 현재 브라우저 Push 구독 등록·갱신
+
+| Method | URL | 인증 |
+|---|---|---|
+| PUT | `/members/me/push-subscriptions` | 세션 쿠키 + CSRF, ACTIVE 회원 |
+
+**Request Body**
+
+```json
+{
+  "endpoint": "https://push.example.com/subscriptions/browser-token",
+  "expiration_time": null,
+  "keys": {
+    "p256dh": "Base64URL P-256 공개키",
+    "auth": "Base64URL 인증 값"
+  }
+}
+```
+
+- `endpoint`: 필수 HTTPS URL, 최대 4096자
+- `expiration_time`: 선택 epoch milliseconds, 브라우저가 제공하지 않으면 null
+- `keys.p256dh`: 필수 Base64URL, 디코딩한 비압축 P-256 공개키 65바이트
+- `keys.auth`: 필수 Base64URL, 디코딩한 인증 값 16바이트
+- 동일 endpoint는 SHA-256 해시 UNIQUE를 기준으로 갱신한다. 다른 회원의 활성 endpoint는 이전 회원의 명시적인 로그아웃·구독 해제 없이 가져올 수 없다.
+
+**응답 200**
+
+```json
+{
+  "message": "web_push_subscription_upsert_success",
+  "data": {
+    "subscription_id": 21,
+    "status": "ACTIVE",
+    "expiration_time": null
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | 필수값 누락·길이·JSON 형식 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
+| 409 | WEB_PUSH_SUBSCRIPTION_CONFLICT | 다른 회원이 사용 중인 활성 endpoint |
+| 422 | WEB_PUSH_SUBSCRIPTION_INVALID | endpoint·암호화 키·만료 시각 형식 오류 |
+
+### API-NOT-07 현재 브라우저 Push 구독 해제
+
+| Method | URL | 인증 |
+|---|---|---|
+| DELETE | `/members/me/push-subscriptions/{subscription_id}` | 세션 쿠키 + CSRF, ACTIVE 회원 |
+
+- 본인 구독만 `REVOKED`로 변경한다. FE는 성공 후 브라우저의 `PushSubscription.unsubscribe()`를 호출한다.
+- 로그아웃은 현재 서비스 세션에 연결된 활성 구독만 폐기하며 회원 전체 `push_enabled`를 false로 바꾸지 않는다.
+- 회원 탈퇴는 해당 회원의 모든 활성 구독을 폐기한다.
+
+**응답 204**
+
+Body 없음.
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
+| 404 | WEB_PUSH_SUBSCRIPTION_NOT_FOUND | 구독이 없거나 현재 회원 소유가 아님 |
+
+**공식 규격 근거**
+
+- [MDN Push API](https://developer.mozilla.org/en-US/docs/Web/API/Push_API)
+- [MDN PushSubscription](https://developer.mozilla.org/en-US/docs/Web/API/PushSubscription)
+- [MDN PushManager.subscribe()](https://developer.mozilla.org/en-US/docs/Web/API/PushManager/subscribe)
+- [RFC 8291 Message Encryption for Web Push](https://www.rfc-editor.org/rfc/rfc8291.html)
+- [RFC 8292 VAPID](https://www.rfc-editor.org/rfc/rfc8292.html)
+
+### Web Push 서버 전송 계약
+
+- 브라우저별 구독 API와 달리 서버 발송은 외부 공개 endpoint가 아닌 내부 이벤트 처리다.
+- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않고, 이번 알림이 하나 이상의 SSE 연결에 정상적으로 `send()`된 경우에만 Web Push를 생략한다. 연결 객체만 남은 stale 연결이거나 모든 SSE 전송이 실패하면 Web Push를 fallback으로 등록한다.
+- payload는 Service Worker가 기존 알림과 이동 대상을 복원할 최소 필드만 포함한다.
+
+```json
+{
+  "notification_id": "301",
+  "type": "GUIDEBOOK_COMPLETED",
+  "reference_type": "GUIDEBOOK",
+  "reference_id": "101"
+}
+```
+
+- FE Service Worker는 payload를 받아 사용자에게 보이는 알림을 표시하고, 클릭 시 `reference_type`과 `reference_id`로 화면 이동 경로를 결정한다. 세부 경로와 강조 효과는 FE 라우팅 계약에서 관리한다.
+- Push 서비스의 2xx는 전송 접수 성공으로 기록한다. 404·410은 구독을 `INVALID`로 바꾸며, 429·재시도 가능한 5xx·timeout은 전용 제한 큐에서 최대 3회 백오프 재시도한다.
+- Web Push 접수 성공은 사용자의 표시·클릭을 보장하는 delivery receipt가 아니다.
+- VAPID 키 쌍은 애플리케이션 환경별로 한 번 생성해 모든 인스턴스가 공유한다. 공개키는 API로 제공하지만 개인키는 배포 Secret으로만 주입한다.
+- endpoint는 capability URL이므로 endpoint·p256dh·auth·VAPID 개인키·payload 원문을 로그에 남기지 않는다.
+- V2는 단일 인스턴스 메모리에서 알림 ID 중복 작업 등록을 제한한다. 재시작·다중 인스턴스를 넘는 중복 방지와 영속 재처리는 보장하지 않는다.
+
+**서버 설정 환경 변수**
+
+| 환경 변수 | 설명 | 노출 정책 |
+|---|---|---|
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | 브라우저 구독과 서버 서명에 사용하는 공개키 | API 제공 가능 |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | 서버 VAPID 서명 개인키 | Secret, FE·로그·문서 값 노출 금지 |
+| `WEB_PUSH_VAPID_SUBJECT` | Push 서비스 운영 연락처인 `mailto:` 또는 `https:` URI | 서버 설정 |
+| `WEB_PUSH_EXECUTOR_CORE_POOL_SIZE` | 전송 전용 실행기 기본 스레드 수 | 운영 설정 |
+| `WEB_PUSH_EXECUTOR_MAX_POOL_SIZE` | 전송 전용 실행기 최대 스레드 수 | 운영 설정 |
+| `WEB_PUSH_EXECUTOR_QUEUE_CAPACITY` | 전송 대기 큐 상한 | 운영 설정 |
+| `WEB_PUSH_MAX_ATTEMPTS` | 최초 전송을 포함한 최대 시도 횟수 | 운영 설정 |
+| `WEB_PUSH_INITIAL_BACKOFF` | 첫 재시도 대기 시간 | 운영 설정 |
+| `WEB_PUSH_MAX_BACKOFF` | 서버가 준 Retry-After를 포함한 최대 대기 시간 | 운영 설정 |
+
 ## 4. 관광콘텐츠
 
 ### API-CON-01 관광 콘텐츠 검색
@@ -742,24 +930,24 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-### API-CON-03 지도 콘텐츠 조회
+### API-CON-03 지도 마커 조회
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/map/contents` | 세션 쿠키 필수 |
+| GET | `/map/markers` | 세션 쿠키 필수 |
 
 - Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
 - 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이어야 함
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)
 - zoom: 필수 Integer. FE가 카카오맵 레벨을 변환한 값으로 전달
-- zoom 14 이하는 `CLUSTER`, 15 이상은 `CONTENT` 모드로 응답
-- `CLUSTER` 모드는 줌에 따라 격자별 개수를 집계하고, 콘텐츠가 많은 클러스터 순으로 격자당 대표 1건을 최대 20건 반환
-- `CONTENT` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 반환
+- zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
+- `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
+- `MARKER` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 지도 표시에 필요한 최소 필드로 반환
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
-- 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
 - `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
-- `CLUSTER` 모드에서는 `clusters[]`로 전체 분포를, `items[]`로 바텀시트 대표 콘텐츠를 제공한다. `CONTENT` 모드는 `clusters[]`가 빈 배열이다.
-- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
+- `CLUSTER` 모드에서는 `clusters[]`만, `MARKER` 모드에서는 `markers[]`만 제공한다.
+- 요청 시 DB 공간 조회로 fallback하지 않고 마지막 정상 0.5도 타일 스냅샷을 사용한다.
 
 **Request Body**
 
@@ -769,10 +957,49 @@ Body 없음.
 
 ```json
 {
+  "message": "map_marker_success",
+  "data": {
+    "mode": "MARKER",
+    "clusters": [],
+    "markers": [{
+      "content_id": "101",
+      "title": "불국사",
+      "content_type": "PLACE",
+      "latitude": 35.7898,
+      "longitude": 129.3321,
+      "is_favorite": true,
+      "is_in_guidebook": false
+    }]
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+
+**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds와 zoom을 전달한다. 줌 14 이하이거나 화면 대각선이 20km를 넘으면 서버가 0.5도 고정 타일 스냅샷에서 bounds 내 콘텐츠를 읽고 기본 화면상 120px 반경으로 묶어 모든 클러스터를 반환하며, 그 외에는 최소 필드의 개별 마커를 반환한다.
+
+### API-CON-03-1 지도 바텀시트 목록
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/map/contents` | 세션 쿠키 필수 |
+
+- Query `south`, `west`, `north`, `east`는 필수이며 `cursor`는 첫 페이지에서 생략한다.
+- 페이지 크기는 서버가 10개로 고정하며 클라이언트 크기 파라미터를 받지 않는다.
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)을 반환한다.
+- 현재 bounds 중심과 가까운 순서, 동률이면 내부 콘텐츠 ID 순서로 정렬한다.
+- `next_cursor`는 같은 bounds에서만 사용할 수 있는 불투명 커서다.
+- 사용자가 실제 목록 끝에 도달했을 때만 다음 커서를 요청한다.
+- 공통 콘텐츠는 마지막 정상 타일 스냅샷에서만 읽고 현재 10개에 대해서만 개인화 정보를 조회한다.
+
+```json
+{
   "message": "map_content_success",
   "data": {
-    "mode": "CONTENT",
-    "clusters": [],
     "items": [{
       "content_id": "101",
       "title": "불국사",
@@ -785,18 +1012,11 @@ Body 없음.
       "is_favorite": true,
       "is_in_guidebook": false
     }],
-    "has_more": false
+    "next_cursor": "AAAACgAAAAE",
+    "has_more": true
   }
 }
 ```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds를 전달하며 백엔드는 대각선 20km·기본 100·최대 200 제한으로 핀 원본만 반환한다. 클러스터링과 `9+` 표시는 프론트의 카카오맵 SDK가 담당한다.
 
 ### API-CON-04 관심 장소 목록
 
@@ -950,7 +1170,7 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**현재 구현:** 실패한 자신의 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도는 복구 작업과 함께 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
+**현재 구현:** DB 커밋 후 최초 AI 접수가 실패하면 작업을 `FAILED`로 종료하고 실패 유형과 재시도 가능 여부만 내부 저장한다. 실패한 자신의 작업 중 `error.retryable=true`인 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도·서버 재시작 후 정체 작업 복구는 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
 
 ### API-GDE-03 생성 상태 조회
 
@@ -964,7 +1184,7 @@ Body 없음.
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
 - 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
-- error: FAILED이면 {code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다."}, 그 외 상태는 null. 내부 AI error_payload는 반환하지 않는다.
+- error: FAILED이면 `{code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다.",retryable:true|false}`, 그 외 상태는 null. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다. 내부 AI error_payload와 원문은 반환하지 않는다.
 
 **Request Body**
 
@@ -1660,6 +1880,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 서버 환경변수에 설정된 관리자용 쿠폰을 등록한다. 번호는 앞뒤 공백을 제거하고 대소문자를 구분하지 않는다. 쿠폰 원문은 응답과 원장에 포함하지 않으며 관리자가 필요할 때 반복해 사용할 수 있다.
 
+잘못된 쿠폰 입력은 회원별로 첫 실패부터 10분 동안 집계한다. 같은 집계 구간의 5번째 실패부터 10분간 등록을 차단하며, 차단 만료·집계 구간 만료 또는 유효한 쿠폰 등록 성공 시 실패 상태를 초기화한다. 차단 응답의 `Retry-After` 헤더는 남은 대기 시간을 초 단위로 제공한다. 서버 쿠폰 설정 오류, 인증·인가·CSRF와 요청 형식 오류는 쿠폰 코드 실패 횟수에 포함하지 않는다. 실패 상태는 현재 단일 인스턴스의 인메모리 TTL 캐시에 보관하므로 재기동 시 초기화되며, 다중 인스턴스 전환 시 공유 저장소가 필요하다.
+
 **Request Body**
 
 ```json
@@ -1678,6 +1900,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 422 | COUPON_INVALID | 설정된 번호와 일치하지 않음 |
+| 429 | RATE_LIMIT_EXCEEDED | 10분 집계 구간에서 잘못된 쿠폰 입력 5회 도달 또는 차단 중 재요청; `Retry-After` 제공 |
 | 503 | COUPON_UNAVAILABLE | 쿠폰 또는 지급 수량이 서버에 올바르게 설정되지 않음 |
 
 ### API-PAY-02 생성권 원장 조회
@@ -1992,7 +2215,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | API-DEC-02 | MEM-06/GDE-16 | 부분 확정: 탈퇴·가이드북 삭제 시 진행 중 AI 작업에 취소 명령을 전달하고 늦은 완료 결과를 무시. 결제 중 탈퇴는 PG 계약 후 확정. |
 | API-DEC-03 | MEM-07~11/NOT/GDE | 확정: 취향·부모 관계·동행·언어·알림 Enum과 선택/인원 상한은 현재 승인된 화면정의서·기능설계도에 정의된 범위만 구현. |
 | API-DEC-04 | MEM-05/12/13 | 확정: 프로필 직접 수정은 제외하고 OAuth 프로필은 로그인 시 동기화. 정책 문서는 서버가 `MARKDOWN`으로 제공. |
-| API-DEC-05 | CON-01/03 | 확정: 지도 최초 중심은 카카오 판교 아지트, 줌 6~21(최초 16~17). bounds 대각선 최대 20km, 응답 기본 100·최대 200. 서버는 핀 원본만 반환하고 카카오맵 SDK가 클러스터링과 `9+` 표시를 담당. |
+| API-DEC-05 | CON-01/03 | 확정: 지도 최초 중심은 카카오 판교 아지트, 줌 6~21(최초 16~17). 줌 14 이하이거나 bounds 대각선이 20km를 넘으면 서버가 기본 화면상 120px 반경 클러스터와 모든 대표 콘텐츠를 반환하며, 그 외에는 개별 콘텐츠를 반환. |
 | API-DEC-06 | CON-04 | 확정: 비활성·삭제된 관심 장소는 목록에서 숨김. |
 | API-DEC-08 | GDE-13 | 부분 확정: MVP는 기존 설계대로 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정. |
 | API-DEC-09 | RNK-03/06 | 확정: 기존 최종 평가는 덮어쓰고 null은 삭제. 유효 content_id를 최초 등장 순으로 중복 제거하고 미매핑 항목은 제외. 제출 완료 후 모든 재요청은 409. |

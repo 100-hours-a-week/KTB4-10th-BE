@@ -1,13 +1,15 @@
 package com.ktb10.kgb.guidebook.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.AiClientException;
+import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
+import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -47,6 +49,7 @@ public class GuidebookGenerationService {
 
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
     private static final int MAX_TRIP_DAYS = 7;
+    private static final int MAX_RETRY_COUNT = 3;
     private static final Set<GenerationStatus> ACTIVE_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
             GenerationStatus.PROCESSING);
@@ -58,6 +61,7 @@ public class GuidebookGenerationService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
     private final GuidebookResultService guidebookResultService;
+    private final AiIntegrationErrorLogger aiIntegrationErrorLogger;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -69,6 +73,7 @@ public class GuidebookGenerationService {
             ApplicationEventPublisher eventPublisher,
             ObjectProvider<GuidebookAiClient> guidebookAiClientProvider,
             GuidebookResultService guidebookResultService,
+            AiIntegrationErrorLogger aiIntegrationErrorLogger,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
@@ -78,6 +83,7 @@ public class GuidebookGenerationService {
         this.eventPublisher = eventPublisher;
         this.guidebookAiClientProvider = guidebookAiClientProvider;
         this.guidebookResultService = guidebookResultService;
+        this.aiIntegrationErrorLogger = aiIntegrationErrorLogger;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -156,13 +162,20 @@ public class GuidebookGenerationService {
                 job = generationJobRepository.findById(jobId)
                         .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
             } catch (AiClientException exception) {
+                aiIntegrationErrorLogger.logFailure(
+                        "ai_generation_status_sync_failed",
+                        job.getId(),
+                        job.getAiJobId(),
+                        exception);
                 job.fail("{\"code\":\"AI_STATUS_UNAVAILABLE\"}", LocalDateTime.now(clock));
             }
         }
 
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
                 ? new GenerationStatusResponse.GenerationError(
-                        "GENERATION_FAILED", "가이드북 생성에 실패했습니다.")
+                        "GENERATION_FAILED",
+                        "가이드북 생성에 실패했습니다.",
+                        isRetryable(job))
                 : null;
         return GenerationStatusResponse.from(job, error);
     }
@@ -180,8 +193,11 @@ public class GuidebookGenerationService {
         if (job.getStatus() != GenerationStatus.FAILED) {
             throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
-        if (job.getAttemptCount() >= 3) {
+        if (job.getAttemptCount() >= MAX_RETRY_COUNT) {
             throw new BusinessException(GuidebookErrorCode.RETRY_LIMIT_EXCEEDED);
+        }
+        if (!isRetryable(job)) {
+            throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
 
         job.retry(LocalDateTime.now(clock));
@@ -193,6 +209,26 @@ public class GuidebookGenerationService {
         return job.getAiJobId() != null
                 && (job.getStatus() == GenerationStatus.PENDING
                 || job.getStatus() == GenerationStatus.PROCESSING);
+    }
+
+    private boolean isRetryable(GenerationJob job) {
+        if (job.getAttemptCount() >= MAX_RETRY_COUNT) {
+            return false;
+        }
+        if (job.getErrorPayload() == null || job.getErrorPayload().isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode payload = objectMapper.readTree(job.getErrorPayload());
+            if (payload != null && payload.isTextual()) {
+                payload = objectMapper.readTree(payload.asText());
+            }
+            return payload == null
+                    || !payload.has("retryable")
+                    || payload.get("retryable").asBoolean();
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
+            return false;
+        }
     }
 
     private GuidebookGenerationResponse handleRepeatedRequest(

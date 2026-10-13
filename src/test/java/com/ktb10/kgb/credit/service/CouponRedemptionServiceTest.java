@@ -38,6 +38,8 @@ class CouponRedemptionServiceTest {
     private CreditWalletRepository creditWalletRepository;
     @Mock
     private CreditTransactionRepository creditTransactionRepository;
+    @Mock
+    private CouponAttemptLimiter couponAttemptLimiter;
 
     private CouponRedemptionService service;
     private CreditWallet wallet;
@@ -47,6 +49,7 @@ class CouponRedemptionServiceTest {
         service = new CouponRedemptionService(
                 creditWalletRepository,
                 creditTransactionRepository,
+                couponAttemptLimiter,
                 CLOCK,
                 "Secret-2026",
                 2);
@@ -73,6 +76,8 @@ class CouponRedemptionServiceTest {
         ArgumentCaptor<CreditTransaction> captor =
                 ArgumentCaptor.forClass(CreditTransaction.class);
         verify(creditTransactionRepository).save(captor.capture());
+        verify(couponAttemptLimiter).checkAllowed(MEMBER_ID);
+        verify(couponAttemptLimiter).reset(MEMBER_ID);
         assertThat(captor.getValue().getType()).isEqualTo(CreditTransactionType.COUPON_GRANT);
         assertThat(captor.getValue().getIdempotencyKey())
                 .startsWith("admin-coupon:" + MEMBER_ID + ":")
@@ -87,6 +92,7 @@ class CouponRedemptionServiceTest {
                 .isEqualTo("COUPON_INVALID");
 
         verify(creditWalletRepository, never()).findByMemberIdForUpdate(any());
+        verify(couponAttemptLimiter).recordFailure(MEMBER_ID);
     }
 
     @Test

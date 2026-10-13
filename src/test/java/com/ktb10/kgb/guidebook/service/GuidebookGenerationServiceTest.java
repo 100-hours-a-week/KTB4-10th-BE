@@ -13,6 +13,8 @@ import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.AiClientException;
+import com.ktb10.kgb.guidebook.client.AiFailureType;
+import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -76,6 +78,9 @@ class GuidebookGenerationServiceTest {
     @Mock
     private GuidebookResultService guidebookResultService;
 
+    @Mock
+    private AiIntegrationErrorLogger aiIntegrationErrorLogger;
+
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -91,6 +96,7 @@ class GuidebookGenerationServiceTest {
                 eventPublisher,
                 guidebookAiClientProvider,
                 guidebookResultService,
+                aiIntegrationErrorLogger,
                 objectMapper,
                 CLOCK);
     }
@@ -162,7 +168,13 @@ class GuidebookGenerationServiceTest {
         given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
         given(guidebookAiClientProvider.getIfAvailable()).willReturn(aiClient);
         given(aiClient.getGenerationStatus("ai-job-301"))
-                .willThrow(new AiClientException("AI 서버 상태 조회 요청에 실패했습니다."));
+                .willThrow(new AiClientException(
+                        "AI 서버 상태 조회 요청에 실패했습니다.",
+                        new IllegalStateException("connection reset"),
+                        AiFailureType.CONNECTION_ERROR,
+                        "/guidebooks-generations/{jobId}",
+                        null,
+                        20L));
 
         var response = service.getGenerationJobStatus(MEMBER_ID, 301L);
 
@@ -170,6 +182,11 @@ class GuidebookGenerationServiceTest {
         assertThat(response.error().code()).isEqualTo("GENERATION_FAILED");
         assertThat(job.getErrorPayload()).contains("AI_STATUS_UNAVAILABLE");
         verify(guidebookResultService, never()).apply(any(), any());
+        verify(aiIntegrationErrorLogger).logFailure(
+                org.mockito.ArgumentMatchers.eq("ai_generation_status_sync_failed"),
+                org.mockito.ArgumentMatchers.eq(301L),
+                org.mockito.ArgumentMatchers.eq("ai-job-301"),
+                org.mockito.ArgumentMatchers.any(AiClientException.class));
     }
 
     @Test
@@ -402,6 +419,41 @@ class GuidebookGenerationServiceTest {
                 .isEqualTo(GenerationStatus.PENDING);
     }
 
+    @Test
+    void rejectsManualRetryForNonRetryableSubmissionFailure() {
+        GenerationJob job = failedJob(
+                "{\"code\":\"AI_SUBMISSION_FAILED\","
+                        + "\"failure_type\":\"upstream_4xx\",\"retryable\":false}");
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        assertThatThrownBy(() -> service.retry(MEMBER_ID, 301L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void repeatedManualRetryPublishesOnlyOneNewAttempt() {
+        GenerationJob job = failedJob(
+                "{\"code\":\"AI_SUBMISSION_FAILED\","
+                        + "\"failure_type\":\"upstream_5xx\",\"retryable\":true}");
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        service.retry(MEMBER_ID, 301L);
+
+        assertThatThrownBy(() -> service.retry(MEMBER_ID, 301L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
+        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        assertThat(job.getAttemptCount()).isEqualTo((short) 1);
+    }
+
     private GuidebookGenerationRequest validRequest() {
         return new GuidebookGenerationRequest(
                 "경상북도",
@@ -451,5 +503,13 @@ class GuidebookGenerationServiceTest {
         CreditWallet wallet = CreditWallet.open(member, LocalDateTime.now(CLOCK));
         wallet.grant(balance, LocalDateTime.now(CLOCK));
         return wallet;
+    }
+
+    private GenerationJob failedJob(String errorPayload) {
+        GenerationJob job = GenerationJob.createInitial(
+                member(), "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.fail(errorPayload, LocalDateTime.now(CLOCK));
+        return job;
     }
 }

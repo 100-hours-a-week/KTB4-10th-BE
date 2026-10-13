@@ -1,0 +1,698 @@
+package com.ktb10.kgb.content.tourapi;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
+import com.ktb10.kgb.guidebook.entity.AdministrativeProvince;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.math.BigDecimal;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import org.springframework.jdbc.core.BatchPreparedStatementSetter;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+/** 검증된 TourAPI 목록 JSON을 서비스 테이블에 증분 반영합니다. */
+@Service
+public class TourApiImportService {
+
+    private static final String SOURCE_PROVIDER = "TOUR_API";
+    private static final DateTimeFormatter SOURCE_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
+    private static final DateTimeFormatter SOURCE_DATE =
+            DateTimeFormatter.BASIC_ISO_DATE;
+
+    private final ObjectMapper objectMapper;
+    private final JdbcTemplate jdbcTemplate;
+
+    public TourApiImportService(
+            ObjectMapper objectMapper,
+            JdbcTemplate jdbcTemplate) {
+        this.objectMapper = objectMapper;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** 검증된 areaBasedList2와 searchFestival2 응답을 한 트랜잭션으로 증분 반영합니다. */
+    @Transactional
+    public ImportSummary importSnapshots(byte[] areaSnapshot, byte[] festivalSnapshot) {
+        List<JsonNode> contents = readItems(areaSnapshot, "수집한 areaBasedList2 스냅샷");
+        ContentImportResult contentResult = synchronizeAndImportContents(contents);
+        List<JsonNode> events = readItems(festivalSnapshot, "수집한 searchFestival2 스냅샷");
+        EventImportResult eventResult = importEvents(events, contentResult.contentIds());
+        return new ImportSummary(
+                contents.size(),
+                contentResult.imported(),
+                contentResult.missingCoordinates(),
+                contentResult.missingRegionMapping(),
+                contentResult.inactive(),
+                contentResult.reactivated(),
+                events.size(),
+                eventResult.imported(),
+                eventResult.invalid());
+    }
+
+    private ContentImportResult synchronizeAndImportContents(List<JsonNode> contents) {
+        Map<SourceRegionKey, ServiceRegionKey> regionNames =
+                extractRegionNames(contents);
+        Map<AdministrativeProvince, String> provinceCodes =
+                extractProvinceCodes(contents);
+        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
+        return importContents(contents, regionMappings);
+    }
+
+    private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
+        try {
+            JsonNode items = objectMapper.readTree(snapshot)
+                    .path("response")
+                    .path("body")
+                    .path("items")
+                    .path("item");
+            if (!items.isArray()) {
+                throw new IllegalArgumentException(
+                        "TourAPI item 배열을 찾을 수 없습니다: " + sourceName);
+            }
+            List<JsonNode> result = new ArrayList<>();
+            items.forEach(result::add);
+            return result;
+        } catch (IOException exception) {
+            throw new UncheckedIOException(
+                    "TourAPI JSON을 읽을 수 없습니다: " + sourceName,
+                    exception);
+        }
+    }
+
+    private Map<SourceRegionKey, ServiceRegionKey> extractRegionNames(
+            List<JsonNode> contents) {
+        Map<SourceRegionKey, Map<ServiceRegionKey, Integer>> frequencies = new HashMap<>();
+        for (JsonNode content : contents) {
+            SourceRegionKey sourceKey = sourceRegionKey(content);
+            ServiceRegionKey serviceKey = serviceRegionKey(content.path("addr1").asText());
+            if (sourceKey == null || serviceKey == null) {
+                continue;
+            }
+            frequencies.computeIfAbsent(sourceKey, ignored -> new HashMap<>())
+                    .merge(serviceKey, 1, Integer::sum);
+        }
+
+        Map<SourceRegionKey, ServiceRegionKey> result = new HashMap<>();
+        frequencies.forEach((source, candidates) -> candidates.entrySet().stream()
+                .max(Comparator.comparingInt(Map.Entry::getValue))
+                .ifPresent(entry -> result.put(source, entry.getKey())));
+        return result;
+    }
+
+    private ServiceRegionKey serviceRegionKey(String address) {
+        if (!StringUtils.hasText(address)) {
+            return null;
+        }
+        String[] tokens = address.trim().split("\\s+");
+        if (tokens.length < 2) {
+            return null;
+        }
+        try {
+            AdministrativeProvince province =
+                    AdministrativeProvince.fromDisplayName(tokens[0]);
+            if (province == AdministrativeProvince.SEJONG) {
+                return new ServiceRegionKey(province, province.displayName());
+            }
+            AdministrativeDistrict.fromDisplayName(province, tokens[1]);
+            return new ServiceRegionKey(province, tokens[1]);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private Map<AdministrativeProvince, String> extractProvinceCodes(
+            List<JsonNode> contents) {
+        Map<AdministrativeProvince, String> result = new HashMap<>();
+        for (JsonNode content : contents) {
+            String sourceCode = text(content, "lDongRegnCd");
+            String address = text(content, "addr1");
+            if (sourceCode == null || address == null) {
+                continue;
+            }
+            String[] tokens = address.split("\\s+");
+            AdministrativeProvince province = provinceOrNull(tokens[0]);
+            if (province != null) {
+                result.putIfAbsent(province, sourceCode);
+            }
+        }
+        return result;
+    }
+
+    private AdministrativeProvince provinceOrNull(String displayName) {
+        try {
+            return AdministrativeProvince.fromDisplayName(displayName);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private RegionMappings synchronizeRegions(
+            Map<SourceRegionKey, ServiceRegionKey> regionNames,
+            Map<AdministrativeProvince, String> provinceCodes) {
+        provinceCodes.forEach(this::upsertProvince);
+        Map<AdministrativeProvince, Long> provinceIds = loadProvinceIds(provinceCodes);
+        for (AdministrativeDistrict district : AdministrativeDistrict.values()) {
+            Long provinceId = provinceIds.get(district.province());
+            if (provinceId != null) {
+                upsertDistrict(district, provinceId, provinceCodes.get(district.province()));
+            }
+        }
+
+        Map<ServiceRegionKey, Long> districtIds = loadDistrictIds(provinceIds);
+        Map<SourceRegionKey, Long> mappings = new HashMap<>();
+        regionNames.forEach((source, service) -> {
+            Long regionId = districtIds.get(service);
+            if (regionId != null) {
+                upsertSourceRegionMapping(source, regionId);
+                mappings.put(source, regionId);
+            }
+        });
+        return new RegionMappings(mappings, districtIds);
+    }
+
+    private void upsertProvince(
+            AdministrativeProvince province,
+            String administrativeCode) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO regions (
+                    parent_id, administrative_code, name, region_level
+                ) VALUES (NULL, ?, ?, 'PROVINCE')
+                ON DUPLICATE KEY UPDATE
+                    parent_id = NULL,
+                    name = VALUES(name),
+                    region_level = 'PROVINCE'
+                """,
+                administrativeCode,
+                province.displayName());
+    }
+
+    private Map<AdministrativeProvince, Long> loadProvinceIds(
+            Map<AdministrativeProvince, String> provinceCodes) {
+        Map<AdministrativeProvince, Long> result = new HashMap<>();
+        provinceCodes.forEach((province, code) -> {
+            Long id = jdbcTemplate.queryForObject(
+                    "SELECT id FROM regions WHERE administrative_code = ?",
+                    Long.class,
+                    code);
+            result.put(province, id);
+        });
+        return result;
+    }
+
+    private void upsertDistrict(
+            AdministrativeDistrict district,
+            Long provinceId,
+            String provinceCode) {
+        String administrativeCode = district.name().substring("REGION_".length());
+        if (administrativeCode.equals(provinceCode)) {
+            administrativeCode += "-D";
+        }
+        jdbcTemplate.update(
+                """
+                INSERT INTO regions (
+                    parent_id, administrative_code, name, region_level
+                ) VALUES (?, ?, ?, 'DISTRICT')
+                ON DUPLICATE KEY UPDATE
+                    parent_id = VALUES(parent_id),
+                    name = VALUES(name),
+                    region_level = 'DISTRICT'
+                """,
+                provinceId,
+                administrativeCode,
+                district.displayName());
+    }
+
+    private Map<ServiceRegionKey, Long> loadDistrictIds(
+            Map<AdministrativeProvince, Long> provinceIds) {
+        Map<ServiceRegionKey, Long> result = new HashMap<>();
+        provinceIds.forEach((province, provinceId) -> jdbcTemplate.query(
+                """
+                        SELECT id, name
+                        FROM regions
+                        WHERE parent_id = ? AND region_level = 'DISTRICT'
+                """,
+                (resultSet, rowNumber) -> Map.entry(
+                        new ServiceRegionKey(province, resultSet.getString("name")),
+                        resultSet.getLong("id")),
+                provinceId).forEach(entry -> result.put(entry.getKey(), entry.getValue())));
+        return result;
+    }
+
+    private void upsertSourceRegionMapping(SourceRegionKey source, Long regionId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO tour_api_region_mappings (
+                    source_provider, source_region_code, source_district_code,
+                    region_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, NOW(6), NOW(6))
+                ON DUPLICATE KEY UPDATE
+                    region_id = VALUES(region_id),
+                    updated_at = NOW(6)
+                """,
+                SOURCE_PROVIDER,
+                source.regionCode(),
+                source.districtCode(),
+                regionId);
+    }
+
+    private ContentImportResult importContents(
+            List<JsonNode> sourceContents,
+            RegionMappings regionMappings) {
+        List<ContentRow> rows = new ArrayList<>();
+        Set<String> contentIds = new HashSet<>();
+        Set<String> sourceContentIds = new HashSet<>();
+        int missingCoordinates = 0;
+        int missingRegionMapping = 0;
+
+        for (JsonNode source : sourceContents) {
+            String sourceContentId = text(source, "contentid");
+            if (sourceContentId != null) {
+                sourceContentIds.add(sourceContentId);
+            }
+            BigDecimal longitude = decimal(source, "mapx");
+            BigDecimal latitude = decimal(source, "mapy");
+            if (longitude == null || latitude == null) {
+                missingCoordinates++;
+                continue;
+            }
+            SourceRegionKey sourceRegion = sourceRegionKey(source);
+            Long regionId = regionMappings.bySource().get(sourceRegion);
+            if (regionId == null) {
+                ServiceRegionKey serviceRegion =
+                        serviceRegionKey(source.path("addr1").asText());
+                regionId = regionMappings.byService().get(serviceRegion);
+            }
+            if (regionId == null) {
+                missingRegionMapping++;
+                continue;
+            }
+            ContentRow row = ContentRow.from(source, regionId, longitude, latitude);
+            if (row != null) {
+                rows.add(row);
+                contentIds.add(row.sourceContentId());
+            }
+        }
+
+        Map<String, ExistingContent> existingContents = loadExistingContents();
+        List<ContentRow> changedRows = rows.stream()
+                .filter(row -> row.needsUpsert(existingContents.get(row.sourceContentId())))
+                .toList();
+        int reactivated = (int) changedRows.stream()
+                .map(row -> existingContents.get(row.sourceContentId()))
+                .filter(Objects::nonNull)
+                .filter(existing -> !"ACTIVE".equals(existing.status()) || existing.deleted())
+                .count();
+        batchUpsertContents(changedRows);
+        List<String> missingContentIds = existingContents.values().stream()
+                .filter(existing -> "ACTIVE".equals(existing.status()))
+                .map(ExistingContent::sourceContentId)
+                .filter(existingId -> !sourceContentIds.contains(existingId))
+                .toList();
+        batchDeactivateContents(missingContentIds);
+        return new ContentImportResult(
+                changedRows.size(),
+                missingCoordinates,
+                missingRegionMapping,
+                missingContentIds.size(),
+                reactivated,
+                contentIds);
+    }
+
+    private Map<String, ExistingContent> loadExistingContents() {
+        Map<String, ExistingContent> result = new HashMap<>();
+        jdbcTemplate.query(
+                """
+                SELECT source_content_id, source_modified_at, status, deleted_at
+                FROM tourism_contents
+                WHERE source_provider = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingContent(
+                        resultSet.getString("source_content_id"),
+                        resultSet.getTimestamp("source_modified_at") == null
+                                ? null
+                                : resultSet.getTimestamp("source_modified_at").toLocalDateTime(),
+                        resultSet.getString("status"),
+                        resultSet.getTimestamp("deleted_at") != null),
+                SOURCE_PROVIDER).forEach(content -> result.put(content.sourceContentId(), content));
+        return result;
+    }
+
+    private void batchUpsertContents(List<ContentRow> rows) {
+        String sql =
+                """
+                INSERT INTO tourism_contents (
+                    source_provider, source_content_id,
+                    source_content_type_id, title, description, region_id,
+                    source_region_code, source_district_code,
+                    classification_code_1, classification_code_2,
+                    classification_code_3, address, location, phone,
+                    homepage_url, thumbnail_url, source_created_at,
+                    source_modified_at, status, deleted_at, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?,
+                    ST_SRID(POINT(?, ?), 4326), ?, NULL, ?, ?, ?,
+                    'ACTIVE', NULL, NOW(6), NOW(6)
+                )
+                ON DUPLICATE KEY UPDATE
+                    source_content_type_id = VALUES(source_content_type_id),
+                    title = VALUES(title),
+                    region_id = VALUES(region_id),
+                    source_region_code = VALUES(source_region_code),
+                    source_district_code = VALUES(source_district_code),
+                    classification_code_1 = VALUES(classification_code_1),
+                    classification_code_2 = VALUES(classification_code_2),
+                    classification_code_3 = VALUES(classification_code_3),
+                    address = VALUES(address),
+                    location = VALUES(location),
+                    phone = VALUES(phone),
+                    thumbnail_url = VALUES(thumbnail_url),
+                    source_created_at = VALUES(source_created_at),
+                    source_modified_at = VALUES(source_modified_at),
+                    status = 'ACTIVE',
+                    deleted_at = NULL,
+                    updated_at = NOW(6)
+                """;
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement statement, int index)
+                    throws SQLException {
+                rows.get(index).setValues(statement);
+            }
+
+            @Override
+            public int getBatchSize() {
+                return rows.size();
+            }
+        });
+    }
+
+    private void batchDeactivateContents(List<String> sourceContentIds) {
+        jdbcTemplate.batchUpdate(
+                """
+                UPDATE tourism_contents
+                SET status = 'INACTIVE', deleted_at = NOW(6), updated_at = NOW(6)
+                WHERE source_provider = ? AND source_content_id = ? AND status = 'ACTIVE'
+                """,
+                new BatchPreparedStatementSetter() {
+                    @Override
+                    public void setValues(PreparedStatement statement, int index)
+                            throws SQLException {
+                        statement.setString(1, SOURCE_PROVIDER);
+                        statement.setString(2, sourceContentIds.get(index));
+                    }
+
+                    @Override
+                    public int getBatchSize() {
+                        return sourceContentIds.size();
+                    }
+                });
+    }
+
+    private EventImportResult importEvents(
+            List<JsonNode> sourceEvents,
+            Set<String> importedContentIds) {
+        List<EventRow> events = new ArrayList<>();
+        int invalid = 0;
+        for (JsonNode source : sourceEvents) {
+            String contentId = text(source, "contentid");
+            LocalDate startDate = date(source, "eventstartdate");
+            LocalDate endDate = date(source, "eventenddate");
+            if (!importedContentIds.contains(contentId)
+                    || startDate == null
+                    || endDate == null
+                    || startDate.isAfter(endDate)) {
+                invalid++;
+                continue;
+            }
+            events.add(new EventRow(contentId, startDate, endDate));
+        }
+
+        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
+        List<EventRow> changedEvents = events.stream()
+                .filter(event -> !event.matches(existingEvents.get(event.sourceContentId())))
+                .toList();
+
+        String sql =
+                """
+                INSERT INTO event_details (
+                    content_id, start_date, end_date,
+                    operating_hours, organizer, updated_at
+                )
+                SELECT id, ?, ?, NULL, NULL, NOW(6)
+                FROM tourism_contents
+                WHERE source_provider = ? AND source_content_id = ?
+                ON DUPLICATE KEY UPDATE
+                    start_date = VALUES(start_date),
+                    end_date = VALUES(end_date),
+                    updated_at = NOW(6)
+                """;
+        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+            @Override
+            public void setValues(PreparedStatement statement, int index)
+                    throws SQLException {
+                EventRow event = changedEvents.get(index);
+                statement.setObject(1, event.startDate());
+                statement.setObject(2, event.endDate());
+                statement.setString(3, SOURCE_PROVIDER);
+                statement.setString(4, event.sourceContentId());
+            }
+
+            @Override
+            public int getBatchSize() {
+                return changedEvents.size();
+            }
+        });
+        return new EventImportResult(changedEvents.size(), invalid);
+    }
+
+    private Map<String, ExistingEvent> loadExistingEvents() {
+        Map<String, ExistingEvent> result = new HashMap<>();
+        jdbcTemplate.query(
+                """
+                SELECT content.source_content_id, event.start_date, event.end_date
+                FROM event_details event
+                JOIN tourism_contents content ON content.id = event.content_id
+                WHERE content.source_provider = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingEvent(
+                        resultSet.getString("source_content_id"),
+                        resultSet.getDate("start_date").toLocalDate(),
+                        resultSet.getDate("end_date").toLocalDate()),
+                SOURCE_PROVIDER).forEach(event -> result.put(event.sourceContentId(), event));
+        return result;
+    }
+
+    private SourceRegionKey sourceRegionKey(JsonNode source) {
+        String regionCode = text(source, "lDongRegnCd");
+        String districtCode = text(source, "lDongSignguCd");
+        if (!StringUtils.hasText(regionCode) || !StringUtils.hasText(districtCode)) {
+            return null;
+        }
+        return new SourceRegionKey(regionCode, districtCode);
+    }
+
+    private static String text(JsonNode source, String field) {
+        String value = source.path(field).asText(null);
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private static BigDecimal decimal(JsonNode source, String field) {
+        String value = text(source, field);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new BigDecimal(value);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static LocalDateTime dateTime(JsonNode source, String field) {
+        String value = text(source, field);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(value, SOURCE_DATE_TIME);
+        } catch (DateTimeParseException exception) {
+            return null;
+        }
+    }
+
+    private static LocalDate date(JsonNode source, String field) {
+        String value = text(source, field);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value, SOURCE_DATE);
+        } catch (DateTimeParseException exception) {
+            return null;
+        }
+    }
+
+    private static String limit(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength);
+    }
+
+    private record SourceRegionKey(String regionCode, String districtCode) {
+    }
+
+    private record ServiceRegionKey(
+            AdministrativeProvince province,
+            String districtName) {
+    }
+
+    private record RegionMappings(
+            Map<SourceRegionKey, Long> bySource,
+            Map<ServiceRegionKey, Long> byService) {
+    }
+
+    private record ContentImportResult(
+            int imported,
+            int missingCoordinates,
+            int missingRegionMapping,
+            int inactive,
+            int reactivated,
+            Set<String> contentIds) {
+    }
+
+    private record EventImportResult(int imported, int invalid) {
+    }
+
+    private record EventRow(
+            String sourceContentId,
+            LocalDate startDate,
+            LocalDate endDate) {
+
+        private boolean matches(ExistingEvent existing) {
+            return existing != null
+                    && startDate.equals(existing.startDate())
+                    && endDate.equals(existing.endDate());
+        }
+    }
+
+    private record ExistingEvent(
+            String sourceContentId,
+            LocalDate startDate,
+            LocalDate endDate) {
+    }
+
+    private record ExistingContent(
+            String sourceContentId,
+            LocalDateTime sourceModifiedAt,
+            String status,
+            boolean deleted) {
+    }
+
+    private record ContentRow(
+            String sourceContentId,
+            String sourceContentTypeId,
+            String title,
+            long regionId,
+            String sourceRegionCode,
+            String sourceDistrictCode,
+            String classificationCode1,
+            String classificationCode2,
+            String classificationCode3,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String phone,
+            String thumbnailUrl,
+            LocalDateTime sourceCreatedAt,
+            LocalDateTime sourceModifiedAt) {
+
+        private static ContentRow from(
+                JsonNode source,
+                long regionId,
+                BigDecimal longitude,
+                BigDecimal latitude) {
+            String sourceContentId = text(source, "contentid");
+            String title = text(source, "title");
+            String classificationCode1 = text(source, "lclsSystm1");
+            if (sourceContentId == null || title == null || classificationCode1 == null) {
+                return null;
+            }
+            String address = String.join(" ",
+                    Objects.requireNonNullElse(text(source, "addr1"), ""),
+                    Objects.requireNonNullElse(text(source, "addr2"), "")).trim();
+            String thumbnail = text(source, "firstimage");
+            if (thumbnail == null) {
+                thumbnail = text(source, "firstimage2");
+            }
+            return new ContentRow(
+                    limit(sourceContentId, 100),
+                    limit(text(source, "contenttypeid"), 20),
+                    limit(title, 200),
+                    regionId,
+                    limit(text(source, "lDongRegnCd"), 20),
+                    limit(text(source, "lDongSignguCd"), 20),
+                    limit(classificationCode1, 20),
+                    limit(text(source, "lclsSystm2"), 20),
+                    limit(text(source, "lclsSystm3"), 20),
+                    limit(StringUtils.hasText(address) ? address : null, 500),
+                    longitude,
+                    latitude,
+                    limit(text(source, "tel"), 50),
+                    limit(thumbnail, 2048),
+                    dateTime(source, "createdtime"),
+                    dateTime(source, "modifiedtime"));
+        }
+
+        private boolean needsUpsert(ExistingContent existing) {
+            return existing == null
+                    || !"ACTIVE".equals(existing.status())
+                    || existing.deleted()
+                    || sourceModifiedAt == null
+                    || !Objects.equals(sourceModifiedAt, existing.sourceModifiedAt());
+        }
+
+        private void setValues(PreparedStatement statement) throws SQLException {
+            statement.setString(1, SOURCE_PROVIDER);
+            statement.setString(2, sourceContentId);
+            statement.setString(3, sourceContentTypeId);
+            statement.setString(4, title);
+            statement.setLong(5, regionId);
+            statement.setString(6, sourceRegionCode);
+            statement.setString(7, sourceDistrictCode);
+            statement.setString(8, classificationCode1);
+            statement.setString(9, classificationCode2);
+            statement.setString(10, classificationCode3);
+            statement.setString(11, address);
+            statement.setBigDecimal(12, longitude);
+            statement.setBigDecimal(13, latitude);
+            statement.setString(14, phone);
+            statement.setString(15, thumbnailUrl);
+            statement.setTimestamp(16, timestamp(sourceCreatedAt));
+            statement.setTimestamp(17, timestamp(sourceModifiedAt));
+        }
+
+        private static Timestamp timestamp(LocalDateTime value) {
+            return value == null ? null : Timestamp.valueOf(value);
+        }
+    }
+}

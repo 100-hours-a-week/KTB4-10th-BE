@@ -11,23 +11,28 @@ import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
-/** 실제 AI 서버 없이 로컬 생성 흐름을 실행하기 위한 Client입니다. */
+/**
+ * 실제 AI 서버 없이 로컬 생성 흐름을 실행하기 위한 Client입니다.
+ *
+ * <p>작업 ID는 프로세스 재시작 후에도 DB의 기존 값과 충돌하지 않도록 UUID로 생성합니다.
+ * 작업 상태는 메모리에만 보관하므로 애플리케이션을 재시작하면 이전 Fake 작업의 상태 조회는
+ * 이어갈 수 없습니다.
+ */
 @Component
 @Profile("local")
 public class FakeGuidebookAiClient implements GuidebookAiClient {
 
-    private final AtomicLong sequence = new AtomicLong();
     private final Map<String, FakeJob> jobs = new ConcurrentHashMap<>();
 
     @Override
     public AiGenerationAcceptedResponse requestGeneration(AiGuidebookRequest request) {
-        String jobId = "fake-job-" + sequence.incrementAndGet();
+        String jobId = "fake-job-" + UUID.randomUUID();
         jobs.put(jobId, new FakeJob(request));
         return new AiGenerationAcceptedResponse(jobId, AiGenerationStatus.PENDING);
     }
@@ -46,7 +51,7 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
     private FakeJob findJob(String aiJobId) {
         FakeJob job = jobs.get(aiJobId);
         if (job == null) {
-            throw new AiClientException("AI 생성 작업을 찾을 수 없습니다: " + aiJobId);
+            throw invalidFakeResponse("AI 생성 작업을 찾을 수 없습니다: " + aiJobId);
         }
         return job;
     }
@@ -68,7 +73,7 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
         int dayNumber = Math.toIntExact(
                 ChronoUnit.DAYS.between(request.startDate(), date) + 1);
         if (request.contents().isEmpty()) {
-            throw new AiClientException("Fake AI 생성에 사용할 관광 콘텐츠가 없습니다.");
+            throw invalidFakeResponse("Fake AI 생성에 사용할 관광 콘텐츠가 없습니다.");
         }
         AiGuidebookRequest.Content content = request.contents().get(
                 (dayNumber - 1) % request.contents().size());
@@ -83,6 +88,16 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
                 date,
                 "로컬 개발을 위한 " + dayNumber + "일차 요약입니다.",
                 List.of(place));
+    }
+
+    private AiClientException invalidFakeResponse(String message) {
+        return new AiClientException(
+                message,
+                null,
+                AiFailureType.INVALID_RESPONSE,
+                "/guidebooks-generations/{jobId}",
+                null,
+                0L);
     }
 
     private record FakeJob(

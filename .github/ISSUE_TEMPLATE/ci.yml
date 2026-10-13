@@ -1,0 +1,40 @@
+name: CI
+description: GitHub Actions와 자동화 파이프라인 변경을 등록합니다.
+title: "[ci][domain] "
+labels: [ci]
+body:
+  - type: dropdown
+    id: domain
+    attributes: {label: 영역, options: [회원, 관광 콘텐츠, 가이드북, 평가, 생성권, 공통, 인프라]}
+    validations: {required: true}
+  - type: textarea
+    id: purpose
+    attributes: {label: 작업 목적, description: 현재 파이프라인의 문제와 변경 이유를 작성해 주세요.}
+    validations: {required: true}
+  - type: textarea
+    id: current-behavior
+    attributes: {label: 현재 동작, description: 트리거, job, 권한, secret과 실패 현상을 작성해 주세요.}
+    validations: {required: true}
+  - type: textarea
+    id: scope
+    attributes: {label: 작업 범위, description: 변경할 workflow, trigger, job, permission을 작성해 주세요.}
+    validations: {required: true}
+  - type: textarea
+    id: rollback
+    attributes: {label: 실패 및 롤백, description: 실패 영향과 복구·롤백 방법을 작성해 주세요.}
+    validations: {required: true}
+  - type: textarea
+    id: acceptance-criteria
+    attributes: {label: 완료 조건, description: 트리거별 기대 결과와 실패 조건을 작성해 주세요.}
+    validations: {required: true}
+  - type: input
+    id: requirement-ids
+    attributes: {label: 관련 요구사항 ID, description: 없으면 '해당 없음'으로 작성해 주세요.}
+    validations: {required: true}
+  - type: textarea
+    id: references
+    attributes: {label: 관련 자료}
+  - type: textarea
+    id: impact
+    attributes: {label: 영향 범위, description: PR 검사, 배포, 권한, secret, 빌드 시간과 문서 영향을 작성해 주세요.}
+    validations: {required: true}

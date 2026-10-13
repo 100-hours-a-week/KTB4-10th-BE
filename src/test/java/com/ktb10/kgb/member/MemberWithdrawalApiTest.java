@@ -24,8 +24,11 @@ import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
+import com.ktb10.kgb.member.entity.WebPushSubscription;
+import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.Instant;
@@ -73,6 +76,9 @@ class MemberWithdrawalApiTest {
     private AuthSessionRepository authSessionRepository;
 
     @Autowired
+    private WebPushSubscriptionRepository webPushSubscriptionRepository;
+
+    @Autowired
     private CreditWalletRepository creditWalletRepository;
 
     @Autowired
@@ -89,6 +95,7 @@ class MemberWithdrawalApiTest {
         creditTransactionRepository.deleteAll();
         generationJobRepository.deleteAll();
         creditWalletRepository.deleteAll();
+        webPushSubscriptionRepository.deleteAll();
         authSessionRepository.deleteAll();
         memberRepository.deleteAll();
     }
@@ -98,6 +105,10 @@ class MemberWithdrawalApiTest {
         Member member = saveMember("withdrawal-member");
         AuthSession currentSession = issueSession(member, "current-session");
         AuthSession otherSession = issueSession(member, "other-session");
+        WebPushSubscription currentSubscription = savePushSubscription(
+                member, currentSession, "current", (byte) 1);
+        WebPushSubscription otherSubscription = savePushSubscription(
+                member, otherSession, "other", (byte) 2);
         CreditWallet wallet = CreditWallet.open(member, NOW.minusDays(1));
         int balance = wallet.grant(3, NOW.minusDays(1));
         creditWalletRepository.saveAndFlush(wallet);
@@ -130,6 +141,10 @@ class MemberWithdrawalApiTest {
                 .getRevokedAt()).isEqualTo(NOW);
         assertThat(authSessionRepository.findById(otherSession.getId()).orElseThrow()
                 .getRevokedAt()).isEqualTo(NOW);
+        assertThat(webPushSubscriptionRepository.findById(currentSubscription.getId())
+                .orElseThrow().getStatus()).isEqualTo(WebPushSubscriptionStatus.REVOKED);
+        assertThat(webPushSubscriptionRepository.findById(otherSubscription.getId())
+                .orElseThrow().getStatus()).isEqualTo(WebPushSubscriptionStatus.REVOKED);
         assertThat(creditWalletRepository.findById(wallet.getId()).orElseThrow()
                 .getCreditBalance()).isZero();
         assertThat(creditTransactionRepository.findAll())
@@ -231,6 +246,24 @@ class MemberWithdrawalApiTest {
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
+                NOW.minusMinutes(1)));
+    }
+
+    private WebPushSubscription savePushSubscription(
+            Member member,
+            AuthSession session,
+            String endpointSuffix,
+            byte hashValue) {
+        byte[] endpointHash = new byte[32];
+        java.util.Arrays.fill(endpointHash, hashValue);
+        return webPushSubscriptionRepository.saveAndFlush(WebPushSubscription.register(
+                member,
+                session,
+                "https://push.example.test/" + endpointSuffix,
+                endpointHash,
+                "p256dh",
+                "auth",
+                null,
                 NOW.minusMinutes(1)));
     }
 

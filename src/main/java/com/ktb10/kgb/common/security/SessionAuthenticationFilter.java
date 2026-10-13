@@ -1,8 +1,11 @@
 package com.ktb10.kgb.common.security;
 
 import com.ktb10.kgb.common.error.CommonErrorCode;
-import com.ktb10.kgb.common.error.TraceId;
+import com.ktb10.kgb.common.error.StructuredErrorLogger;
 import com.ktb10.kgb.member.service.ServiceSessionService;
+import com.ktb10.kgb.tools.loadtest.LoadTestSessionAuthenticationBypass;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,14 +34,23 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
     private final SessionCookieResolver cookieResolver;
     private final ServiceSessionService serviceSessionService;
     private final RestSecurityErrorWriter errorWriter;
+    private final Timer authenticationTimer;
+    private final Optional<LoadTestSessionAuthenticationBypass> authenticationBypass;
 
     public SessionAuthenticationFilter(
             SessionCookieResolver cookieResolver,
             ServiceSessionService serviceSessionService,
-            RestSecurityErrorWriter errorWriter) {
+            RestSecurityErrorWriter errorWriter,
+            MeterRegistry meterRegistry,
+            Optional<LoadTestSessionAuthenticationBypass> authenticationBypass) {
         this.cookieResolver = cookieResolver;
         this.serviceSessionService = serviceSessionService;
         this.errorWriter = errorWriter;
+        this.authenticationBypass = authenticationBypass;
+        this.authenticationTimer = Timer.builder("kgb.auth.session.duration")
+                .description("서비스 세션 인증 실행 시간")
+                .publishPercentileHistogram()
+                .register(meterRegistry);
     }
 
     @Override
@@ -58,12 +70,21 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
         }
 
         try {
-            serviceSessionService.authenticate(rawSessionId.get())
-                    .ifPresent(principal -> setAuthentication(request, principal));
+            Optional<AuthenticatedMember> principal = authenticationBypass
+                    .map(bypass -> bypass.authenticate(rawSessionId.get()))
+                    .orElseGet(() -> authenticationTimer.record(
+                            () -> serviceSessionService.authenticate(rawSessionId.get())));
+            principal.ifPresent(value -> setAuthentication(request, value));
         } catch (RuntimeException exception) {
             SecurityContextHolder.clearContext();
-            String traceId = TraceId.getOrCreate(request);
-            LOGGER.error("Service session authentication failed [traceId={}]", traceId, exception);
+            StructuredErrorLogger.log(
+                    LOGGER,
+                    "service_session_authentication_failure",
+                    "Service session authentication failed",
+                    request,
+                    CommonErrorCode.INTERNAL_SERVER_ERROR.httpStatus().value(),
+                    CommonErrorCode.INTERNAL_SERVER_ERROR.code(),
+                    exception);
             errorWriter.write(request, response, CommonErrorCode.INTERNAL_SERVER_ERROR);
             return;
         }

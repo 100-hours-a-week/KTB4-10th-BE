@@ -66,6 +66,19 @@ public class CreditWallet {
         return creditBalance;
     }
 
+    public int refillToMinimum(int minimumBalance, LocalDateTime now) {
+        if (minimumBalance <= 0) {
+            throw new IllegalArgumentException("최소 생성권 잔액은 1개 이상이어야 합니다.");
+        }
+        if (creditBalance >= minimumBalance) {
+            return 0;
+        }
+        int refillAmount = minimumBalance - creditBalance;
+        creditBalance = minimumBalance;
+        updatedAt = Objects.requireNonNull(now, "수정 시각은 null일 수 없습니다.");
+        return refillAmount;
+    }
+
     public int revokeAll(LocalDateTime now) {
         int revokedAmount = creditBalance;
         creditBalance = 0;

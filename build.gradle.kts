@@ -26,11 +26,15 @@ dependencies {
 
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("io.micrometer:micrometer-registry-prometheus")
+    implementation("com.the13haven:push2u-core:0.3.0")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("com.github.ben-manes.caffeine:caffeine")
+    implementation(platform("software.amazon.awssdk:bom:2.55.10"))
+    implementation("software.amazon.awssdk:s3")
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-mysql")
     runtimeOnly("com.mysql:mysql-connector-j")
@@ -76,21 +80,5 @@ tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
         required = true
         outputLocation = layout.buildDirectory.file("reports/spotbugs/main.html")
         setStylesheet("fancy-hist.xsl")
-    }
-}
-
-tasks.register<JavaExec>("importTourApiData") {
-    group = "application"
-    description = "Imports initial TourAPI area and festival JSON files"
-    classpath = sourceSets.main.get().runtimeClasspath
-    mainClass = "com.ktb10.kgb.tools.tourapi.TourApiImportApplication"
-
-    val areaFile = providers.gradleProperty("areaFile")
-    val festivalFile = providers.gradleProperty("festivalFile")
-    doFirst {
-        args(
-            "--area-file=${areaFile.get()}",
-            "--festival-file=${festivalFile.get()}",
-        )
     }
 }

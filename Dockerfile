@@ -39,6 +39,6 @@ COPY --from=builder --chown=kgbUser:kgb /app/build/libs/*.jar app.jar
 #사용자 지정
 USER kgbUser
 
-EXPOSE 8080
+EXPOSE 8080 8081
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
