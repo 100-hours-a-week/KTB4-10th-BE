@@ -31,7 +31,8 @@ public class TourApiConfig {
 
     @Bean(destroyMethod = "close")
     @ConditionalOnExpression(
-            "'${TOUR_API_SNAPSHOT_LOCATION:data/tourism/raw}'.startsWith('s3://')")
+            "'${tour-api.collection.snapshot-location:data/tourism/raw}'"
+                    + ".startsWith('s3://')")
     public S3Client tourApiSnapshotS3Client() {
         return S3Client.create();
     }

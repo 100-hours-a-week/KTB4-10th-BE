@@ -15,6 +15,9 @@ ai:
     connect-timeout: ${AI_SERVER_CONNECT_TIMEOUT:3s}
     read-timeout: ${AI_SERVER_READ_TIMEOUT:10s}
 
+tour-api:
+  collection:
+    snapshot-location: ${TOUR_API_SNAPSHOT_LOCATION:s3://kgb-s3-storage/tour-api/raw}
 map:
   common-cache-enabled: ${MAP_COMMON_CACHE_ENABLED:true}
   common-cache-preload-enabled: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:true}

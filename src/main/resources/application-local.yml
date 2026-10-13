@@ -12,3 +12,7 @@ spring:
 map:
   common-cache-enabled: ${MAP_COMMON_CACHE_ENABLED:true}
   common-cache-preload-enabled: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:true}
+
+tour-api:
+  collection:
+    snapshot-location: ${TOUR_API_SNAPSHOT_LOCATION:data/tourism/raw}
