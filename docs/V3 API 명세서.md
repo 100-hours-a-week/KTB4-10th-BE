@@ -1448,13 +1448,15 @@ Body 없음.
 
 ### API-GDE-13 PDF 다운로드
 
+> 구현 상태: 활성 보관 관계와 `ACTIVE` 상태를 확인한 뒤 저장된 완성형 `content_html`을 격리된 Gotenberg Headless Chromium으로 동기 변환한다. PDF는 DB·S3에 저장하지 않고 바로 응답한다. 기본 운영값은 timeout 30초, 인스턴스당 동시 변환 2건, 결과 20MB이며 외부 이미지 일부가 실패해도 나머지 문서는 생성한다.
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/guidebooks/{guidebook_id}/exports` | 세션 쿠키 필수 |
 
 - format: 필수, PDF만 허용
 - 성공 Content-Type: application/pdf
-- Content-Disposition: attachment; filename*=UTF-8''guidebook.pdf
+- Content-Disposition: attachment; filename="guidebook-{guidebook_id}.pdf"
 - 동기 생성, JSON envelope·export_id·상태 조회 없음
 - 실패 Content-Type: application/json; 원본은 유지
 
@@ -1473,13 +1475,16 @@ PDF 바이너리 (JSON 아님)
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
+| 403 | RESOURCE_FORBIDDEN | `ACTIVE`가 아닌 회원 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+| 409 | GUIDEBOOK_NOT_READY | `content_html`이 아직 준비되지 않음 |
+| 500 | PDF_EXPORT_FAILED | Chromium 변환 실패; 가이드북 원본은 유지 |
+| 502 | PDF_EXPORT_TOO_LARGE | 생성 결과가 허용 크기보다 큼 |
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 503 | SERVICE_UNAVAILABLE | 일시적 서비스 이용 불가 |
+| 503 | PDF_EXPORT_BUSY | 인스턴스의 동시 변환 한도 초과 |
+| 504 | PDF_EXPORT_TIMEOUT | 변환기 연결·응답 제한 시간 초과 |
 
-**구현 전 확인:** API-DEC-08 부분 확정: MVP는 동기 200 PDF 응답. 응답 시간·최대 크기·동시 처리 한도와 비동기 전환 기준은 추후 확정.
+**결정:** API-DEC-08 확정: MVP는 동기 200 PDF 응답이며 파일·이력을 영구 저장하지 않는다. 초기값은 응답 30초·결과 20MB·인스턴스당 동시 변환 2건이다. 실제 지표가 한도를 지속적으로 넘으면 작업 ID 기반 비동기 방식으로 전환한다.
 
 ### API-GDE-15 HTML 뷰어 데이터
 
