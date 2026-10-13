@@ -2,6 +2,8 @@ package com.ktb10.kgb.content.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import io.micrometer.core.instrument.Gauge;
@@ -13,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,12 +25,13 @@ public class MapContentCommonCache {
 
     private static final long MAXIMUM_SIZE = 5_000L;
     private static final double TILE_SIZE = 0.5;
-    private static final long MAX_TILES_PER_REQUEST = 256L;
 
     private final MapContentCommonLoader loader;
     private final MapPerformanceMetrics performanceMetrics;
     private final Cache<TileKey, List<MapContentCommonData>> cache;
     private final boolean enabled;
+    private final ReentrantReadWriteLock snapshotLock = new ReentrantReadWriteLock();
+    private volatile boolean snapshotReady;
 
     public MapContentCommonCache(
             MapContentCommonLoader loader,
@@ -63,40 +67,37 @@ public class MapContentCommonCache {
             return performanceMetrics.recordCommonQuery(
                     () -> loader.load(south, west, north, east));
         }
-        long southCell = cellOf(south);
-        long westCell = cellOf(west);
-        long northCell = cellOf(north);
-        long eastCell = cellOf(east);
-        long tileCount = (northCell - southCell + 1) * (eastCell - westCell + 1);
-
-        if (tileCount > MAX_TILES_PER_REQUEST) {
-            return performanceMetrics.recordCommonQuery(
-                    () -> loader.load(south, west, north, east));
-        }
-
-        Map<Long, MapContentCommonData> mergedContents = new LinkedHashMap<>();
-        for (long latitudeCell = southCell; latitudeCell <= northCell; latitudeCell++) {
-            for (long longitudeCell = westCell; longitudeCell <= eastCell; longitudeCell++) {
-                TileKey key = new TileKey(latitudeCell, longitudeCell);
-                List<MapContentCommonData> tileContents = cache.get(
-                        key,
-                        ignored -> performanceMetrics.recordCommonQuery(
-                                () -> loader.load(
-                                        key.south(),
-                                        key.west(),
-                                        key.north(),
-                                        key.east())));
-                tileContents.forEach(content -> mergedContents.putIfAbsent(content.id(), content));
+        snapshotLock.readLock().lock();
+        try {
+            if (!snapshotReady) {
+                throw new BusinessException(CommonErrorCode.SERVICE_UNAVAILABLE);
             }
-        }
+            long southCell = cellOf(south);
+            long westCell = cellOf(west);
+            long northCell = cellOf(north);
+            long eastCell = cellOf(east);
+            Map<Long, MapContentCommonData> mergedContents = new LinkedHashMap<>();
+            for (long latitudeCell = southCell; latitudeCell <= northCell; latitudeCell++) {
+                for (long longitudeCell = westCell; longitudeCell <= eastCell; longitudeCell++) {
+                    TileKey key = new TileKey(latitudeCell, longitudeCell);
+                    List<MapContentCommonData> tileContents = cache.getIfPresent(key);
+                    if (tileContents == null) {
+                        tileContents = List.of();
+                    }
+                    tileContents.forEach(content -> mergedContents.putIfAbsent(content.id(), content));
+                }
+            }
 
-        return mergedContents.values().stream()
-                .filter(content -> content.latitude() >= south)
-                .filter(content -> content.latitude() <= north)
-                .filter(content -> content.longitude() >= west)
-                .filter(content -> content.longitude() <= east)
-                .sorted(Comparator.comparing(MapContentCommonData::id))
-                .toList();
+            return mergedContents.values().stream()
+                    .filter(content -> content.latitude() >= south)
+                    .filter(content -> content.latitude() <= north)
+                    .filter(content -> content.longitude() >= west)
+                    .filter(content -> content.longitude() <= east)
+                    .sorted(Comparator.comparing(MapContentCommonData::id))
+                    .toList();
+        } finally {
+            snapshotLock.readLock().unlock();
+        }
     }
 
     /** 애플리케이션 시작 시 전체 상세 지도 캐시를 현재 DB 데이터로 구성합니다. */
@@ -117,9 +118,15 @@ public class MapContentCommonCache {
                                 .sorted(Comparator.comparing(MapContentCommonData::id))
                                 .toList()));
 
-        cache.invalidateAll();
-        cache.putAll(refreshed);
-        cache.cleanUp();
+        snapshotLock.writeLock().lock();
+        try {
+            cache.invalidateAll();
+            cache.putAll(refreshed);
+            cache.cleanUp();
+            snapshotReady = true;
+        } finally {
+            snapshotLock.writeLock().unlock();
+        }
     }
 
     /**
@@ -137,7 +144,13 @@ public class MapContentCommonCache {
                         cellOf(location.longitude())))
                 .collect(java.util.stream.Collectors.toSet());
 
-        affectedKeys.forEach(key -> cache.put(
+        if (!snapshotReady) {
+            refresh();
+            return;
+        }
+
+        Map<TileKey, List<MapContentCommonData>> replacements = new HashMap<>();
+        affectedKeys.forEach(key -> replacements.put(
                 key,
                 performanceMetrics.recordCommonQuery(
                         () -> loader.load(
@@ -145,7 +158,13 @@ public class MapContentCommonCache {
                                 key.west(),
                                 key.north(),
                                 key.east()))));
-        cache.cleanUp();
+        snapshotLock.writeLock().lock();
+        try {
+            cache.putAll(replacements);
+            cache.cleanUp();
+        } finally {
+            snapshotLock.writeLock().unlock();
+        }
     }
 
     private static long cellOf(double coordinate) {

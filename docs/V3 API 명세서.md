@@ -68,7 +68,8 @@
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 콘텐츠 조회 | GET | `/map/contents` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 서버 clusters, 상세 줌은 개별 콘텐츠 반환 |
+| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
+| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -929,24 +930,24 @@ Body 없음.
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-### API-CON-03 지도 콘텐츠 조회
+### API-CON-03 지도 마커 조회
 
 | Method | URL | 인증 |
 |---|---|---|
-| GET | `/map/contents` | 세션 쿠키 필수 |
+| GET | `/map/markers` | 세션 쿠키 필수 |
 
 - Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
 - 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이어야 함
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)
 - zoom: 필수 Integer. FE가 카카오맵 레벨을 변환한 값으로 전달
-- zoom 14 이하는 `CLUSTER`, 15 이상은 `CONTENT` 모드로 응답
-- `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고, 모든 클러스터와 클러스터별 대표 콘텐츠를 반환
-- `CONTENT` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 반환
+- zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
+- `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
+- `MARKER` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 지도 표시에 필요한 최소 필드로 반환
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
-- 행사 시작일·종료일이 모두 있으면 `event_period`, 아니면 null
 - `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
-- `CLUSTER` 모드에서는 `clusters[]`로 전체 분포를, `items[]`로 바텀시트 대표 콘텐츠를 제공한다. `CONTENT` 모드는 `clusters[]`가 빈 배열이다.
-- V1은 주기 동기화한 MySQL 관광 콘텐츠를 공간 인덱스로 조회하며 Redis/Caffeine 캐시는 적용하지 않는다.
+- `CLUSTER` 모드에서는 `clusters[]`만, `MARKER` 모드에서는 `markers[]`만 제공한다.
+- 요청 시 DB 공간 조회로 fallback하지 않고 마지막 정상 0.5도 타일 스냅샷을 사용한다.
 
 **Request Body**
 
@@ -956,10 +957,49 @@ Body 없음.
 
 ```json
 {
+  "message": "map_marker_success",
+  "data": {
+    "mode": "MARKER",
+    "clusters": [],
+    "markers": [{
+      "content_id": "101",
+      "title": "불국사",
+      "content_type": "PLACE",
+      "latitude": 35.7898,
+      "longitude": 129.3321,
+      "is_favorite": true,
+      "is_in_guidebook": false
+    }]
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+
+**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds와 zoom을 전달한다. 줌 14 이하이거나 화면 대각선이 20km를 넘으면 서버가 0.5도 고정 타일 스냅샷에서 bounds 내 콘텐츠를 읽고 기본 화면상 120px 반경으로 묶어 모든 클러스터를 반환하며, 그 외에는 최소 필드의 개별 마커를 반환한다.
+
+### API-CON-03-1 지도 바텀시트 목록
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/map/contents` | 세션 쿠키 필수 |
+
+- Query `south`, `west`, `north`, `east`는 필수이며 `cursor`는 첫 페이지에서 생략한다.
+- 페이지 크기는 서버가 10개로 고정하며 클라이언트 크기 파라미터를 받지 않는다.
+- bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)을 반환한다.
+- 현재 bounds 중심과 가까운 순서, 동률이면 내부 콘텐츠 ID 순서로 정렬한다.
+- `next_cursor`는 같은 bounds에서만 사용할 수 있는 불투명 커서다.
+- 사용자가 실제 목록 끝에 도달했을 때만 다음 커서를 요청한다.
+- 공통 콘텐츠는 마지막 정상 타일 스냅샷에서만 읽고 현재 10개에 대해서만 개인화 정보를 조회한다.
+
+```json
+{
   "message": "map_content_success",
   "data": {
-    "mode": "CONTENT",
-    "clusters": [],
     "items": [{
       "content_id": "101",
       "title": "불국사",
@@ -972,18 +1012,11 @@ Body 없음.
       "is_favorite": true,
       "is_in_guidebook": false
     }],
-    "has_more": false
+    "next_cursor": "AAAACgAAAAE",
+    "has_more": true
   }
 }
 ```
-
-| 오류 HTTP | error.code | 조건 |
-|---|---|---|
-| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
-| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
-| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-
-**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds와 zoom을 전달한다. 줌 14 이하이거나 화면 대각선이 20km를 넘으면 서버가 0.5도 고정 타일 캐시에서 bounds 내 콘텐츠를 읽고 기본 화면상 120px 반경으로 묶어 모든 클러스터와 대표 콘텐츠를 반환하며, 그 외에는 개별 콘텐츠를 반환한다.
 
 ### API-CON-04 관심 장소 목록
 

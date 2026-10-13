@@ -6,7 +6,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 캐시 미스 시 공통 지도 데이터를 읽기 전용 트랜잭션으로 조회합니다. */
+/** 지도 스냅샷 전체 또는 배치로 변경된 타일을 DB에서 적재합니다. */
 @Service
 public class MapContentCommonLoader {
 

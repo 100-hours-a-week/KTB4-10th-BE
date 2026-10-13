@@ -1,12 +1,15 @@
 package com.ktb10.kgb.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
+import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -37,9 +40,10 @@ class MapContentCommonCacheTest {
     }
 
     @Test
-    void reusesCommonResultForRepeatedRequestsWithinSameTile() {
-        when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+    void reusesSnapshotForRepeatedRequestsWithoutDatabaseFallback() {
+        when(loader.loadAllCacheable())
                 .thenReturn(List.of(commonContent(1L, 37.405, 127.105)));
+        commonCache.refresh();
 
         List<MapContentCommonData> first = commonCache.get(
                 37.401, 127.101, 37.409, 127.109);
@@ -48,56 +52,56 @@ class MapContentCommonCacheTest {
 
         assertThat(first).extracting(MapContentCommonData::id).containsExactly(1L);
         assertThat(second).extracting(MapContentCommonData::id).containsExactly(1L);
-        verify(loader, times(1)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
-        assertThat(meterRegistry.get("kgb.map.cache.hit.ratio").gauge().value())
-                .isEqualTo(0.5);
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
         assertThat(meterRegistry.get("kgb.map.cache.size").gauge().value())
                 .isEqualTo(1.0);
     }
 
     @Test
-    void cachesEmptyTileResult() {
-        when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(List.of());
+    void treatsMissingSnapshotTileAsEmptyWithoutDatabaseFallback() {
+        when(loader.loadAllCacheable()).thenReturn(List.of());
+        commonCache.refresh();
 
-        commonCache.get(37.401, 127.101, 37.409, 127.109);
-        commonCache.get(37.402, 127.102, 37.408, 127.108);
+        assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109)).isEmpty();
+        assertThat(commonCache.get(37.402, 127.102, 37.408, 127.108)).isEmpty();
 
-        verify(loader, times(1)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
         assertThat(meterRegistry.get("kgb.map.cache.size").gauge().value())
-                .isEqualTo(1.0);
+                .isZero();
     }
 
     @Test
     void mergesTilesWithoutDuplicatesAndFiltersActualBounds() {
-        when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(List.of(
+        when(loader.loadAllCacheable()).thenReturn(List.of(
                         commonContent(2L, 37.505, 127.502),
                         commonContent(1L, 37.505, 127.498),
                         commonContent(3L, 37.505, 127.509)));
+        commonCache.refresh();
 
         List<MapContentCommonData> result = commonCache.get(
                 37.501, 127.495, 37.509, 127.505);
 
         assertThat(result).extracting(MapContentCommonData::id).containsExactly(1L, 2L);
-        verify(loader, times(2)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
     void reusesSameTileRegardlessOfDetailedZoomLevel() {
-        when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+        when(loader.loadAllCacheable())
                 .thenReturn(List.of(commonContent(1L, 37.405, 127.105)));
+        commonCache.refresh();
 
         commonCache.get(37.401, 127.101, 37.409, 127.109);
         commonCache.get(37.401, 127.101, 37.409, 127.109);
 
-        verify(loader, times(1)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
-    void loadsWideBoundsDirectlyWithoutPopulatingTiles() {
+    void readsWideBoundsFromSnapshotWithoutDatabaseFallback() {
         MapContentCommonData content = commonContent(1L, 37.5, 127.2);
-        when(loader.load(30.0, 120.0, 40.0, 135.0)).thenReturn(List.of(content));
+        when(loader.loadAllCacheable()).thenReturn(List.of(content));
+        commonCache.refresh();
 
         List<MapContentCommonData> first = commonCache.get(
                 30.0, 120.0, 40.0, 135.0);
@@ -106,7 +110,16 @@ class MapContentCommonCacheTest {
 
         assertThat(first).containsExactly(content);
         assertThat(second).containsExactly(content);
-        verify(loader, times(2)).load(30.0, 120.0, 40.0, 135.0);
+        verify(loader, times(0)).load(30.0, 120.0, 40.0, 135.0);
+    }
+
+    @Test
+    void rejectsRequestsUntilInitialSnapshotIsReady() {
+        assertThatThrownBy(() -> commonCache.get(37.401, 127.101, 37.409, 127.109))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(CommonErrorCode.SERVICE_UNAVAILABLE));
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
     }
 
     @Test
@@ -188,9 +201,8 @@ class MapContentCommonCacheTest {
     @Test
     void refreshesChangedTileOnce() {
         MapContentCommonData before = commonContent(1L, 37.405, 127.105);
-        when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
-                .thenReturn(List.of(before));
-        commonCache.get(37.401, 127.101, 37.409, 127.109);
+        when(loader.loadAllCacheable()).thenReturn(List.of(before));
+        commonCache.refresh();
 
         MapContentCommonData after = commonContent(1L, 37.406, 127.106);
         when(loader.load(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
@@ -201,7 +213,7 @@ class MapContentCommonCacheTest {
 
         assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109))
                 .containsExactly(after);
-        verify(loader, times(2)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        verify(loader, times(1)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
     }
 
     private MapContentCommonData commonContent(
