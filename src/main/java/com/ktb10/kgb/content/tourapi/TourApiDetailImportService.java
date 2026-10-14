@@ -65,15 +65,12 @@ public class TourApiDetailImportService {
                 """
                 INSERT INTO event_details (
                     content_id, start_date, end_date, operating_hours, organizer,
-                    organizer_phone, event_place, program, usage_fee, age_limit,
-                    booking_place, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(6))
+                    organizer_phone, event_place, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW(6))
                 ON DUPLICATE KEY UPDATE
                     start_date = VALUES(start_date), end_date = VALUES(end_date),
                     operating_hours = VALUES(operating_hours), organizer = VALUES(organizer),
                     organizer_phone = VALUES(organizer_phone), event_place = VALUES(event_place),
-                    program = VALUES(program), usage_fee = VALUES(usage_fee),
-                    age_limit = VALUES(age_limit), booking_place = VALUES(booking_place),
                     updated_at = NOW(6)
                 """,
                 target.id(),
@@ -82,11 +79,7 @@ public class TourApiDetailImportService {
                 limit(text(intro, "playtime"), 255),
                 limit(text(intro, "sponsor1"), 200),
                 limit(text(intro, "sponsor1tel"), 100),
-                limit(text(intro, "eventplace"), 500),
-                text(intro, "program"),
-                text(intro, "usetimefestival"),
-                limit(text(intro, "agelimit"), 100),
-                limit(text(intro, "bookingplace"), 500));
+                limit(text(intro, "eventplace"), 500));
         if (updatedEvents < 1) {
             throw new IllegalStateException(
                     "행사 상세 기본 행을 찾을 수 없습니다: contentId="

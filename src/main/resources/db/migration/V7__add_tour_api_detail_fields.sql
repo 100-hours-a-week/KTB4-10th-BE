@@ -5,11 +5,7 @@ ALTER TABLE tourism_contents
 
 ALTER TABLE event_details
     ADD COLUMN organizer_phone VARCHAR(100) NULL AFTER organizer,
-    ADD COLUMN event_place VARCHAR(500) NULL AFTER organizer_phone,
-    ADD COLUMN program TEXT NULL AFTER event_place,
-    ADD COLUMN usage_fee TEXT NULL AFTER program,
-    ADD COLUMN age_limit VARCHAR(100) NULL AFTER usage_fee,
-    ADD COLUMN booking_place VARCHAR(500) NULL AFTER age_limit;
+    ADD COLUMN event_place VARCHAR(500) NULL AFTER organizer_phone;
 
 CREATE TABLE event_detail_items (
     id BIGINT NOT NULL AUTO_INCREMENT,

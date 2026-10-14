@@ -22,5 +22,5 @@
 ## 선택 근거
 
 - `modifiedtime`은 무엇이 바뀌었는지를 알려주지 않으므로 상세 API 응답과 현재 DB 값을 비교해야 한다.
-- `detailInfo2`의 행사소개·행사내용은 확인한 행사 표본에서 `detailCommon2.overview`와 `detailIntro2.program`에 중복되어 이번 수집 대상에서 제외한다.
-- 원본 JSON은 변경 추적과 재처리를 위해 보존하되, MySQL에는 상세 페이지에서 실제 사용하는 필드만 정규화한다.
+- `detailInfo2`의 행사소개·행사내용은 `detailCommon2.overview`와 중복 가능성이 있어 이번 수집 대상에서 제외한다.
+- 원본 JSON은 변경 추적과 재처리를 위해 보존하되, MySQL에는 공통 소개·홈페이지·연락처와 행사 운영시간·주최자·주최자 연락처·장소만 정규화한다.
