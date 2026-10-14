@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="920" viewBox="0 0 1600 920" role="img" aria-labelledby="title desc">
+  <title id="title">TourAPI 일일 상세 동기화 파이프라인</title>
+  <desc id="desc">현재 구현된 목록 수집과 상세 정규화 흐름, 후속 구현할 변경 분류와 알림 흐름</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#52606d"/>
+    </marker>
+    <marker id="arrow-dashed" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#b7791f"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#102a43" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .title { font: 700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #102a43; }
+      .subtitle { font: 400 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #627d98; }
+      .section { font: 700 18px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #334e68; }
+      .node-title { font: 700 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #243b53; text-anchor: middle; }
+      .node-sub { font: 400 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #627d98; text-anchor: middle; }
+      .edge { fill: none; stroke: #52606d; stroke-width: 2.5; marker-end: url(#arrow); }
+      .future-edge { fill: none; stroke: #b7791f; stroke-width: 2.5; stroke-dasharray: 9 7; marker-end: url(#arrow-dashed); }
+      .current { fill: #ffffff; stroke: #3dadff; stroke-width: 2; filter: url(#shadow); }
+      .store { fill: #edf8ff; stroke: #3dadff; stroke-width: 2; filter: url(#shadow); }
+      .future { fill: #fffaf0; stroke: #ffc943; stroke-width: 2; stroke-dasharray: 8 6; filter: url(#shadow); }
+      .legend { font: 500 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #486581; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="920" fill="#f7fafc"/>
+  <text x="80" y="72" class="title">TourAPI 일일 상세 동기화 파이프라인</text>
+  <text x="80" y="108" class="subtitle">실선은 이번 PR 구현 범위, 점선은 변경 알림·부분 캐시 갱신을 위한 후속 범위</text>
+
+  <rect x="70" y="150" width="1460" height="330" rx="24" fill="#eef8ff" stroke="#bee3f8"/>
+  <text x="100" y="190" class="section">현재 구현 범위</text>
+
+  <rect x="100" y="235" width="170" height="92" rx="46" class="current"/>
+  <text x="185" y="273" class="node-title">매일 00시</text>
+  <text x="185" y="299" class="node-sub">실행 락·중복 방지</text>
+
+  <rect x="330" y="220" width="210" height="122" rx="18" class="current"/>
+  <text x="435" y="263" class="node-title">목록 수집·검증</text>
+  <text x="435" y="291" class="node-sub">areaBasedList2</text>
+  <text x="435" y="314" class="node-sub">searchFestival2</text>
+
+  <rect x="600" y="220" width="210" height="122" rx="18" class="current"/>
+  <text x="705" y="263" class="node-title">기본정보 적재</text>
+  <text x="705" y="291" class="node-sub">신규·비활성·재활성</text>
+  <text x="705" y="314" class="node-sub">행사 기간 반영</text>
+
+  <polygon points="905,281 995,220 1085,281 995,342" class="current"/>
+  <text x="995" y="274" class="node-title">전일 신규·변경</text>
+  <text x="995" y="299" class="node-sub">created / modified</text>
+
+  <rect x="1150" y="220" width="240" height="122" rx="18" class="current"/>
+  <text x="1270" y="258" class="node-title">상세 조회·정규화</text>
+  <text x="1270" y="286" class="node-sub">detailCommon2</text>
+  <text x="1270" y="309" class="node-sub">행사 detailIntro2</text>
+
+  <path d="M270 281 H330" class="edge"/>
+  <path d="M540 281 H600" class="edge"/>
+  <path d="M810 281 H905" class="edge"/>
+  <path d="M1085 281 H1150" class="edge"/>
+
+  <rect x="330" y="383" width="210" height="64" rx="32" class="store"/>
+  <text x="435" y="410" class="node-title">원본 스냅샷</text>
+  <text x="435" y="433" class="node-sub">로컬 / S3 경로</text>
+
+  <rect x="850" y="383" width="210" height="64" rx="32" class="store"/>
+  <text x="955" y="410" class="node-title">MySQL</text>
+  <text x="955" y="433" class="node-sub">콘텐츠·행사 상세</text>
+
+  <rect x="1180" y="383" width="180" height="64" rx="32" class="store"/>
+  <text x="1270" y="410" class="node-title">콘텐츠 캐시</text>
+  <text x="1270" y="433" class="node-sub">전체 재생성</text>
+
+  <path d="M435 342 V383" class="edge"/>
+  <path d="M705 342 V365 H955 V383" class="edge"/>
+  <path d="M1270 342 V365 H955 V383" class="edge"/>
+  <path d="M1270 342 V383" class="edge"/>
+
+  <rect x="70" y="520" width="1460" height="310" rx="24" fill="#fffaf0" stroke="#f6d365" stroke-dasharray="9 7"/>
+  <text x="100" y="560" class="section">후속 파이프라인</text>
+
+  <rect x="180" y="620" width="250" height="110" rx="18" class="future"/>
+  <text x="305" y="661" class="node-title">실제 변경 비교</text>
+  <text x="305" y="688" class="node-sub">DB 이전값 ↔ 신규 상세값</text>
+  <text x="305" y="711" class="node-sub">필드 묶음으로 분류</text>
+
+  <rect x="540" y="620" width="250" height="110" rx="18" class="future"/>
+  <text x="665" y="661" class="node-title">변경 이벤트 생성</text>
+  <text x="665" y="688" class="node-sub">위치 / 상세 / 생명주기</text>
+  <text x="665" y="711" class="node-sub">신규 행사는 일 단위 집계</text>
+
+  <rect x="900" y="585" width="270" height="92" rx="18" class="future"/>
+  <text x="1035" y="625" class="node-title">부분 캐시 갱신</text>
+  <text x="1035" y="652" class="node-sub">위치·상태 변경 대상만</text>
+
+  <rect x="900" y="708" width="270" height="92" rx="18" class="future"/>
+  <text x="1035" y="748" class="node-title">행사 알림 집계</text>
+  <text x="1035" y="775" class="node-sub">신규·상세 변경 정책 적용</text>
+
+  <rect x="1270" y="620" width="180" height="110" rx="55" class="future"/>
+  <text x="1360" y="661" class="node-title">실행 완료</text>
+  <text x="1360" y="688" class="node-sub">실패 대상 기록</text>
+  <text x="1360" y="711" class="node-sub">누락 일자 재처리</text>
+
+  <path d="M305 620 V545 H1270 V447" class="future-edge"/>
+  <path d="M430 675 H540" class="future-edge"/>
+  <path d="M790 675 H845 V631 H900" class="future-edge"/>
+  <path d="M790 675 H845 V754 H900" class="future-edge"/>
+  <path d="M1170 631 H1270" class="future-edge"/>
+  <path d="M1170 754 H1220 V695 H1270" class="future-edge"/>
+
+  <line x1="80" y1="875" x2="125" y2="875" stroke="#52606d" stroke-width="3"/>
+  <text x="140" y="881" class="legend">현재 구현</text>
+  <line x1="270" y1="875" x2="315" y2="875" stroke="#b7791f" stroke-width="3" stroke-dasharray="9 7"/>
+  <text x="330" y="881" class="legend">후속 구현</text>
+</svg>

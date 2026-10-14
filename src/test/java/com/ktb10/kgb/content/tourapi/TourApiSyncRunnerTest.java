@@ -50,14 +50,14 @@ class TourApiSyncRunnerTest {
 
         assertThat(runner.runIfDue(SYNC_DATE)).isFalse();
 
-        verify(syncService, never()).synchronize();
+        verify(syncService, never()).synchronize(any());
     }
 
     @Test
     void recordsSuccessfulRun() {
         ImportSummary summary = new ImportSummary(10, 2, 0, 0, 1, 1, 3, 1, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize()).thenReturn(summary);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
@@ -70,25 +70,25 @@ class TourApiSyncRunnerTest {
     void retriesRetryableFailureAndThenSucceeds() {
         ImportSummary summary = new ImportSummary(10, 2, 0, 0, 0, 0, 3, 1, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize())
+        when(syncService.synchronize(SYNC_DATE))
                 .thenThrow(new TourApiException("temporary", true))
                 .thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
-        verify(syncService, times(2)).synchronize();
+        verify(syncService, times(2)).synchronize(SYNC_DATE);
         verify(runRepository).recordAttempt(any(), org.mockito.ArgumentMatchers.eq(2), any());
     }
 
     @Test
     void recordsFailureWithoutRetryForPermanentError() {
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize())
+        when(syncService.synchronize(SYNC_DATE))
                 .thenThrow(new TourApiException("invalid configuration", false));
 
         assertThat(runner.runIfDue(SYNC_DATE)).isFalse();
 
-        verify(syncService).synchronize();
+        verify(syncService).synchronize(SYNC_DATE);
         verify(runRepository).fail(
                 any(),
                 org.mockito.ArgumentMatchers.eq("SYNCHRONIZE"),

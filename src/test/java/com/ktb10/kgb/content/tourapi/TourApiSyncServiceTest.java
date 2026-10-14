@@ -9,10 +9,7 @@ import static org.mockito.Mockito.when;
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.SnapshotType;
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.ValidatedSnapshot;
 import java.nio.charset.StandardCharsets;
-import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -22,18 +19,18 @@ class TourApiSyncServiceTest {
     private final TourApiSnapshotValidator validator = mock(TourApiSnapshotValidator.class);
     private final TourApiSnapshotStorage storage = mock(TourApiSnapshotStorage.class);
     private final TourApiImportService importer = mock(TourApiImportService.class);
+    private final TourApiDetailSyncService detailSyncService = mock(TourApiDetailSyncService.class);
     private TourApiSyncService service;
 
     @BeforeEach
     void setUp() {
-        Clock clock = Clock.fixed(Instant.parse("2026-10-08T15:00:00Z"), ZoneOffset.UTC);
         service = new TourApiSyncService(
                 client,
                 validator,
                 storage,
                 importer,
-                TourApiTestFixtures.properties("data/tourism/raw"),
-                clock);
+                detailSyncService,
+                TourApiTestFixtures.properties("data/tourism/raw"));
     }
 
     @Test
@@ -49,9 +46,13 @@ class TourApiSyncServiceTest {
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenReturn(new ValidatedSnapshot(SnapshotType.FESTIVAL, festival, 3));
 
-        service.synchronize();
+        service.synchronize(LocalDate.of(2026, 10, 9));
 
         verify(importer).importSnapshots(area, festival);
+        verify(detailSyncService).synchronize(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
+                org.mockito.ArgumentMatchers.eq(area));
     }
 
     @Test
@@ -67,7 +68,8 @@ class TourApiSyncServiceTest {
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenThrow(new TourApiException("incomplete", false));
 
-        assertThatThrownBy(service::synchronize).isInstanceOf(TourApiException.class);
+        assertThatThrownBy(() -> service.synchronize(LocalDate.of(2026, 10, 9)))
+                .isInstanceOf(TourApiException.class);
         verify(storage, never()).save(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
