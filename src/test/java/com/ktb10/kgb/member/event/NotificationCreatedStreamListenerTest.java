@@ -1,7 +1,8 @@
 package com.ktb10.kgb.member.event;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
 import com.ktb10.kgb.member.dto.response.NotificationItemResponse;
@@ -25,7 +26,7 @@ class NotificationCreatedStreamListenerTest {
     private WebPushDispatchService webPushDispatchService;
 
     @Test
-    void skipsWebPushWhenCommittedNotificationIsSentThroughStream() {
+    void dispatchesWebPushEvenWhenCommittedNotificationIsSentThroughStream() {
         NotificationCreatedEvent event = notificationEvent();
         given(notificationStreamService.publish(event)).willReturn(true);
         NotificationCreatedStreamListener listener = new NotificationCreatedStreamListener(
@@ -35,11 +36,11 @@ class NotificationCreatedStreamListenerTest {
         listener.handle(event);
 
         verify(notificationStreamService).publish(event);
-        verify(webPushDispatchService, never()).dispatch(event);
+        verify(webPushDispatchService).dispatch(event);
     }
 
     @Test
-    void fallsBackToWebPushWhenStreamDeliveryFails() {
+    void dispatchesWebPushWhenStreamDeliveryFails() {
         NotificationCreatedEvent event = notificationEvent();
         given(notificationStreamService.publish(event)).willReturn(false);
         NotificationCreatedStreamListener listener = new NotificationCreatedStreamListener(
@@ -47,6 +48,36 @@ class NotificationCreatedStreamListenerTest {
                 webPushDispatchService);
 
         listener.handle(event);
+
+        verify(notificationStreamService).publish(event);
+        verify(webPushDispatchService).dispatch(event);
+    }
+
+    @Test
+    void dispatchesWebPushWhenStreamDeliveryThrowsUnexpectedException() {
+        NotificationCreatedEvent event = notificationEvent();
+        doThrow(new IllegalStateException("SSE 전송 실패"))
+                .when(notificationStreamService).publish(event);
+        NotificationCreatedStreamListener listener = new NotificationCreatedStreamListener(
+                notificationStreamService,
+                webPushDispatchService);
+
+        assertDoesNotThrow(() -> listener.handle(event));
+
+        verify(notificationStreamService).publish(event);
+        verify(webPushDispatchService).dispatch(event);
+    }
+
+    @Test
+    void streamDeliveryRemainsCompletedWhenWebPushDispatchThrowsUnexpectedException() {
+        NotificationCreatedEvent event = notificationEvent();
+        doThrow(new IllegalStateException("Web Push 작업 등록 실패"))
+                .when(webPushDispatchService).dispatch(event);
+        NotificationCreatedStreamListener listener = new NotificationCreatedStreamListener(
+                notificationStreamService,
+                webPushDispatchService);
+
+        assertDoesNotThrow(() -> listener.handle(event));
 
         verify(notificationStreamService).publish(event);
         verify(webPushDispatchService).dispatch(event);
