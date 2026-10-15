@@ -849,9 +849,9 @@ Body 없음.
 
 - Query q: 선택 String, 최대 10자; 빈 값=전체
 - region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
-- category: 선택 EVENT|CULTURAL_HERITAGE|ATTRACTION
-- month: 선택 YYYY-MM. `EVENT`는 선택 월과 행사 기간이 겹치면 포함하고 `ATTRACTION`·`CULTURAL_HERITAGE`는 기간이 없으므로 항상 포함
-- page Integer ≥1 기본1; size 1~20 기본5
+- category: 현재 `EVENT`만 지원하며 생략 시 `EVENT`
+- region_code와 month 필터는 후속 구현
+- page Integer ≥1 기본1; size 1~20 기본20
 - 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
 - 조건 AND; 결과 없음 items=[]
 
@@ -865,9 +865,9 @@ Body 없음.
 {
   "message": "content_list_success",
   "data": {
-    "items": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
+    "items": [{"content_id":"101","title":"수원 국가유산 야행","category":"EVENT","region":{"administrative_code":"41","name":"경기도"},"address":"경기도 수원시","thumbnail_url":null,"event_period":{"start_date":"2026-08-14","end_date":"2026-08-30"}}],
     "page": 1,
-    "size": 5,
+    "size": 20,
     "total_items": 1,
     "total_pages": 1
   }
@@ -880,7 +880,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-02/API-DEC-05 확정: `month=YYYY-MM`, 행사에만 기간 중첩 조건을 적용하고 상시 장소는 포함. 검색은 `title` 부분 일치이며 `%`, `_`, 이스케이프 문자는 일반 문자로 처리한다. 검색어 유무와 관계없이 DB 등록 최신순이다.
+검색은 `title` 부분 일치이며 검색어 유무와 관계없이 DB 등록 최신순이다. 지역·월·다른 카테고리는 후속 범위에서 확장한다.
 
 ### API-CON-02 관광 콘텐츠 상세
 
@@ -894,6 +894,7 @@ Body 없음.
 - images: Array; event_detail: EVENT에서만 객체, 그 외 null
 - URL ≤2048자; 비활성·삭제 콘텐츠는 일반 상세에서 제외
 - event_detail.start_date/end_date: YYYY-MM-DD; operating_hours/organizer: String|null
+- 현재 스키마에 별도 값이 없는 organizer_phone은 null, event_place는 공통 address를 반환
 - images[].image_id: ID; image_url: String ≤2048자; sort_order: Integer
 
 **Request Body**
