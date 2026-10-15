@@ -1,7 +1,5 @@
 package com.ktb10.kgb.member.service;
 
-import com.the13haven.push2u.EndpointPolicies;
-import com.the13haven.push2u.EndpointRule;
 import com.the13haven.push2u.PushMessage;
 import com.the13haven.push2u.PushOutcome;
 import com.the13haven.push2u.PushSender;
@@ -9,7 +7,6 @@ import com.the13haven.push2u.Subscription;
 import com.the13haven.push2u.Urgency;
 import com.the13haven.push2u.VapidKeys;
 import java.time.Duration;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,8 +24,9 @@ public class Push2uWebPushGateway implements WebPushGateway {
     public Push2uWebPushGateway(
             @Value("${webpush.vapid.public-key:}") String publicKey,
             @Value("${webpush.vapid.private-key:}") String privateKey,
-            @Value("${webpush.vapid.subject:}") String subject) {
-        this.pushSender = createSender(publicKey, privateKey, subject);
+            @Value("${webpush.vapid.subject:}") String subject,
+            WebPushEndpointPolicy endpointPolicy) {
+        this.pushSender = createSender(publicKey, privateKey, subject, endpointPolicy);
     }
 
     @Override
@@ -59,7 +57,11 @@ public class Push2uWebPushGateway implements WebPushGateway {
         }
     }
 
-    private PushSender createSender(String publicKey, String privateKey, String subject) {
+    private PushSender createSender(
+            String publicKey,
+            String privateKey,
+            String subject,
+            WebPushEndpointPolicy endpointPolicy) {
         if (publicKey.isBlank() || privateKey.isBlank() || subject.isBlank()) {
             LOGGER.info("Web Push VAPID 설정이 완성되지 않아 외부 Push 전송을 비활성화합니다.");
             return null;
@@ -67,11 +69,7 @@ public class Push2uWebPushGateway implements WebPushGateway {
         return PushSender.builder(
                         VapidKeys.fromBase64(publicKey, privateKey),
                         subject,
-                        EndpointPolicies.allowedEndpoints(List.of(
-                                EndpointRule.origin("https://fcm.googleapis.com"),
-                                EndpointRule.domain("push.services.mozilla.com"),
-                                EndpointRule.domain("push.apple.com"),
-                                EndpointRule.domain("notify.windows.com"))))
+                        endpointPolicy.value())
                 .build();
     }
 
