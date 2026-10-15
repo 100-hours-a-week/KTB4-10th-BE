@@ -156,7 +156,7 @@ class TourApiSyncRunRepositoryMysqlIntegrationTest {
     }
 
     private ImportSummary emptySummary() {
-        return new ImportSummary(0, 0, 0, 0, 0, 0, 0, 0, 0);
+        return new ImportSummary(0, 0, 0, 0, 0, 0, 0, 0);
     }
 
     private record RunState(

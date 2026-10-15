@@ -7,7 +7,10 @@ import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,20 +31,23 @@ public class TourApiDetailImportService {
     }
 
     @Transactional
-    public void importDetail(
+    public ContentChangeSet importDetail(
             TourApiDetailTarget target,
             byte[] commonRaw,
             byte[] introRaw) {
         JsonNode common = firstItem(commonRaw, "detailCommon2");
+        JsonNode intro = target.event() ? firstItem(introRaw, "detailIntro2") : null;
+        DetailValues values = DetailValues.from(common, intro);
+        ExistingDetail existing = loadExisting(target);
         int updatedContents = jdbcTemplate.update(
                 """
                 UPDATE tourism_contents
                 SET description = ?, homepage_url = ?, phone = ?, updated_at = NOW(6)
                 WHERE id = ?
                 """,
-                text(common, "overview"),
-                text(common, "homepage"),
-                text(common, "tel"),
+                values.description(),
+                values.homepageUrl(),
+                values.phone(),
                 target.id());
         if (updatedContents != 1) {
             throw new IllegalStateException(
@@ -50,11 +56,10 @@ public class TourApiDetailImportService {
         }
 
         if (!target.event()) {
-            return;
+            return values.changeSet(target.sourceContentId(), existing, false);
         }
-        JsonNode intro = firstItem(introRaw, "detailIntro2");
-        LocalDate startDate = date(intro, "eventstartdate");
-        LocalDate endDate = date(intro, "eventenddate");
+        LocalDate startDate = values.startDate();
+        LocalDate endDate = values.endDate();
         if (startDate == null || endDate == null || startDate.isAfter(endDate)) {
             throw new TourApiException(
                     "detailIntro2 행사 기간이 올바르지 않습니다: contentId="
@@ -76,15 +81,49 @@ public class TourApiDetailImportService {
                 target.id(),
                 startDate,
                 endDate,
-                limit(text(intro, "playtime"), 255),
-                limit(text(intro, "sponsor1"), 200),
-                limit(text(intro, "sponsor1tel"), 100),
-                limit(text(intro, "eventplace"), 500));
+                values.operatingHours(),
+                values.organizer(),
+                values.organizerPhone(),
+                values.eventPlace());
         if (updatedEvents < 1) {
             throw new IllegalStateException(
                     "행사 상세 기본 행을 찾을 수 없습니다: contentId="
                             + target.sourceContentId());
         }
+        return values.changeSet(target.sourceContentId(), existing, true);
+    }
+
+    private ExistingDetail loadExisting(TourApiDetailTarget target) {
+        return jdbcTemplate.query(
+                """
+                SELECT content.description, content.homepage_url, content.phone,
+                       ST_Longitude(content.location) AS longitude,
+                       ST_Latitude(content.location) AS latitude,
+                       event.start_date, event.end_date, event.operating_hours,
+                       event.organizer, event.organizer_phone, event.event_place
+                FROM tourism_contents content
+                LEFT JOIN event_details event ON event.content_id = content.id
+                WHERE content.id = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingDetail(
+                        resultSet.getString("description"),
+                        resultSet.getString("homepage_url"),
+                        resultSet.getString("phone"),
+                        resultSet.getDouble("latitude"),
+                        resultSet.getDouble("longitude"),
+                        resultSet.getDate("start_date") == null
+                                ? null
+                                : resultSet.getDate("start_date").toLocalDate(),
+                        resultSet.getDate("end_date") == null
+                                ? null
+                                : resultSet.getDate("end_date").toLocalDate(),
+                        resultSet.getString("operating_hours"),
+                        resultSet.getString("organizer"),
+                        resultSet.getString("organizer_phone"),
+                        resultSet.getString("event_place")),
+                target.id()).stream().findFirst().orElseThrow(() -> new IllegalStateException(
+                        "상세 적재 대상 콘텐츠를 찾을 수 없습니다: contentId="
+                                + target.sourceContentId()));
     }
 
     private JsonNode firstItem(byte[] raw, String source) {
@@ -148,5 +187,90 @@ public class TourApiDetailImportService {
         return value == null || value.length() <= maxLength
                 ? value
                 : value.substring(0, maxLength);
+    }
+
+    private record ExistingDetail(
+            String description,
+            String homepageUrl,
+            String phone,
+            double latitude,
+            double longitude,
+            LocalDate startDate,
+            LocalDate endDate,
+            String operatingHours,
+            String organizer,
+            String organizerPhone,
+            String eventPlace) {
+
+        private TourApiContentLocation location() {
+            return new TourApiContentLocation(latitude, longitude);
+        }
+    }
+
+    private record DetailValues(
+            String description,
+            String homepageUrl,
+            String phone,
+            LocalDate startDate,
+            LocalDate endDate,
+            String operatingHours,
+            String organizer,
+            String organizerPhone,
+            String eventPlace) {
+
+        private static DetailValues from(JsonNode common, JsonNode intro) {
+            return new DetailValues(
+                    text(common, "overview"),
+                    text(common, "homepage"),
+                    text(common, "tel"),
+                    intro == null ? null : date(intro, "eventstartdate"),
+                    intro == null ? null : date(intro, "eventenddate"),
+                    intro == null ? null : limit(text(intro, "playtime"), 255),
+                    intro == null ? null : limit(text(intro, "sponsor1"), 200),
+                    intro == null ? null : limit(text(intro, "sponsor1tel"), 100),
+                    intro == null ? null : limit(text(intro, "eventplace"), 500));
+        }
+
+        private ContentChangeSet changeSet(
+                String sourceContentId,
+                ExistingDetail existing,
+                boolean event) {
+            EnumSet<ContentChangedField> fields = EnumSet.noneOf(ContentChangedField.class);
+            addIfChanged(fields, ContentChangedField.DESCRIPTION, description, existing.description());
+            addIfChanged(fields, ContentChangedField.HOMEPAGE_URL, homepageUrl, existing.homepageUrl());
+            addIfChanged(fields, ContentChangedField.PHONE, phone, existing.phone());
+            if (event) {
+                addEventChanges(fields, existing);
+            }
+            return ContentChangeSet.of(
+                    sourceContentId,
+                    fields,
+                    ContentLifecycleChange.NONE,
+                    null,
+                    existing.location());
+        }
+
+        private void addEventChanges(
+                Set<ContentChangedField> fields,
+                ExistingDetail existing) {
+            addIfChanged(fields, ContentChangedField.START_DATE, startDate, existing.startDate());
+            addIfChanged(fields, ContentChangedField.END_DATE, endDate, existing.endDate());
+            addIfChanged(fields, ContentChangedField.OPERATING_HOURS,
+                    operatingHours, existing.operatingHours());
+            addIfChanged(fields, ContentChangedField.ORGANIZER, organizer, existing.organizer());
+            addIfChanged(fields, ContentChangedField.ORGANIZER_PHONE,
+                    organizerPhone, existing.organizerPhone());
+            addIfChanged(fields, ContentChangedField.EVENT_PLACE, eventPlace, existing.eventPlace());
+        }
+
+        private static void addIfChanged(
+                Set<ContentChangedField> fields,
+                ContentChangedField field,
+                Object current,
+                Object previous) {
+            if (!Objects.equals(current, previous)) {
+                fields.add(field);
+            }
+        }
     }
 }

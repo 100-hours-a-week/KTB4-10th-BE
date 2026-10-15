@@ -81,7 +81,7 @@ public class TourApiSyncRunRepository {
                 UPDATE tour_api_sync_runs
                 SET status = 'SUCCESS',
                     source_contents = ?, imported_contents = ?,
-                    inactive_contents = ?, reactivated_contents = ?,
+                    inactive_contents = ?,
                     source_events = ?, imported_events = ?,
                     completed_at = ?, updated_at = ?
                 WHERE run_id = ? AND status = 'RUNNING'
@@ -89,7 +89,6 @@ public class TourApiSyncRunRepository {
                 summary.sourceContents(),
                 summary.importedContents(),
                 summary.inactiveContents(),
-                summary.reactivatedContents(),
                 summary.sourceEvents(),
                 summary.importedEvents(),
                 Timestamp.from(now),

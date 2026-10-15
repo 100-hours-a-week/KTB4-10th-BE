@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -72,6 +73,14 @@ class TourApiDetailSyncServiceTest {
         when(client.fetchDetailCommon("100")).thenReturn(response("[]"));
         when(client.fetchDetailCommon("200")).thenReturn(response("[]"));
         when(client.fetchDetailIntro("200", "15")).thenReturn(response("[]"));
+        when(importer.importDetail(
+                eq(new TourApiDetailTarget(10L, "100", "12", false)),
+                any(byte[].class),
+                eq(null))).thenReturn(emptyChangeSet("100"));
+        when(importer.importDetail(
+                eq(new TourApiDetailTarget(20L, "200", "15", true)),
+                any(byte[].class),
+                any(byte[].class))).thenReturn(emptyChangeSet("200"));
 
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 "run-1",
@@ -123,5 +132,14 @@ class TourApiDetailSyncServiceTest {
                         + items
                         + "}}}}")
                 .getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static ContentChangeSet emptyChangeSet(String sourceContentId) {
+        return ContentChangeSet.of(
+                sourceContentId,
+                Set.of(),
+                ContentLifecycleChange.NONE,
+                null,
+                null);
     }
 }

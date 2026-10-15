@@ -54,9 +54,13 @@ public class TourApiDetailSyncService {
         List<TourApiDetailTarget> targets = resolveTargets(areaRaw, targetDate);
         int completed = 0;
         int failed = 0;
+        List<ContentChangeSet> changeSets = new ArrayList<>();
         for (TourApiDetailTarget target : targets) {
             try {
-                synchronizeWithRetry(runId, target);
+                ContentChangeSet changeSet = synchronizeWithRetry(runId, target);
+                if (!changeSet.changedFields().isEmpty()) {
+                    changeSets.add(changeSet);
+                }
                 completed++;
             } catch (RuntimeException exception) {
                 failed++;
@@ -75,7 +79,7 @@ public class TourApiDetailSyncService {
                 targets.size(),
                 completed,
                 failed);
-        return new DetailSyncSummary(targets.size(), completed, failed);
+        return new DetailSyncSummary(targets.size(), completed, failed, changeSets);
     }
 
     private List<TourApiDetailTarget> resolveTargets(byte[] areaRaw, LocalDate targetDate) {
@@ -120,12 +124,11 @@ public class TourApiDetailSyncService {
         return result;
     }
 
-    private void synchronizeWithRetry(String runId, TourApiDetailTarget target) {
+    private ContentChangeSet synchronizeWithRetry(String runId, TourApiDetailTarget target) {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             try {
-                synchronizeOne(runId, target);
-                return;
+                return synchronizeOne(runId, target);
             } catch (TourApiException exception) {
                 lastFailure = exception;
                 if (!exception.isRetryable() || attempt == properties.maxAttempts()) {
@@ -139,7 +142,7 @@ public class TourApiDetailSyncService {
                 : lastFailure;
     }
 
-    private void synchronizeOne(String runId, TourApiDetailTarget target) {
+    private ContentChangeSet synchronizeOne(String runId, TourApiDetailTarget target) {
         byte[] common = client.fetchDetailCommon(target.sourceContentId());
         storage.saveDetail(runId, target.sourceContentId(), "detailCommon2", common);
         byte[] intro = null;
@@ -148,7 +151,7 @@ public class TourApiDetailSyncService {
                     target.sourceContentId(), target.sourceContentTypeId());
             storage.saveDetail(runId, target.sourceContentId(), "detailIntro2", intro);
         }
-        importer.importDetail(target, common, intro);
+        return importer.importDetail(target, common, intro);
     }
 
     private List<JsonNode> readItems(byte[] raw) {
@@ -192,7 +195,15 @@ public class TourApiDetailSyncService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    public record DetailSyncSummary(int targets, int completed, int failed) {
+    public record DetailSyncSummary(
+            int targets,
+            int completed,
+            int failed,
+            List<ContentChangeSet> changeSets) {
+
+        public DetailSyncSummary {
+            changeSets = List.copyOf(changeSets);
+        }
     }
 
     private record SourceTarget(

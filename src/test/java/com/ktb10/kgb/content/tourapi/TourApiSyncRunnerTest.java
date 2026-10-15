@@ -55,7 +55,7 @@ class TourApiSyncRunnerTest {
 
     @Test
     void recordsSuccessfulRun() {
-        ImportSummary summary = new ImportSummary(10, 2, 0, 0, 1, 1, 3, 1, 0);
+        ImportSummary summary = new ImportSummary(10, 2, 0, 0, 1, 3, 1, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
 
@@ -68,7 +68,7 @@ class TourApiSyncRunnerTest {
 
     @Test
     void retriesRetryableFailureAndThenSucceeds() {
-        ImportSummary summary = new ImportSummary(10, 2, 0, 0, 0, 0, 3, 1, 0);
+        ImportSummary summary = new ImportSummary(10, 2, 0, 0, 0, 3, 1, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(SYNC_DATE))
                 .thenThrow(new TourApiException("temporary", true))
