@@ -2,9 +2,7 @@ package com.ktb10.kgb.content.tourapi;
 
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.SnapshotType;
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.ValidatedSnapshot;
-import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -12,32 +10,30 @@ import org.springframework.stereotype.Service;
 @Service
 public class TourApiSyncService {
 
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
-
     private final TourApiClient client;
     private final TourApiSnapshotValidator validator;
     private final TourApiSnapshotStorage storage;
     private final TourApiImportService importer;
+    private final TourApiDetailSyncService detailSyncService;
     private final TourApiProperties properties;
-    private final Clock clock;
 
     public TourApiSyncService(
             TourApiClient client,
             TourApiSnapshotValidator validator,
             TourApiSnapshotStorage storage,
             TourApiImportService importer,
-            TourApiProperties properties,
-            Clock clock) {
+            TourApiDetailSyncService detailSyncService,
+            TourApiProperties properties) {
         this.client = client;
         this.validator = validator;
         this.storage = storage;
         this.importer = importer;
+        this.detailSyncService = detailSyncService;
         this.properties = properties;
-        this.clock = clock;
     }
 
-    public ImportSummary synchronize() {
-        LocalDate today = LocalDate.now(clock.withZone(SEOUL));
+    public ImportSummary synchronize(LocalDate syncDate) {
+        LocalDate today = syncDate;
         LocalDate festivalStartDate = today.minusDays(properties.festivalLookbackDays());
         LocalDate festivalEndDate = today.plusYears(properties.festivalLookaheadYears());
         ValidatedSnapshot area = validator.validate(
@@ -49,6 +45,8 @@ public class TourApiSyncService {
         String runId = UUID.randomUUID().toString();
         storage.save(runId, "areaBasedList2.json", area.raw());
         storage.save(runId, "searchFestival2.json", festival.raw());
-        return importer.importSnapshots(area.raw(), festival.raw());
+        ImportSummary summary = importer.importSnapshots(area.raw(), festival.raw());
+        detailSyncService.synchronize(runId, syncDate.minusDays(1), area.raw());
+        return summary;
     }
 }

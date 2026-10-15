@@ -49,7 +49,7 @@ public class TourApiSyncRunner {
 
         ImportSummary summary;
         try {
-            summary = synchronizeWithRetry(runId);
+            summary = synchronizeWithRetry(runId, syncDate);
         } catch (RuntimeException failure) {
             recordFailure(runId, syncDate, "SYNCHRONIZE", failure);
             return false;
@@ -91,12 +91,12 @@ public class TourApiSyncRunner {
                 failure);
     }
 
-    private ImportSummary synchronizeWithRetry(UUID runId) {
+    private ImportSummary synchronizeWithRetry(UUID runId, LocalDate syncDate) {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             runRepository.recordAttempt(runId, attempt, clock.instant());
             try {
-                return syncService.synchronize();
+                return syncService.synchronize(syncDate);
             } catch (TourApiException failure) {
                 lastFailure = failure;
                 if (!failure.isRetryable() || attempt == properties.maxAttempts()) {
