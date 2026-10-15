@@ -6,9 +6,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.common.error.BusinessException;
-import com.ktb10.kgb.content.repository.ContentDetailData;
-import com.ktb10.kgb.content.repository.ContentListData;
-import com.ktb10.kgb.content.repository.ContentReadQuery;
+import com.ktb10.kgb.content.repository.ContentReadRepository;
+import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import com.ktb10.kgb.content.repository.ContentReadRepository.ContentListProjection;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -16,21 +16,29 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 @ExtendWith(MockitoExtension.class)
 class ContentReadServiceTest {
 
     @Mock
-    private ContentReadQuery contentReadQuery;
+    private ContentReadRepository contentReadRepository;
+
+    @Mock
+    private ContentListProjection listProjection;
+
+    @Mock
+    private ContentDetailProjection detailProjection;
 
     @Test
     void returnsEventPageWithTrimmedSearchQuery() {
-        ContentReadService service = new ContentReadService(contentReadQuery);
-        when(contentReadQuery.countEvents("야행")).thenReturn(21L);
-        when(contentReadQuery.findEvents("야행", 20, 20L)).thenReturn(List.of(
-                new ContentListData(
-                        "event-1", "수원 야행", "41", "경기도", "수원시", null,
-                        LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 30))));
+        ContentReadService service = new ContentReadService(contentReadRepository);
+        var pageable = PageRequest.of(1, 20);
+        when(listProjection.getContentId()).thenReturn("event-1");
+        when(listProjection.getStartDate()).thenReturn(LocalDate.of(2026, 8, 14));
+        when(contentReadRepository.findEvents("야행", pageable))
+                .thenReturn(new PageImpl<>(List.of(listProjection), pageable, 21));
 
         var response = service.getEvents("  야행  ", 2, 20);
 
@@ -38,19 +46,18 @@ class ContentReadServiceTest {
         assertThat(response.totalPages()).isEqualTo(2);
         assertThat(response.items().getFirst().eventPeriod().startDate())
                 .isEqualTo(LocalDate.of(2026, 8, 14));
-        verify(contentReadQuery).findEvents("야행", 20, 20L);
+        verify(contentReadRepository).findEvents("야행", pageable);
     }
 
     @Test
     void combinesEventDetailAndImages() {
-        ContentReadService service = new ContentReadService(contentReadQuery);
-        ContentDetailData detail = new ContentDetailData(
-                1L, "event-1", "수원 야행", "41", "경기도",
-                37.2, 127.0, null, "소개", "수원시", "031", null,
-                LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 30),
-                "18:00~23:00", "수원시");
-        when(contentReadQuery.findEventDetail("event-1")).thenReturn(Optional.of(detail));
-        when(contentReadQuery.findImages(1L)).thenReturn(List.of());
+        ContentReadService service = new ContentReadService(contentReadRepository);
+        when(detailProjection.getId()).thenReturn(1L);
+        when(detailProjection.getTitle()).thenReturn("수원 야행");
+        when(detailProjection.getAddress()).thenReturn("수원시");
+        when(contentReadRepository.findEventDetail("event-1"))
+                .thenReturn(Optional.of(detailProjection));
+        when(contentReadRepository.findImages(1L)).thenReturn(List.of());
 
         var response = service.getEventDetail("event-1");
 
@@ -61,8 +68,8 @@ class ContentReadServiceTest {
 
     @Test
     void rejectsMissingOrInactiveEvent() {
-        ContentReadService service = new ContentReadService(contentReadQuery);
-        when(contentReadQuery.findEventDetail("missing")).thenReturn(Optional.empty());
+        ContentReadService service = new ContentReadService(contentReadRepository);
+        when(contentReadRepository.findEventDetail("missing")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.getEventDetail("missing"))
                 .isInstanceOf(BusinessException.class);

@@ -1,8 +1,10 @@
 package com.ktb10.kgb.content.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.ktb10.kgb.content.repository.ContentDetailData;
-import com.ktb10.kgb.content.repository.ContentImageData;
+import com.ktb10.kgb.content.dto.ContentListResponse.ContentRegionResponse;
+import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import com.ktb10.kgb.content.repository.ContentReadRepository.ContentImageProjection;
+import java.time.LocalDate;
 import java.util.List;
 
 /** 행사 상세 페이지 응답입니다. */
@@ -26,27 +28,47 @@ public record ContentDetailResponse(
     }
 
     public static ContentDetailResponse from(
-            ContentDetailData data,
-            List<ContentImageData> images) {
+            ContentDetailProjection data,
+            List<ContentImageProjection> images) {
         return new ContentDetailResponse(
-                data.contentId(),
-                data.title(),
+                data.getContentId(),
+                data.getTitle(),
                 "EVENT",
-                new ContentRegionResponse(data.regionCode(), data.regionName()),
-                data.latitude(),
-                data.longitude(),
-                data.thumbnailUrl(),
-                data.description(),
-                data.address(),
-                data.phone(),
-                data.homepageUrl(),
+                new ContentRegionResponse(data.getRegionCode(), data.getRegionName()),
+                data.getLatitude(),
+                data.getLongitude(),
+                data.getThumbnailUrl(),
+                data.getDescription(),
+                data.getAddress(),
+                data.getPhone(),
+                data.getHomepageUrl(),
                 images.stream().map(ContentImageResponse::from).toList(),
                 new ContentEventDetailResponse(
-                        data.startDate(),
-                        data.endDate(),
-                        data.operatingHours(),
-                        data.organizer(),
+                        data.getStartDate(),
+                        data.getEndDate(),
+                        data.getOperatingHours(),
+                        data.getOrganizer(),
                         null,
-                        data.address()));
+                        data.getAddress()));
+    }
+
+    public record ContentImageResponse(
+            @JsonProperty("image_id") String imageId,
+            @JsonProperty("image_url") String imageUrl,
+            @JsonProperty("sort_order") int sortOrder) {
+
+        public static ContentImageResponse from(ContentImageProjection image) {
+            return new ContentImageResponse(
+                    image.getImageId(), image.getImageUrl(), image.getSortOrder());
+        }
+    }
+
+    public record ContentEventDetailResponse(
+            @JsonProperty("start_date") LocalDate startDate,
+            @JsonProperty("end_date") LocalDate endDate,
+            @JsonProperty("operating_hours") String operatingHours,
+            String organizer,
+            @JsonProperty("organizer_phone") String organizerPhone,
+            @JsonProperty("event_place") String eventPlace) {
     }
 }

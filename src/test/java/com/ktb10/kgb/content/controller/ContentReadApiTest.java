@@ -7,10 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.security.AuthenticatedMember;
-import com.ktb10.kgb.content.dto.ContentEventPeriodResponse;
-import com.ktb10.kgb.content.dto.ContentListItemResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse;
-import com.ktb10.kgb.content.dto.ContentRegionResponse;
+import com.ktb10.kgb.content.dto.ContentListResponse.ContentEventPeriodResponse;
+import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
+import com.ktb10.kgb.content.dto.ContentListResponse.ContentRegionResponse;
 import com.ktb10.kgb.content.service.ContentReadService;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import java.time.LocalDate;

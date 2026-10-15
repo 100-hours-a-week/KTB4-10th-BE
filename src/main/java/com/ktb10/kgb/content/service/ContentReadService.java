@@ -3,11 +3,11 @@ package com.ktb10.kgb.content.service;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.content.dto.ContentDetailResponse;
-import com.ktb10.kgb.content.dto.ContentListItemResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse;
-import com.ktb10.kgb.content.repository.ContentDetailData;
-import com.ktb10.kgb.content.repository.ContentReadQuery;
-import java.util.List;
+import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
+import com.ktb10.kgb.content.repository.ContentReadRepository;
+import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -16,32 +16,27 @@ import org.springframework.util.StringUtils;
 @Service
 public class ContentReadService {
 
-    private final ContentReadQuery contentReadQuery;
+    private final ContentReadRepository contentReadRepository;
 
-    public ContentReadService(ContentReadQuery contentReadQuery) {
-        this.contentReadQuery = contentReadQuery;
+    public ContentReadService(ContentReadRepository contentReadRepository) {
+        this.contentReadRepository = contentReadRepository;
     }
 
     @Transactional(readOnly = true)
     public ContentListResponse getEvents(String rawQuery, int page, int size) {
         String query = StringUtils.hasText(rawQuery) ? rawQuery.trim() : null;
-        long totalItems = contentReadQuery.countEvents(query);
-        List<ContentListItemResponse> items = contentReadQuery.findEvents(
-                        query,
-                        size,
-                        (long) (page - 1) * size).stream()
+        var result = contentReadRepository.findEvents(query, PageRequest.of(page - 1, size));
+        var items = result.getContent().stream()
                 .map(ContentListItemResponse::from)
                 .toList();
-        int totalPages = totalItems == 0
-                ? 0
-                : Math.toIntExact((totalItems + size - 1) / size);
-        return new ContentListResponse(items, page, size, totalItems, totalPages);
+        return new ContentListResponse(
+                items, page, size, result.getTotalElements(), result.getTotalPages());
     }
 
     @Transactional(readOnly = true)
     public ContentDetailResponse getEventDetail(String contentId) {
-        ContentDetailData detail = contentReadQuery.findEventDetail(contentId)
+        ContentDetailProjection detail = contentReadRepository.findEventDetail(contentId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return ContentDetailResponse.from(detail, contentReadQuery.findImages(detail.id()));
+        return ContentDetailResponse.from(detail, contentReadRepository.findImages(detail.getId()));
     }
 }
