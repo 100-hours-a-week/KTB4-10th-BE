@@ -10,6 +10,7 @@ import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.SnapshotType;
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.ValidatedSnapshot;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -45,6 +46,13 @@ class TourApiSyncServiceTest {
                 .thenReturn(new ValidatedSnapshot(SnapshotType.AREA, area, 10));
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenReturn(new ValidatedSnapshot(SnapshotType.FESTIVAL, festival, 3));
+        when(importer.importSnapshots(area, festival))
+                .thenReturn(new ImportSummary(10, 2, 0, 0, 0, 3, 1, 0));
+        when(detailSyncService.synchronize(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
+                org.mockito.ArgumentMatchers.eq(area)))
+                .thenReturn(new TourApiDetailSyncService.DetailSyncSummary(0, 0, 0, List.of()));
 
         service.synchronize(LocalDate.of(2026, 10, 9));
 
