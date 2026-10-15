@@ -204,7 +204,7 @@ class TourApiImportServiceTest {
     }
 
     @Test
-    void reactivatesContentThatAppearsAgain() throws Exception {
+    void restoresInactiveContentAsAnExistingContentUpdate() throws Exception {
         mockExistingContentAndEvent(
                 "100",
                 LocalDateTime.of(2026, 1, 2, 12, 0),
@@ -229,8 +229,12 @@ class TourApiImportServiceTest {
 
         ImportSummary summary = service.importSnapshots(areaSnapshot, snapshot(""));
 
-        assertThat(summary.reactivatedContents()).isEqualTo(1);
+        assertThat(summary.importedContents()).isEqualTo(1);
         assertThat(summary.inactiveContents()).isZero();
+        assertThat(summary.changeSets()).singleElement().satisfies(change -> {
+            assertThat(change.lifecycleChange()).isEqualTo(ContentLifecycleChange.NONE);
+            assertThat(change.changedFields()).contains(ContentChangedField.STATUS);
+        });
         assertThat(batchSizes).containsExactly(1, 0, 0);
     }
 

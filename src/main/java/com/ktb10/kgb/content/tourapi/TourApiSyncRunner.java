@@ -59,14 +59,13 @@ public class TourApiSyncRunner {
             runRepository.complete(runId, summary, clock.instant());
             LOGGER.info(
                     "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
-                            + "importedContents={}, inactiveContents={}, reactivatedContents={}, "
+                            + "importedContents={}, inactiveContents={}, "
                             + "sourceEvents={}, importedEvents={}",
                     runId,
                     syncDate,
                     summary.sourceContents(),
                     summary.importedContents(),
                     summary.inactiveContents(),
-                    summary.reactivatedContents(),
                     summary.sourceEvents(),
                     summary.importedEvents());
             return true;
