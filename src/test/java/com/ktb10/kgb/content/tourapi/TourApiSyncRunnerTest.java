@@ -8,6 +8,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
 import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import java.time.Clock;
@@ -20,6 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 class TourApiSyncRunnerTest {
 
@@ -29,6 +31,9 @@ class TourApiSyncRunnerTest {
     private final TourApiSyncRunRepository runRepository = mock(TourApiSyncRunRepository.class);
     private final MapContentCacheRefreshService cacheRefreshService =
             mock(MapContentCacheRefreshService.class);
+    private final InterestedContentChangeCandidateSelector notificationCandidateSelector =
+            mock(InterestedContentChangeCandidateSelector.class);
+    private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private TourApiSyncRunner runner;
 
     @BeforeEach
@@ -43,8 +48,64 @@ class TourApiSyncRunnerTest {
                 syncService,
                 runRepository,
                 cacheRefreshService,
+                notificationCandidateSelector,
+                eventPublisher,
                 properties,
                 clock);
+    }
+
+    @Test
+    void publishesInterestedContentChangesAfterSuccessfulRun() {
+        ContentChangeSet changeSet = ContentChangeSet.of(
+                "100",
+                java.util.Set.of(ContentChangedField.DESCRIPTION),
+                ContentLifecycleChange.NONE,
+                null,
+                null);
+        InterestedContentChangeCandidate candidate =
+                new InterestedContentChangeCandidate(
+                        "100",
+                        java.util.Set.of(ContentChangedField.DESCRIPTION));
+        ImportSummary summary = new ImportSummary(
+                10, 1, 0, 0, 0, 0, 0, 0, java.util.List.of(changeSet));
+        when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(notificationCandidateSelector.select(summary.changeSets()))
+                .thenReturn(java.util.List.of(candidate));
+
+        assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
+
+        verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
+        verify(eventPublisher).publishEvent(new InterestedContentChangesDetectedEvent(
+                SYNC_DATE,
+                java.util.List.of(candidate)));
+    }
+
+    @Test
+    void doesNotPublishEventWhenNoNotificationCandidateExists() {
+        ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
+        when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(notificationCandidateSelector.select(summary.changeSets()))
+                .thenReturn(java.util.List.of());
+
+        assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
+
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void keepsSuccessfulSyncWhenNotificationDispatchFails() {
+        ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
+        when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(notificationCandidateSelector.select(summary.changeSets()))
+                .thenThrow(new IllegalStateException("알림 후보 선별 실패"));
+
+        assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
+
+        verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
+        verify(runRepository, never()).fail(any(), any(), any(), any());
     }
 
     @Test
