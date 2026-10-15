@@ -1,9 +1,13 @@
 package com.ktb10.kgb.content.tourapi;
 
+import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,6 +18,15 @@ import org.springframework.stereotype.Service;
 public class TourApiSyncRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TourApiSyncRunner.class);
+    private static final Set<ContentChangedField> MAP_CACHE_FIELDS = EnumSet.of(
+            ContentChangedField.TITLE,
+            ContentChangedField.THUMBNAIL_URL,
+            ContentChangedField.ADDRESS,
+            ContentChangedField.START_DATE,
+            ContentChangedField.END_DATE,
+            ContentChangedField.LOCATION,
+            ContentChangedField.CLASSIFICATION_CODE_1,
+            ContentChangedField.STATUS);
 
     private final TourApiSyncService syncService;
     private final TourApiSyncRunRepository runRepository;
@@ -55,7 +68,9 @@ public class TourApiSyncRunner {
             return false;
         }
         try {
-            cacheRefreshService.refreshAfterFullSync();
+            cacheRefreshService.refreshAfterBatch(
+                    cacheLocations(summary.changeSets()),
+                    syncDate);
             runRepository.complete(runId, summary, clock.instant());
             LOGGER.info(
                     "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
@@ -73,6 +88,20 @@ public class TourApiSyncRunner {
             recordFailure(runId, syncDate, "CACHE_REFRESH", failure);
             return false;
         }
+    }
+
+    private List<MapContentCacheLocation> cacheLocations(List<ContentChangeSet> changeSets) {
+        return changeSets.stream()
+                .filter(change -> change.changedFields().stream().anyMatch(MAP_CACHE_FIELDS::contains))
+                .flatMap(change -> java.util.stream.Stream.of(
+                        change.previousLocation(),
+                        change.currentLocation()))
+                .filter(java.util.Objects::nonNull)
+                .map(location -> new MapContentCacheLocation(
+                        location.latitude(),
+                        location.longitude()))
+                .distinct()
+                .toList();
     }
 
     private void recordFailure(

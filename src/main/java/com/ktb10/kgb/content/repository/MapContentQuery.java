@@ -3,6 +3,7 @@ package com.ktb10.kgb.content.repository;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -119,6 +120,33 @@ public class MapContentQuery {
                 """,
                 COMMON_CONTENT_ROW_MAPPER,
                 SUPPORTED_CLASSIFICATION_CODES.toArray());
+    }
+
+    /** 기준일에 종료되어 오늘 지도 노출 대상에서 빠지는 행사 위치를 조회합니다. */
+    public List<MapContentCommonData> findEventsEndingOn(LocalDate endDate) {
+        return jdbcTemplate.query(
+                """
+                SELECT
+                    content.id,
+                    content.source_content_id,
+                    content.title,
+                    content.classification_code_1,
+                    content.address,
+                    ST_Latitude(content.location) AS latitude,
+                    ST_Longitude(content.location) AS longitude,
+                    content.thumbnail_url,
+                    event.start_date,
+                    event.end_date
+                FROM tourism_contents content
+                JOIN event_details event ON event.content_id = content.id
+                WHERE content.status = 'ACTIVE'
+                  AND content.deleted_at IS NULL
+                  AND content.classification_code_1 = 'EV'
+                  AND event.end_date = ?
+                ORDER BY content.id
+                """,
+                COMMON_CONTENT_ROW_MAPPER,
+                endDate);
     }
 
     private static EventPeriod eventPeriod(Date startDate, Date endDate) {

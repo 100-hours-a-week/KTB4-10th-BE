@@ -9,11 +9,14 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
+import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,15 +58,43 @@ class TourApiSyncRunnerTest {
 
     @Test
     void recordsSuccessfulRun() {
-        ImportSummary summary = new ImportSummary(10, 2, 0, 0, 1, 3, 1, 0);
+        ContentChangeSet locationChange = ContentChangeSet.of(
+                "100",
+                Set.of(ContentChangedField.LOCATION),
+                ContentLifecycleChange.NONE,
+                new TourApiContentLocation(37.4, 127.1),
+                new TourApiContentLocation(37.6, 127.6));
+        ImportSummary summary = new ImportSummary(
+                10, 2, 0, 0, 1, 3, 1, 0, List.of(locationChange));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
         verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
-        verify(cacheRefreshService).refreshAfterFullSync();
+        verify(cacheRefreshService).refreshAfterBatch(List.of(
+                new MapContentCacheLocation(37.4, 127.1),
+                new MapContentCacheLocation(37.6, 127.6)), SYNC_DATE);
         verify(runRepository, never()).fail(any(), any(), any(), any());
+    }
+
+    @Test
+    void skipsMapCacheRefreshForDetailOnlyChanges() {
+        ContentChangeSet detailChange = ContentChangeSet.of(
+                "100",
+                Set.of(ContentChangedField.DESCRIPTION),
+                ContentLifecycleChange.NONE,
+                null,
+                new TourApiContentLocation(37.6, 127.6));
+        ImportSummary summary = new ImportSummary(
+                10, 1, 0, 0, 0, 0, 0, 0, List.of(detailChange));
+        when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+
+        assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
+
+        verify(cacheRefreshService).refreshAfterBatch(List.of(), SYNC_DATE);
+        verify(cacheRefreshService, never()).refreshAfterFullSync();
     }
 
     @Test

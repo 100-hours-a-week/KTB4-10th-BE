@@ -2,6 +2,7 @@ package com.ktb10.kgb.content.service;
 
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentQuery;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,15 @@ public class MapContentCommonLoader {
     @Transactional(readOnly = true)
     public List<MapContentCommonData> loadAllCacheable() {
         return List.copyOf(mapContentQuery.findAllCacheable());
+    }
+
+    @Transactional(readOnly = true)
+    public List<MapContentCacheLocation> loadEventLocationsEndingOn(LocalDate endDate) {
+        return mapContentQuery.findEventsEndingOn(endDate).stream()
+                .map(content -> new MapContentCacheLocation(
+                        content.latitude(),
+                        content.longitude()))
+                .toList();
     }
 
 }
