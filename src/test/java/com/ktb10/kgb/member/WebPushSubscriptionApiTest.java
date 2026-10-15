@@ -53,7 +53,7 @@ class WebPushSubscriptionApiTest {
     static final String P256DH =
             "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     private static final String AUTH = "AAAAAAAAAAAAAAAAAAAAAA";
-    private static final String ENDPOINT = "https://push.example.test/subscriptions/browser-1";
+    private static final String ENDPOINT = "https://fcm.googleapis.com/fcm/send/browser-1";
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-10-07T06:00:00Z");
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
     private static final long EXPIRATION_TIME = 1_830_816_000_000L;
@@ -128,7 +128,7 @@ class WebPushSubscriptionApiTest {
         register(
                         "push-multiple-browser-session",
                         csrf,
-                        "https://push.example.test/subscriptions/browser-2",
+                        "https://fcm.googleapis.com/fcm/send/browser-2",
                         P256DH,
                         AUTH)
                 .andExpect(status().isOk());
@@ -227,10 +227,49 @@ class WebPushSubscriptionApiTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code")
                         .value("WEB_PUSH_SUBSCRIPTION_INVALID"));
+        register("push-validation-session", csrf, "https://127.0.0.1/push", P256DH, AUTH)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code")
+                        .value("WEB_PUSH_SUBSCRIPTION_INVALID"));
+        register("push-validation-session", csrf, "https://unknown.example/push", P256DH, AUTH)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code")
+                        .value("WEB_PUSH_SUBSCRIPTION_INVALID"));
         register("push-validation-session", csrf, ENDPOINT, "invalid", AUTH)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.error.code")
                         .value("WEB_PUSH_SUBSCRIPTION_INVALID"));
+    }
+
+    @Test
+    void rejectsSixthActiveSubscriptionWithoutEvictingExistingSubscriptions() throws Exception {
+        Member member = activeMember("push-limit-member");
+        issueSession(member, "push-limit-session");
+        Csrf csrf = csrf();
+
+        for (int sequence = 1; sequence <= 5; sequence++) {
+            register(
+                            "push-limit-session",
+                            csrf,
+                            "https://fcm.googleapis.com/fcm/send/limit-" + sequence,
+                            P256DH,
+                            AUTH)
+                    .andExpect(status().isOk());
+        }
+
+        register(
+                        "push-limit-session",
+                        csrf,
+                        "https://fcm.googleapis.com/fcm/send/limit-6",
+                        P256DH,
+                        AUTH)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code")
+                        .value("WEB_PUSH_SUBSCRIPTION_LIMIT_EXCEEDED"));
+
+        assertThat(subscriptionRepository.countByMemberIdAndStatus(
+                        member.getId(), WebPushSubscriptionStatus.ACTIVE))
+                .isEqualTo(5);
     }
 
     private org.springframework.test.web.servlet.ResultActions register(

@@ -6,8 +6,10 @@ import com.ktb10.kgb.member.dto.response.WebPushSubscriptionResponse;
 import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
+import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.error.MemberErrorCode;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
+import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -17,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,23 +27,30 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class WebPushSubscriptionService {
 
+    private static final int MAX_ACTIVE_SUBSCRIPTIONS_PER_MEMBER = 5;
     private static final int P256DH_KEY_BYTES = 65;
     private static final int AUTH_SECRET_BYTES = 16;
     private static final byte UNCOMPRESSED_POINT_PREFIX = 0x04;
 
     private final WebPushSubscriptionRepository subscriptionRepository;
     private final AuthSessionRepository authSessionRepository;
+    private final MemberRepository memberRepository;
     private final WebPushEndpointHasher endpointHasher;
+    private final WebPushEndpointPolicy endpointPolicy;
     private final Clock clock;
 
     public WebPushSubscriptionService(
             WebPushSubscriptionRepository subscriptionRepository,
             AuthSessionRepository authSessionRepository,
+            MemberRepository memberRepository,
             WebPushEndpointHasher endpointHasher,
+            WebPushEndpointPolicy endpointPolicy,
             Clock clock) {
         this.subscriptionRepository = subscriptionRepository;
         this.authSessionRepository = authSessionRepository;
+        this.memberRepository = memberRepository;
         this.endpointHasher = endpointHasher;
+        this.endpointPolicy = endpointPolicy;
         this.clock = clock;
     }
 
@@ -50,18 +60,30 @@ public class WebPushSubscriptionService {
             Long sessionId,
             WebPushSubscriptionRequest request) {
         validateRequest(request);
+        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(
+                        MemberErrorCode.WEB_PUSH_SUBSCRIPTION_INVALID));
         AuthSession authSession = authSessionRepository
                 .findByIdAndMemberIdForPushRegistration(sessionId, memberId)
                 .orElseThrow(() -> new BusinessException(MemberErrorCode.WEB_PUSH_SUBSCRIPTION_INVALID));
-        Member member = authSession.getMember();
         byte[] endpointHash = endpointHasher.hash(request.endpoint());
         LocalDateTime expirationAt = expirationAt(request.expirationTime());
         LocalDateTime now = LocalDateTime.now(clock);
 
-        WebPushSubscription subscription = subscriptionRepository
-                .findByEndpointHash(endpointHash)
-                .map(existing -> renewExisting(
-                        existing,
+        Optional<WebPushSubscription> existingSubscription =
+                subscriptionRepository.findByEndpointHash(endpointHash);
+        existingSubscription.filter(WebPushSubscription::isActive)
+                .filter(subscription -> !subscription.isOwnedBy(memberId))
+                .ifPresent(subscription -> {
+                    throw new BusinessException(MemberErrorCode.WEB_PUSH_SUBSCRIPTION_CONFLICT);
+                });
+        if (existingSubscription.isEmpty() || !existingSubscription.orElseThrow().isActive()) {
+            ensureActiveSubscriptionCapacity(memberId);
+        }
+
+        WebPushSubscription subscription = existingSubscription
+                .map(foundSubscription -> renewExisting(
+                        foundSubscription,
                         member,
                         authSession,
                         request,
@@ -78,6 +100,15 @@ public class WebPushSubscriptionService {
                         now));
 
         return WebPushSubscriptionResponse.from(subscriptionRepository.saveAndFlush(subscription));
+    }
+
+    private void ensureActiveSubscriptionCapacity(Long memberId) {
+        long activeSubscriptions = subscriptionRepository.countByMemberIdAndStatus(
+                memberId,
+                WebPushSubscriptionStatus.ACTIVE);
+        if (activeSubscriptions >= MAX_ACTIVE_SUBSCRIPTIONS_PER_MEMBER) {
+            throw new BusinessException(MemberErrorCode.WEB_PUSH_SUBSCRIPTION_LIMIT_EXCEEDED);
+        }
     }
 
     @Transactional
@@ -124,7 +155,8 @@ public class WebPushSubscriptionService {
             return "https".equalsIgnoreCase(uri.getScheme())
                     && uri.getHost() != null
                     && uri.getUserInfo() == null
-                    && uri.getFragment() == null;
+                    && uri.getFragment() == null
+                    && endpointPolicy.allows(uri);
         } catch (URISyntaxException exception) {
             return false;
         }

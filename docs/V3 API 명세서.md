@@ -739,7 +739,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 
 ```json
 {
-  "endpoint": "https://push.example.com/subscriptions/browser-token",
+  "endpoint": "https://fcm.googleapis.com/fcm/send/browser-token",
   "expiration_time": null,
   "keys": {
     "p256dh": "Base64URL P-256 공개키",
@@ -748,11 +748,13 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 }
 ```
 
-- `endpoint`: 필수 HTTPS URL, 최대 4096자
+- `endpoint`: 필수 HTTPS URL, 최대 4096자. Chrome·Firefox·Safari·Windows의 알려진 Push Service만 허용한다.
 - `expiration_time`: 선택 epoch milliseconds, 브라우저가 제공하지 않으면 null
 - `keys.p256dh`: 필수 Base64URL, 디코딩한 비압축 P-256 공개키 65바이트
 - `keys.auth`: 필수 Base64URL, 디코딩한 인증 값 16바이트
 - 동일 endpoint는 SHA-256 해시 UNIQUE를 기준으로 갱신한다. 다른 회원의 활성 endpoint는 이전 회원의 명시적인 로그아웃·구독 해제 없이 가져올 수 없다.
+- 등록과 발송은 동일한 Push Service allowlist를 사용하고 redirect를 따라가지 않는다.
+- 회원별 활성 구독은 최대 5개이며 만료·`INVALID`·`REVOKED` 구독은 개수에서 제외한다. 제한에 도달한 상태에서 다른 endpoint를 등록하면 기존 구독을 자동 폐기하지 않고 거절한다.
 
 **응답 200**
 
@@ -773,6 +775,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
 | 409 | WEB_PUSH_SUBSCRIPTION_CONFLICT | 다른 회원이 사용 중인 활성 endpoint |
+| 409 | WEB_PUSH_SUBSCRIPTION_LIMIT_EXCEEDED | 회원별 활성 구독 5개 초과 |
 | 422 | WEB_PUSH_SUBSCRIPTION_INVALID | endpoint·암호화 키·만료 시각 형식 오류 |
 
 ### API-NOT-07 현재 브라우저 Push 구독 해제
