@@ -47,6 +47,7 @@ public class AiGuidebookContentQuery {
                 SELECT
                     content.source_content_id,
                     content.title,
+                    content.description,
                     content.classification_code_1,
                     content.classification_code_2,
                     content.classification_code_3,
@@ -79,6 +80,7 @@ public class AiGuidebookContentQuery {
                                 ? ContentType.EVENT
                                 : ContentType.PLACE,
                         resultSet.getString("title"),
+                        AiContentOverviewFormatter.format(resultSet.getString("description")),
                         resultSet.getString("classification_code_1"),
                         resultSet.getString("classification_code_2"),
                         resultSet.getString("classification_code_3"),

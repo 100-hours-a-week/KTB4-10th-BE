@@ -98,6 +98,7 @@ class FakeGuidebookAiClientTest {
                 "126508",
                 AiGuidebookRequest.ContentType.PLACE,
                 "첨성대",
+                "첨성대 개요",
                 "HS",
                 "HS01",
                 "HS010100",
