@@ -2,6 +2,7 @@ package com.ktb10.kgb.member.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ktb10.kgb.member.entity.PreferenceCode;
+import com.ktb10.kgb.member.entity.PreferenceSelectionGroup;
 import com.ktb10.kgb.member.entity.PreferenceType;
 import java.util.List;
 
@@ -18,6 +19,7 @@ public record PreferenceOptionResponse(List<Item> items) {
             String code,
             String label,
             @JsonProperty("parent_code") String parentCode,
+            @JsonProperty("selection_group") PreferenceSelectionGroup selectionGroup,
             @JsonProperty("sort_order") int sortOrder) {
 
         public static Item from(PreferenceCode preferenceCode) {
@@ -26,6 +28,7 @@ public record PreferenceOptionResponse(List<Item> items) {
                     preferenceCode.name(),
                     preferenceCode.label(),
                     preferenceCode.parentCode(),
+                    preferenceCode.selectionGroup(),
                     preferenceCode.sortOrder());
         }
     }

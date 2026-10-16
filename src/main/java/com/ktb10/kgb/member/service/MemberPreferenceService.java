@@ -11,6 +11,7 @@ import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.PreferenceCode;
+import com.ktb10.kgb.member.entity.PreferenceSelectionGroup;
 import com.ktb10.kgb.member.entity.PreferenceType;
 import com.ktb10.kgb.member.error.MemberErrorCode;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
@@ -35,7 +36,6 @@ public class MemberPreferenceService {
     private static final int MAX_THEME_COUNT = 3;
     private static final int MIN_DETAIL_COUNT_PER_THEME = 1;
     private static final int MAX_DETAIL_COUNT_PER_THEME = 3;
-    private static final int MAX_TRAVEL_STYLE_COUNT = 4;
 
     private static final Comparator<MemberPreference> PREFERENCE_ORDER =
             Comparator.comparingInt((MemberPreference preference) ->
@@ -106,8 +106,13 @@ public class MemberPreferenceService {
         }
 
         Set<PreferenceCode> styles = codesOfType(uniqueCodes, PreferenceType.TRAVEL_STYLE);
-        if (styles.size() > MAX_TRAVEL_STYLE_COUNT) {
-            throw invalidPreference();
+        for (PreferenceSelectionGroup group : PreferenceSelectionGroup.values()) {
+            long selectedCount = styles.stream()
+                    .filter(code -> code.selectionGroup() == group)
+                    .count();
+            if (selectedCount != 1) {
+                throw invalidPreference();
+            }
         }
 
         Map<PreferenceCode, Integer> detailCounts = new EnumMap<>(PreferenceCode.class);

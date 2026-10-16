@@ -101,7 +101,7 @@ class MemberPreferenceApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("preference_update_success"))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.data.selections.length()").value(3))
+                .andExpect(jsonPath("$.data.selections.length()").value(4))
                 .andExpect(jsonPath("$.data.selections[0].preference_type").value("THEME"))
                 .andExpect(jsonPath("$.data.selections[0].preference_code").value("NATURE"))
                 .andExpect(jsonPath("$.data.selections[1].preference_type").value("DETAIL"))
@@ -116,7 +116,8 @@ class MemberPreferenceApiTest {
                 .containsExactlyInAnyOrder(
                         PreferenceCode.NATURE,
                         PreferenceCode.NATURE_MOUNTAIN,
-                        PreferenceCode.RELAXING);
+                        PreferenceCode.RELAXING,
+                        PreferenceCode.WALK_FRIENDLY);
 
         mockMvc.perform(get("/api/v1/members/me/preferences")
                         .cookie(sessionCookie("save-preferences-session")))
@@ -124,7 +125,9 @@ class MemberPreferenceApiTest {
                 .andExpect(jsonPath("$.data.selections[0].preference_code").value("NATURE"))
                 .andExpect(jsonPath("$.data.selections[1].preference_code")
                         .value("NATURE_MOUNTAIN"))
-                .andExpect(jsonPath("$.data.selections[2].preference_code").value("RELAXING"));
+                .andExpect(jsonPath("$.data.selections[2].preference_code").value("RELAXING"))
+                .andExpect(jsonPath("$.data.selections[3].preference_code")
+                        .value("WALK_FRIENDLY"));
     }
 
     @Test
@@ -141,7 +144,11 @@ class MemberPreferenceApiTest {
         String request = "{\"selections\":["
                 + "{\"preference_type\":\"THEME\",\"preference_code\":\"HISTORY\"},"
                 + "{\"preference_type\":\"DETAIL\","
-                + "\"preference_code\":\"HISTORY_RELIC\"}]}";
+                + "\"preference_code\":\"HISTORY_RELIC\"},"
+                + "{\"preference_type\":\"TRAVEL_STYLE\","
+                + "\"preference_code\":\"TIME_EFFICIENCY\"},"
+                + "{\"preference_type\":\"TRAVEL_STYLE\","
+                + "\"preference_code\":\"CAR_TRAVEL\"}]}";
         mockMvc.perform(put("/api/v1/members/me/preferences")
                         .cookie(sessionCookie("replace-preferences-session"), csrfCookie)
                         .header("X-XSRF-TOKEN", csrfCookie.getValue())
@@ -153,7 +160,36 @@ class MemberPreferenceApiTest {
         assertThat(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(member.getId()))
                 .extracting(MemberPreference::getPreferenceCode)
-                .containsExactlyInAnyOrder(PreferenceCode.HISTORY, PreferenceCode.HISTORY_RELIC);
+                .containsExactlyInAnyOrder(
+                        PreferenceCode.HISTORY,
+                        PreferenceCode.HISTORY_RELIC,
+                        PreferenceCode.TIME_EFFICIENCY,
+                        PreferenceCode.CAR_TRAVEL);
+
+    }
+
+    @Test
+    void rejectsMissingOrDuplicatedTravelStyleGroupSelection() throws Exception {
+        Member member = saveMember("exclusive-style-validation");
+        issueSession(member, "exclusive-style-validation-session");
+        Cookie csrfCookie = issueCsrfCookie();
+
+        List<String> invalidRequests = List.of(
+                preferenceRequestWithStyles("RELAXING"),
+                preferenceRequestWithStyles("RELAXING", "TIME_EFFICIENCY", "WALK_FRIENDLY"),
+                preferenceRequestWithStyles("RELAXING", "WALK_FRIENDLY", "CAR_TRAVEL"));
+
+        for (String request : invalidRequests) {
+            mockMvc.perform(put("/api/v1/members/me/preferences")
+                            .cookie(
+                                    sessionCookie("exclusive-style-validation-session"),
+                                    csrfCookie)
+                            .header("X-XSRF-TOKEN", csrfCookie.getValue())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(request))
+                    .andExpect(status().isUnprocessableEntity())
+                    .andExpect(jsonPath("$.error.code").value("PREFERENCE_INVALID"));
+        }
     }
 
     @Test
@@ -332,7 +368,24 @@ class MemberPreferenceApiTest {
                 + "{\"preference_type\":\"DETAIL\","
                 + "\"preference_code\":\"NATURE_MOUNTAIN\"},"
                 + "{\"preference_type\":\"TRAVEL_STYLE\","
-                + "\"preference_code\":\"RELAXING\"}]}";
+                + "\"preference_code\":\"RELAXING\"},"
+                + "{\"preference_type\":\"TRAVEL_STYLE\","
+                + "\"preference_code\":\"WALK_FRIENDLY\"}]}";
+    }
+
+    private static String preferenceRequestWithStyles(String... styles) {
+        StringBuilder request = new StringBuilder("{\"selections\":[")
+                .append("{\"preference_type\":\"THEME\",\"preference_code\":\"NATURE\"},")
+                .append("{\"preference_type\":\"DETAIL\",\"preference_code\":")
+                .append("\"NATURE_MOUNTAIN\"}");
+        for (String style : styles) {
+            request.append(",{")
+                    .append("\"preference_type\":\"TRAVEL_STYLE\",")
+                    .append("\"preference_code\":\"")
+                    .append(style)
+                    .append("\"}");
+        }
+        return request.append("]}").toString();
     }
 
     @TestConfiguration
