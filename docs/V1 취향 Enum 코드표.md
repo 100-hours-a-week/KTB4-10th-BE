@@ -45,7 +45,7 @@
 
 ## 검증과 변경 주의사항
 
-- `THEME`은 1~3개, 선택한 각 `THEME`의 `DETAIL`은 1~3개를 필수로 선택한다. `TRAVEL_STYLE`은 일정 성향(`RELAXING`/`TIME_EFFICIENCY`) 중 1개와 이동 성향(`WALK_FRIENDLY`/`CAR_TRAVEL`) 중 1개를 각각 필수로 선택한다.
+- `THEME`은 1~3개, 선택한 각 `THEME`의 `DETAIL`은 1~3개를 필수로 선택한다. `TRAVEL_STYLE`은 선택하지 않아도 되며, 일정 성향(`RELAXING`/`TIME_EFFICIENCY`) 그룹과 이동 성향(`WALK_FRIENDLY`/`CAR_TRAVEL`) 그룹에서 각각 최대 1개만 선택할 수 있다.
 - 대분류와 중분류의 관계는 고정 1:6이 아니라 1:N이다. 중분류 개수는 대분류별로 다르며 `parent_code`로 관계를 판정한다.
 - API의 표시 순서는 위 표의 선언 순서를 그대로 따른다. 같은 부모 안에서는 `sort_order` 오름차순이며 사용자가 클릭한 순서는 저장하지 않는다.
 - `THEME`과 `DETAIL`은 TourAPI 관광 분류를 기준으로 정의한다. 관광 콘텐츠 후보를 회원 취향에 매핑할 때 동일한 안정 코드를 사용하고, TourAPI 원본 코드와의 세부 변환은 관광 콘텐츠 수집 계층이 담당한다.

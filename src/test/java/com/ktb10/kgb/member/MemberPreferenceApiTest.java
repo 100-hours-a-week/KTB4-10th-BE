@@ -169,13 +169,12 @@ class MemberPreferenceApiTest {
     }
 
     @Test
-    void rejectsMissingOrDuplicatedTravelStyleGroupSelection() throws Exception {
+    void rejectsDuplicatedTravelStyleGroupSelection() throws Exception {
         Member member = saveMember("exclusive-style-validation");
         issueSession(member, "exclusive-style-validation-session");
         Cookie csrfCookie = issueCsrfCookie();
 
         List<String> invalidRequests = List.of(
-                preferenceRequestWithStyles("RELAXING"),
                 preferenceRequestWithStyles("RELAXING", "TIME_EFFICIENCY", "WALK_FRIENDLY"),
                 preferenceRequestWithStyles("RELAXING", "WALK_FRIENDLY", "CAR_TRAVEL"));
 

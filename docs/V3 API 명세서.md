@@ -28,7 +28,7 @@
 
 - 미지원 Body/Query 필드는 400 COMMON_VALIDATION_ERROR. V1 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
-- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
+- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
 - GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. FAILED의 error에는 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
@@ -406,7 +406,7 @@ Body 없음.
 - selections: 필수 Array, 전체 선택 집합
 - preference_type: 필수 THEME|DETAIL|TRAVEL_STYLE
 - preference_code: 필수 String ≤50자, 허용 Enum
-- THEME 1~3개; 선택한 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE은 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹에서 각 1개; THEME:DETAIL은 1:N이며 부모 없는 중분류·중복·그룹 누락·동일 그룹 복수 선택 불가
+- THEME 1~3개; 선택한 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹에서 각 최대 1개; THEME:DETAIL은 1:N이며 부모 없는 중분류·중복·동일 그룹 복수 선택 불가
 - 누락 선택 제거; 최초 유효 저장 후 ACTIVE
 
 **Request Body**
@@ -441,7 +441,7 @@ Body 없음.
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계·여행 스타일 배타 그룹 위반 |
 
-**구현 기준:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 선택한 부모별 DETAIL 1~3, 스타일은 일정·이동 성향 그룹별 1개를 적용한다. THEME·DETAIL은 TourAPI 기반 관광 분류와 동일한 안정 코드로 매핑한다. 선택지 조회의 TRAVEL_STYLE은 `selection_group`으로 배타 그룹을 제공한다.
+**구현 기준:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 선택한 부모별 DETAIL 1~3, 스타일은 선택 사항으로 일정·이동 성향 그룹별 최대 1개를 적용한다. THEME·DETAIL은 TourAPI 기반 관광 분류와 동일한 안정 코드로 매핑한다. 선택지 조회의 TRAVEL_STYLE은 `selection_group`으로 배타 그룹을 제공한다.
 
 ### API-MEM-10 설정 조회
 

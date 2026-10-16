@@ -110,7 +110,7 @@ public class MemberPreferenceService {
             long selectedCount = styles.stream()
                     .filter(code -> code.selectionGroup() == group)
                     .count();
-            if (selectedCount != 1) {
+            if (selectedCount > 1) {
                 throw invalidPreference();
             }
         }
