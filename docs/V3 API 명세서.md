@@ -66,7 +66,7 @@
 | API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
 | API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
-| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
+| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT); region_code/month 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
@@ -848,9 +848,8 @@ Body 없음.
 | GET | `/contents` | 세션 쿠키 필수 |
 
 - Query q: 선택 String, 최대 10자; 빈 값=전체
-- region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
 - category: 현재 `EVENT`만 지원하며 생략 시 `EVENT`
-- region_code와 month 필터는 후속 구현
+- region_code와 month는 현재 지원하지 않으며 후속 구현
 - page Integer ≥1 기본1; size 1~20 기본20
 - 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
 - 조건 AND; 결과 없음 items=[]
