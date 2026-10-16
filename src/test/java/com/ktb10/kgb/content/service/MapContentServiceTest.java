@@ -64,6 +64,11 @@ class MapContentServiceTest {
         assertThat(response.clusters()).isEmpty();
         assertThat(response.markers()).extracting(MapMarkerItemResponse::contentId)
                 .containsExactly("1", "2", "3");
+        assertThat(response.markers()).extracting(MapMarkerItemResponse::thumbnailUrl)
+                .containsExactly(
+                        "https://example.com/1.jpg",
+                        "https://example.com/2.jpg",
+                        "https://example.com/3.jpg");
         assertThat(response.markers().get(0).favorite()).isTrue();
         assertThat(response.markers().get(1).inGuidebook()).isTrue();
         assertThat(response.markers().get(2).favorite()).isFalse();
@@ -206,7 +211,7 @@ class MapContentServiceTest {
                 "주소",
                 latitude,
                 longitude,
-                null,
+                "https://example.com/" + contentId + ".jpg",
                 null);
     }
 }

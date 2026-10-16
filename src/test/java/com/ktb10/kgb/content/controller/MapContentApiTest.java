@@ -71,7 +71,7 @@ class MapContentApiTest {
                                 "경상북도 경주시 인왕동",
                                 35.8347,
                                 129.219,
-                                null,
+                                "https://example.com/place.jpg",
                                 null),
                         new MapContentCommonData(
                                 102L,
@@ -106,7 +106,8 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.markers[0].is_favorite").value(true))
                 .andExpect(jsonPath("$.data.markers[0].is_in_guidebook").value(true))
                 .andExpect(jsonPath("$.data.markers[0].address").doesNotExist())
-                .andExpect(jsonPath("$.data.markers[0].thumbnail_url").doesNotExist())
+                .andExpect(jsonPath("$.data.markers[0].thumbnail_url")
+                        .value("https://example.com/place.jpg"))
                 .andExpect(jsonPath("$.data.clusters").isEmpty());
     }
 
