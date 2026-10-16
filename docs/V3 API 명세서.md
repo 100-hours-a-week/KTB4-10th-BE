@@ -70,6 +70,7 @@
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
+| API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 예 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -1020,6 +1021,49 @@ Body 없음.
   }
 }
 ```
+
+### API-CON-03-2 일자별 신규 행사 목록
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/events/new` | 세션 쿠키 필수 |
+
+- date: 선택, `YYYY-MM-DD`; 생략하면 Asia/Seoul 기준 오늘
+- page: Integer ≥1, 기본 1
+- size: Integer 1~50, 기본 20
+- TourAPI의 `source_created_at`이 선택 일자의 `[00:00, 다음 날 00:00)`에 속하는 활성 행사만 반환
+- `source_created_at DESC, id DESC` 고정 정렬
+- 결과가 없으면 `items=[]`, `total_items=0`, `total_pages=0`
+
+**응답 200**
+
+```json
+{
+  "message": "new_event_list_success",
+  "data": {
+    "date": "2026-10-14",
+    "items": [{
+      "content_id": "event-1",
+      "title": "가을 축제",
+      "address": "서울특별시 중구",
+      "thumbnail_url": "https://example.com/event.jpg",
+      "start_date": "2026-10-20",
+      "end_date": "2026-10-21",
+      "source_created_at": "2026-10-14T08:30:00"
+    }],
+    "page": 1,
+    "size": 20,
+    "total_items": 1,
+    "total_pages": 1
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | date 형식, page 또는 size 범위 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외는 응답에서 제외 |
 
 ### API-CON-04 관심 장소 목록
 
