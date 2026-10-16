@@ -1,5 +1,6 @@
 package com.ktb10.kgb.content.tourapi;
 
+import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
 import java.time.Clock;
@@ -11,6 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /** 기준일별 잠금을 획득하고 TourAPI 동기화의 재시도와 실행 이력을 관리합니다. */
@@ -31,6 +33,8 @@ public class TourApiSyncRunner {
     private final TourApiSyncService syncService;
     private final TourApiSyncRunRepository runRepository;
     private final MapContentCacheRefreshService cacheRefreshService;
+    private final InterestedContentChangeCandidateSelector notificationCandidateSelector;
+    private final ApplicationEventPublisher eventPublisher;
     private final TourApiSchedulerProperties properties;
     private final Clock clock;
 
@@ -38,11 +42,15 @@ public class TourApiSyncRunner {
             TourApiSyncService syncService,
             TourApiSyncRunRepository runRepository,
             MapContentCacheRefreshService cacheRefreshService,
+            InterestedContentChangeCandidateSelector notificationCandidateSelector,
+            ApplicationEventPublisher eventPublisher,
             TourApiSchedulerProperties properties,
             Clock clock) {
         this.syncService = syncService;
         this.runRepository = runRepository;
         this.cacheRefreshService = cacheRefreshService;
+        this.notificationCandidateSelector = notificationCandidateSelector;
+        this.eventPublisher = eventPublisher;
         this.properties = properties;
         this.clock = clock;
     }
@@ -72,21 +80,41 @@ public class TourApiSyncRunner {
                     cacheLocations(summary.changeSets()),
                     syncDate);
             runRepository.complete(runId, summary, clock.instant());
-            LOGGER.info(
-                    "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
-                            + "importedContents={}, inactiveContents={}, "
-                            + "sourceEvents={}, importedEvents={}",
-                    runId,
-                    syncDate,
-                    summary.sourceContents(),
-                    summary.importedContents(),
-                    summary.inactiveContents(),
-                    summary.sourceEvents(),
-                    summary.importedEvents());
-            return true;
         } catch (RuntimeException failure) {
             recordFailure(runId, syncDate, "CACHE_REFRESH", failure);
             return false;
+        }
+        LOGGER.info(
+                "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
+                        + "importedContents={}, inactiveContents={}, "
+                        + "sourceEvents={}, importedEvents={}",
+                runId,
+                syncDate,
+                summary.sourceContents(),
+                summary.importedContents(),
+                summary.inactiveContents(),
+                summary.sourceEvents(),
+                summary.importedEvents());
+        publishContentChangeNotification(syncDate, summary);
+        return true;
+    }
+
+    private void publishContentChangeNotification(
+            LocalDate syncDate,
+            ImportSummary summary) {
+        try {
+            List<InterestedContentChangeCandidate> candidates =
+                    notificationCandidateSelector.select(summary.changeSets());
+            if (!candidates.isEmpty()) {
+                eventPublisher.publishEvent(new InterestedContentChangesDetectedEvent(
+                        syncDate,
+                        candidates));
+            }
+        } catch (RuntimeException failure) {
+            LOGGER.error(
+                    "TourAPI 동기화 성공 후 변경 알림 작업 등록에 실패했습니다. syncDate={}",
+                    syncDate,
+                    failure);
         }
     }
 
