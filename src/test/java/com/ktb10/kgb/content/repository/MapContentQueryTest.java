@@ -34,7 +34,8 @@ class MapContentQueryTest {
                 .contains(
                         "content.status = 'ACTIVE'",
                         "content.deleted_at IS NULL",
-                        "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)")
+                        "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
+                        "event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)")
                 .doesNotContain("MBRContains");
         assertThat(argumentsCaptor.getValue())
                 .containsExactly("NA", "HS", "VE", "EX", "LS", "EV");
@@ -59,7 +60,7 @@ class MapContentQueryTest {
                 .contains(
                         "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
                         "content.classification_code_1 <> 'EV'",
-                        "event.end_date >= CURRENT_DATE")
+                        "event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)")
                 .doesNotContain(
                         "favorite_contents",
                         "member_guidebooks",

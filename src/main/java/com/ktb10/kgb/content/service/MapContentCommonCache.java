@@ -142,7 +142,7 @@ public class MapContentCommonCache {
      * 좌표가 이동하거나 콘텐츠가 삭제된 경우 이전 위치와 현재 위치를 모두 전달해야 합니다.
      */
     public void refreshByLocations(Collection<MapContentCacheLocation> locations) {
-        if (!enabled || locations.isEmpty()) {
+        if (!enabled) {
             return;
         }
 
@@ -159,6 +159,10 @@ public class MapContentCommonCache {
                     locations.size(),
                     affectedKeys.size());
             refresh();
+            return;
+        }
+
+        if (locations.isEmpty()) {
             return;
         }
 

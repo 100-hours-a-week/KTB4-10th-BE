@@ -236,6 +236,22 @@ class MapContentCommonCacheTest {
                 "requestedLocations=1, affectedTiles=1, fallback=full");
     }
 
+    @Test
+    void fallsBackToFullRefreshWithoutLocationsWhenInitialSnapshotIsNotReady(
+            CapturedOutput output) {
+        MapContentCommonData content = commonContent(1L, 37.405, 127.105);
+        when(loader.loadAllCacheable()).thenReturn(List.of(content));
+
+        commonCache.refreshByLocations(List.of());
+
+        assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109))
+                .containsExactly(content);
+        verify(loader, times(1)).loadAllCacheable();
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        assertThat(output).contains(
+                "requestedLocations=0, affectedTiles=0, fallback=full");
+    }
+
     private MapContentCommonData commonContent(
             Long id,
             double latitude,

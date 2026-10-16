@@ -62,7 +62,7 @@ public class MapContentQuery {
                   AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
                   AND (
                       content.classification_code_1 <> 'EV'
-                      OR event.end_date >= CURRENT_DATE
+                      OR event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)
                   )
                   AND MBRContains(
                       ST_GeomFromText(
@@ -114,7 +114,7 @@ public class MapContentQuery {
                   AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
                   AND (
                       content.classification_code_1 <> 'EV'
-                      OR event.end_date >= CURRENT_DATE
+                      OR event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)
                   )
                 ORDER BY content.id
                 """,
