@@ -1,5 +1,6 @@
 package com.ktb10.kgb.guidebook.client;
 
+import com.ktb10.kgb.content.model.TourismContentCategoryPolicy;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Content;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.ContentType;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Coordinates;
@@ -15,8 +16,12 @@ import org.springframework.stereotype.Component;
 public class AiGuidebookContentQuery {
 
     static final int MAX_CANDIDATE_CONTENTS = 100;
-    private static final List<String> SUPPORTED_CLASSIFICATION_CODES =
-            List.of("NA", "HS", "VE", "EX", "LS", "EV");
+    private static final List<String> ALLOWED_PLACE_CLASSIFICATION_CODES =
+            TourismContentCategoryPolicy.allowedSourceCodes();
+    private static final String ALLOWED_PLACE_CLASSIFICATION_PLACEHOLDERS =
+            String.join(", ", ALLOWED_PLACE_CLASSIFICATION_CODES.stream()
+                    .map(ignored -> "?")
+                    .toList());
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -29,6 +34,14 @@ public class AiGuidebookContentQuery {
             String city,
             LocalDate startDate,
             LocalDate endDate) {
+        Object[] arguments = new Object[ALLOWED_PLACE_CLASSIFICATION_CODES.size() + 3];
+        arguments[0] = province;
+        arguments[1] = city;
+        int index = 2;
+        for (String code : ALLOWED_PLACE_CLASSIFICATION_CODES) {
+            arguments[index++] = code;
+        }
+        arguments[index] = MAX_CANDIDATE_CONTENTS;
         return jdbcTemplate.query(
                 """
                 SELECT
@@ -53,10 +66,13 @@ public class AiGuidebookContentQuery {
                   AND district.name = ?
                   AND content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
-                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
+                  AND (
+                      content.classification_code_1 = 'EV'
+                      OR content.classification_code_2 IN (%s)
+                  )
                 ORDER BY content.id
                 LIMIT ?
-                """,
+                """.formatted(ALLOWED_PLACE_CLASSIFICATION_PLACEHOLDERS),
                 (resultSet, rowNumber) -> new Content(
                         resultSet.getString("source_content_id"),
                         "EV".equals(resultSet.getString("classification_code_1"))
@@ -74,15 +90,7 @@ public class AiGuidebookContentQuery {
                         eventPeriod(
                                 resultSet.getDate("start_date"),
                                 resultSet.getDate("end_date"))),
-                province,
-                city,
-                SUPPORTED_CLASSIFICATION_CODES.get(0),
-                SUPPORTED_CLASSIFICATION_CODES.get(1),
-                SUPPORTED_CLASSIFICATION_CODES.get(2),
-                SUPPORTED_CLASSIFICATION_CODES.get(3),
-                SUPPORTED_CLASSIFICATION_CODES.get(4),
-                SUPPORTED_CLASSIFICATION_CODES.get(5),
-                MAX_CANDIDATE_CONTENTS);
+                arguments);
     }
 
     private static EventPeriod eventPeriod(Date startDate, Date endDate) {
