@@ -66,7 +66,7 @@
 | API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
 | API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
-| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
+| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT); region_code/month 미지원 |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
@@ -852,10 +852,9 @@ Body 없음.
 | GET | `/contents` | 세션 쿠키 필수 |
 
 - Query q: 선택 String, 최대 10자; 빈 값=전체
-- region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
-- category: 선택 EVENT|CULTURAL_HERITAGE|ATTRACTION
-- month: 선택 YYYY-MM. `EVENT`는 선택 월과 행사 기간이 겹치면 포함하고 `ATTRACTION`·`CULTURAL_HERITAGE`는 기간이 없으므로 항상 포함
-- page Integer ≥1 기본1; size 1~20 기본5
+- category: 현재 `EVENT`만 지원하며 생략 시 `EVENT`
+- region_code와 month는 현재 지원하지 않으며 후속 구현
+- page Integer ≥1 기본1; size 1~20 기본20
 - 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
 - 조건 AND; 결과 없음 items=[]
 
@@ -869,9 +868,9 @@ Body 없음.
 {
   "message": "content_list_success",
   "data": {
-    "items": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
+    "items": [{"content_id":"101","title":"수원 국가유산 야행","category":"EVENT","region":{"administrative_code":"41","name":"경기도"},"address":"경기도 수원시","thumbnail_url":null,"event_period":{"start_date":"2026-08-14","end_date":"2026-08-30"}}],
     "page": 1,
-    "size": 5,
+    "size": 20,
     "total_items": 1,
     "total_pages": 1
   }
@@ -884,7 +883,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-02/API-DEC-05 확정: `month=YYYY-MM`, 행사에만 기간 중첩 조건을 적용하고 상시 장소는 포함. 검색은 `title` 부분 일치이며 `%`, `_`, 이스케이프 문자는 일반 문자로 처리한다. 검색어 유무와 관계없이 DB 등록 최신순이다.
+검색은 `title` 부분 일치이며 검색어 유무와 관계없이 DB 등록 최신순이다. 지역·월·다른 카테고리는 후속 범위에서 확장한다.
 
 ### API-CON-02 관광 콘텐츠 상세
 
@@ -898,6 +897,7 @@ Body 없음.
 - images: Array; event_detail: EVENT에서만 객체, 그 외 null
 - URL ≤2048자; 비활성·삭제 콘텐츠는 일반 상세에서 제외
 - event_detail.start_date/end_date: YYYY-MM-DD; operating_hours/organizer: String|null
+- 현재 스키마에 별도 값이 없는 organizer_phone은 null, event_place는 공통 address를 반환
 - images[].image_id: ID; image_url: String ≤2048자; sort_order: Integer
 
 **Request Body**
