@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class MapContentCommonCache {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MapContentCommonCache.class);
     private static final long MAXIMUM_SIZE = 5_000L;
     private static final double TILE_SIZE = 0.5;
 
@@ -106,8 +109,9 @@ public class MapContentCommonCache {
             return;
         }
 
+        List<MapContentCommonData> allContents = loader.loadAllCacheable();
         Map<TileKey, List<MapContentCommonData>> refreshed = new HashMap<>();
-        loader.loadAllCacheable().stream()
+        allContents.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
                         content -> new TileKey(
                                 cellOf(content.latitude()),
@@ -127,6 +131,10 @@ public class MapContentCommonCache {
         } finally {
             snapshotLock.writeLock().unlock();
         }
+        LOGGER.info(
+                "Map content cache full refresh completed: tiles={}, contents={}",
+                refreshed.size(),
+                allContents.size());
     }
 
     /**
@@ -134,7 +142,7 @@ public class MapContentCommonCache {
      * 좌표가 이동하거나 콘텐츠가 삭제된 경우 이전 위치와 현재 위치를 모두 전달해야 합니다.
      */
     public void refreshByLocations(Collection<MapContentCacheLocation> locations) {
-        if (!enabled || locations.isEmpty()) {
+        if (!enabled) {
             return;
         }
 
@@ -145,7 +153,16 @@ public class MapContentCommonCache {
                 .collect(java.util.stream.Collectors.toSet());
 
         if (!snapshotReady) {
+            LOGGER.info(
+                    "Map content cache partial refresh fallback: requestedLocations={}, "
+                            + "affectedTiles={}, fallback=full",
+                    locations.size(),
+                    affectedKeys.size());
             refresh();
+            return;
+        }
+
+        if (locations.isEmpty()) {
             return;
         }
 
@@ -165,6 +182,11 @@ public class MapContentCommonCache {
         } finally {
             snapshotLock.writeLock().unlock();
         }
+        LOGGER.info(
+                "Map content cache partial refresh completed: requestedLocations={}, "
+                        + "affectedTiles={}, fallback=false",
+                locations.size(),
+                affectedKeys.size());
     }
 
     private static long cellOf(double coordinate) {
