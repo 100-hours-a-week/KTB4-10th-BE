@@ -948,6 +948,7 @@ Body 없음.
 - zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
 - `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
 - `MARKER` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 지도 표시에 필요한 최소 필드로 반환
+- `MARKER` 모드의 `thumbnail_url`은 바텀시트 목록을 먼저 조회하지 않아도 마커 선택 카드에 표시할 대표 이미지 URL이며, 이미지가 없으면 `null`
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
 - `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
 - `CLUSTER` 모드에서는 `clusters[]`만, `MARKER` 모드에서는 `markers[]`만 제공한다.
@@ -971,6 +972,7 @@ Body 없음.
       "content_type": "PLACE",
       "latitude": 35.7898,
       "longitude": 129.3321,
+      "thumbnail_url": "https://example.com/bulguksa.jpg",
       "is_favorite": true,
       "is_in_guidebook": false
     }]

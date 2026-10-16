@@ -38,6 +38,7 @@ public record MapContentCommonData(
                 contentType,
                 latitude,
                 longitude,
+                thumbnailUrl,
                 favorite,
                 inGuidebook);
     }
