@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ktb10.kgb.content.model.TourismContentCategoryPolicy;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -34,11 +35,12 @@ class MapContentQueryTest {
                 .contains(
                         "content.status = 'ACTIVE'",
                         "content.deleted_at IS NULL",
-                        "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
+                        "content.classification_code_1 = 'EV'",
+                        "content.classification_code_2 IN (",
                         "event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)")
                 .doesNotContain("MBRContains");
         assertThat(argumentsCaptor.getValue())
-                .containsExactly("NA", "HS", "VE", "EX", "LS", "EV");
+                .containsExactlyElementsOf(TourismContentCategoryPolicy.allowedSourceCodes());
     }
 
     @Test
@@ -58,7 +60,8 @@ class MapContentQueryTest {
 
         assertThat(sqlCaptor.getValue())
                 .contains(
-                        "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
+                        "content.classification_code_1 = 'EV'",
+                        "content.classification_code_2 IN (",
                         "content.classification_code_1 <> 'EV'",
                         "event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)")
                 .doesNotContain(
@@ -67,8 +70,8 @@ class MapContentQueryTest {
                         "AS is_in_guidebook",
                         "LIMIT ?");
         assertThat(argumentsCaptor.getValue())
-                .containsExactly(
-                        "NA", "HS", "VE", "EX", "LS", "EV",
+                .startsWith(TourismContentCategoryPolicy.allowedSourceCodes().toArray())
+                .endsWith(
                         127.10, 37.39,
                         127.12, 37.39,
                         127.12, 37.40,

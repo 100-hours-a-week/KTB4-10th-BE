@@ -37,6 +37,7 @@ class AiClientContractTest {
                         "126508",
                         ContentType.PLACE,
                         "첨성대",
+                        "첨성대는 신라 시대의 천문 관측 시설입니다.",
                         "HS",
                         "HS01",
                         "HS010100",
@@ -58,6 +59,8 @@ class AiClientContractTest {
         assertThat(json.get("contents").isArray()).isTrue();
         assertThat(json.get("contents").get(0).get("content_type").asText())
                 .isEqualTo("PLACE");
+        assertThat(json.get("contents").get(0).get("overview").asText())
+                .isEqualTo("첨성대는 신라 시대의 천문 관측 시설입니다.");
         assertThat(json.get("contents").get(0).get("coordinates").get("lat").asDouble())
                 .isEqualTo(35.8347);
     }
