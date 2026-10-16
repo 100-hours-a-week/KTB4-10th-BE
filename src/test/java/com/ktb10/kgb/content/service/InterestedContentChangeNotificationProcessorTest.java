@@ -23,10 +23,13 @@ class InterestedContentChangeNotificationProcessorTest {
     private final InterestedContentNotificationQuery notificationQuery =
             mock(InterestedContentNotificationQuery.class);
     private final NotificationService notificationService = mock(NotificationService.class);
+    private final InterestedContentChangeNotificationMetrics metrics =
+            mock(InterestedContentChangeNotificationMetrics.class);
     private final InterestedContentChangeNotificationProcessor processor =
             new InterestedContentChangeNotificationProcessor(
                     notificationQuery,
-                    notificationService);
+                    notificationService,
+                    metrics);
 
     @Test
     void createsOneNotificationForEachMemberAndContent() {
@@ -86,6 +89,7 @@ class InterestedContentChangeNotificationProcessorTest {
                 "'서울 불꽃축제'의 새로운 정보를 확인해 보세요.",
                 NotificationReferenceType.EVENT,
                 "100");
+        verify(metrics).recordDeliveryFailed();
     }
 
     private InterestedContentChangesDetectedEvent event(String... sourceContentIds) {

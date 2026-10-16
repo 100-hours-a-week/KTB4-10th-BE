@@ -41,7 +41,10 @@ class InterestedContentNotificationQueryTest {
                 ArgumentMatchers.<RowMapper<InterestedContentNotificationTarget>>any());
         assertThat(sqlCaptor.getValue())
                 .contains("FROM favorite_contents")
+                .contains("content.source_provider = 'TOUR_API'")
                 .contains("content.classification_code_1 = 'EV'")
+                .contains("content.status = 'ACTIVE'")
+                .contains("content.deleted_at IS NULL")
                 .contains("member.status = 'ACTIVE'")
                 .contains("member.deleted_at IS NULL");
     }

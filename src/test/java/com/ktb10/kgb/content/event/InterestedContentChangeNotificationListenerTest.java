@@ -1,10 +1,11 @@
 package com.ktb10.kgb.content.event;
 
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 
+import com.ktb10.kgb.content.service.InterestedContentChangeNotificationMetrics;
 import com.ktb10.kgb.content.service.InterestedContentChangeNotificationProcessor;
 import com.ktb10.kgb.content.tourapi.ContentChangedField;
 import com.ktb10.kgb.content.tourapi.InterestedContentChangeCandidate;
@@ -23,8 +24,10 @@ class InterestedContentChangeNotificationListenerTest {
         Executor executor = mock(Executor.class);
         InterestedContentChangeNotificationProcessor processor =
                 mock(InterestedContentChangeNotificationProcessor.class);
+        InterestedContentChangeNotificationMetrics metrics =
+                mock(InterestedContentChangeNotificationMetrics.class);
         InterestedContentChangeNotificationListener listener =
-                new InterestedContentChangeNotificationListener(executor, processor);
+                new InterestedContentChangeNotificationListener(executor, processor, metrics);
         InterestedContentChangesDetectedEvent event = event();
         ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
 
@@ -43,8 +46,10 @@ class InterestedContentChangeNotificationListenerTest {
         Executor executor = mock(Executor.class);
         InterestedContentChangeNotificationProcessor processor =
                 mock(InterestedContentChangeNotificationProcessor.class);
+        InterestedContentChangeNotificationMetrics metrics =
+                mock(InterestedContentChangeNotificationMetrics.class);
         InterestedContentChangeNotificationListener listener =
-                new InterestedContentChangeNotificationListener(executor, processor);
+                new InterestedContentChangeNotificationListener(executor, processor, metrics);
         InterestedContentChangesDetectedEvent event = event();
         doThrow(new RejectedExecutionException("큐"))
                 .when(executor)
@@ -53,6 +58,24 @@ class InterestedContentChangeNotificationListenerTest {
         listener.handle(event);
 
         verify(processor, never()).process(event);
+        verify(metrics).recordQueueRejected();
+    }
+
+    @Test
+    void recordsUnexpectedProcessingFailure() {
+        Executor executor = Runnable::run;
+        InterestedContentChangeNotificationProcessor processor =
+                mock(InterestedContentChangeNotificationProcessor.class);
+        InterestedContentChangeNotificationMetrics metrics =
+                mock(InterestedContentChangeNotificationMetrics.class);
+        InterestedContentChangeNotificationListener listener =
+                new InterestedContentChangeNotificationListener(executor, processor, metrics);
+        InterestedContentChangesDetectedEvent event = event();
+        doThrow(new IllegalStateException("조회 실패")).when(processor).process(event);
+
+        listener.handle(event);
+
+        verify(metrics).recordProcessingFailed();
     }
 
     private InterestedContentChangesDetectedEvent event() {

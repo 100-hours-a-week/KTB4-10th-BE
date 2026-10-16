@@ -23,12 +23,15 @@ public class InterestedContentChangeNotificationProcessor {
 
     private final InterestedContentNotificationQuery notificationQuery;
     private final NotificationService notificationService;
+    private final InterestedContentChangeNotificationMetrics metrics;
 
     public InterestedContentChangeNotificationProcessor(
             InterestedContentNotificationQuery notificationQuery,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            InterestedContentChangeNotificationMetrics metrics) {
         this.notificationQuery = notificationQuery;
         this.notificationService = notificationService;
+        this.metrics = metrics;
     }
 
     public void process(InterestedContentChangesDetectedEvent event) {
@@ -50,6 +53,7 @@ public class InterestedContentChangeNotificationProcessor {
                 completed++;
             } catch (RuntimeException exception) {
                 failed++;
+                metrics.recordDeliveryFailed();
                 LOGGER.error(
                         "관심 행사 변경 알림 생성에 실패했습니다. memberId={}, contentId={}",
                         target.memberId(),

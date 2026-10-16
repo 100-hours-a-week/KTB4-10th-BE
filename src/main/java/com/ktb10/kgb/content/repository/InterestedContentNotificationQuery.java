@@ -30,8 +30,11 @@ public class InterestedContentNotificationQuery {
                 FROM favorite_contents favorite
                 JOIN tourism_contents content ON content.id = favorite.content_id
                 JOIN members member ON member.id = favorite.member_id
-                WHERE content.source_content_id IN (:sourceContentIds)
+                WHERE content.source_provider = 'TOUR_API'
+                  AND content.source_content_id IN (:sourceContentIds)
                   AND content.classification_code_1 = 'EV'
+                  AND content.status = 'ACTIVE'
+                  AND content.deleted_at IS NULL
                   AND member.status = 'ACTIVE'
                   AND member.deleted_at IS NULL
                 ORDER BY favorite.member_id, content.id
