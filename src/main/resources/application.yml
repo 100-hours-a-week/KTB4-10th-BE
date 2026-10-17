@@ -42,6 +42,8 @@ notification:
     reconnect-time-millis: ${NOTIFICATION_SSE_RECONNECT_TIME_MILLIS:3000}
     heartbeat-interval-millis: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MILLIS:15000}
     max-connections-per-member: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:5}
+  trip-starting:
+    cron: "${NOTIFICATION_TRIP_STARTING_CRON:0 0 9 * * *}"
 
 webpush:
   vapid:
