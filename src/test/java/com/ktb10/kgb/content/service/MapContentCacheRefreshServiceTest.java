@@ -26,6 +26,8 @@ class MapContentCacheRefreshServiceTest {
         service.refreshAfterBatch(List.of(changed), syncDate);
 
         verify(loader).loadEventLocationsEndingOn(LocalDate.of(2026, 10, 14));
-        verify(commonCache).refreshByLocations(List.of(changed, expired));
+        verify(commonCache).refreshByTiles(List.of(
+                MapContentCacheTile.from(changed),
+                MapContentCacheTile.from(expired)));
     }
 }

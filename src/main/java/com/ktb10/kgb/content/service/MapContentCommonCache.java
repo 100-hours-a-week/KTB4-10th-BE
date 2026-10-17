@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,11 +26,10 @@ public class MapContentCommonCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MapContentCommonCache.class);
     private static final long MAXIMUM_SIZE = 5_000L;
-    private static final double TILE_SIZE = 0.5;
 
     private final MapContentCommonLoader loader;
     private final MapPerformanceMetrics performanceMetrics;
-    private final Cache<TileKey, List<MapContentCommonData>> cache;
+    private final Cache<MapContentCacheTile, List<MapContentCommonData>> cache;
     private final boolean enabled;
     private final ReentrantReadWriteLock snapshotLock = new ReentrantReadWriteLock();
     private volatile boolean snapshotReady;
@@ -75,14 +73,14 @@ public class MapContentCommonCache {
             if (!snapshotReady) {
                 throw new BusinessException(CommonErrorCode.SERVICE_UNAVAILABLE);
             }
-            long southCell = cellOf(south);
-            long westCell = cellOf(west);
-            long northCell = cellOf(north);
-            long eastCell = cellOf(east);
+            long southCell = MapContentCacheTile.cellOf(south);
+            long westCell = MapContentCacheTile.cellOf(west);
+            long northCell = MapContentCacheTile.cellOf(north);
+            long eastCell = MapContentCacheTile.cellOf(east);
             Map<Long, MapContentCommonData> mergedContents = new LinkedHashMap<>();
             for (long latitudeCell = southCell; latitudeCell <= northCell; latitudeCell++) {
                 for (long longitudeCell = westCell; longitudeCell <= eastCell; longitudeCell++) {
-                    TileKey key = new TileKey(latitudeCell, longitudeCell);
+                    MapContentCacheTile key = new MapContentCacheTile(latitudeCell, longitudeCell);
                     List<MapContentCommonData> tileContents = cache.getIfPresent(key);
                     if (tileContents == null) {
                         tileContents = List.of();
@@ -110,12 +108,12 @@ public class MapContentCommonCache {
         }
 
         List<MapContentCommonData> allContents = loader.loadAllCacheable();
-        Map<TileKey, List<MapContentCommonData>> refreshed = new HashMap<>();
+        Map<MapContentCacheTile, List<MapContentCommonData>> refreshed = new HashMap<>();
         allContents.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        content -> new TileKey(
-                                cellOf(content.latitude()),
-                                cellOf(content.longitude()))))
+                        content -> new MapContentCacheTile(
+                                MapContentCacheTile.cellOf(content.latitude()),
+                                MapContentCacheTile.cellOf(content.longitude()))))
                 .forEach((key, contents) -> refreshed.put(
                         key,
                         contents.stream()
@@ -142,31 +140,39 @@ public class MapContentCommonCache {
      * 좌표가 이동하거나 콘텐츠가 삭제된 경우 이전 위치와 현재 위치를 모두 전달해야 합니다.
      */
     public void refreshByLocations(Collection<MapContentCacheLocation> locations) {
+        Collection<MapContentCacheTile> affectedKeys = locations.stream()
+                .map(MapContentCacheTile::from)
+                .collect(java.util.stream.Collectors.toSet());
+        refreshByTiles(affectedKeys, locations.size());
+    }
+
+    /** 영속화된 변경 타일을 현재 DB 데이터로 교체합니다. */
+    public void refreshByTiles(Collection<MapContentCacheTile> affectedKeys) {
+        refreshByTiles(affectedKeys, affectedKeys.size());
+    }
+
+    private void refreshByTiles(
+            Collection<MapContentCacheTile> affectedKeys,
+            int requestedLocations) {
         if (!enabled) {
             return;
         }
-
-        Set<TileKey> affectedKeys = locations.stream()
-                .map(location -> new TileKey(
-                        cellOf(location.latitude()),
-                        cellOf(location.longitude())))
-                .collect(java.util.stream.Collectors.toSet());
 
         if (!snapshotReady) {
             LOGGER.info(
                     "Map content cache partial refresh fallback: requestedLocations={}, "
                             + "affectedTiles={}, fallback=full",
-                    locations.size(),
+                    requestedLocations,
                     affectedKeys.size());
             refresh();
             return;
         }
 
-        if (locations.isEmpty()) {
+        if (affectedKeys.isEmpty()) {
             return;
         }
 
-        Map<TileKey, List<MapContentCommonData>> replacements = new HashMap<>();
+        Map<MapContentCacheTile, List<MapContentCommonData>> replacements = new HashMap<>();
         affectedKeys.forEach(key -> replacements.put(
                 key,
                 performanceMetrics.recordCommonQuery(
@@ -185,30 +191,7 @@ public class MapContentCommonCache {
         LOGGER.info(
                 "Map content cache partial refresh completed: requestedLocations={}, "
                         + "affectedTiles={}, fallback=false",
-                locations.size(),
+                requestedLocations,
                 affectedKeys.size());
-    }
-
-    private static long cellOf(double coordinate) {
-        return (long) Math.floor(coordinate / TILE_SIZE);
-    }
-
-    private record TileKey(long latitudeCell, long longitudeCell) {
-
-        private double south() {
-            return latitudeCell * TILE_SIZE;
-        }
-
-        private double west() {
-            return longitudeCell * TILE_SIZE;
-        }
-
-        private double north() {
-            return south() + TILE_SIZE;
-        }
-
-        private double east() {
-            return west() + TILE_SIZE;
-        }
     }
 }

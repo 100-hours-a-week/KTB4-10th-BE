@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
 import com.ktb10.kgb.content.service.MapContentCacheLocation;
+import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,6 +32,10 @@ class TourApiSyncRunnerTest {
     private final TourApiSyncRunRepository runRepository = mock(TourApiSyncRunRepository.class);
     private final MapContentCacheRefreshService cacheRefreshService =
             mock(MapContentCacheRefreshService.class);
+    private final MapContentCacheSynchronizationService cacheSynchronizationService =
+            mock(MapContentCacheSynchronizationService.class);
+    private final TourApiCacheRefreshRepository cacheRefreshRepository =
+            mock(TourApiCacheRefreshRepository.class);
     private final InterestedContentChangeCandidateSelector notificationCandidateSelector =
             mock(InterestedContentChangeCandidateSelector.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
@@ -48,6 +53,8 @@ class TourApiSyncRunnerTest {
                 syncService,
                 runRepository,
                 cacheRefreshService,
+                cacheSynchronizationService,
+                cacheRefreshRepository,
                 notificationCandidateSelector,
                 eventPublisher,
                 properties,
@@ -133,9 +140,11 @@ class TourApiSyncRunnerTest {
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
         verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
-        verify(cacheRefreshService).refreshAfterBatch(List.of(
+        verify(cacheRefreshService).resolveTiles(List.of(
                 new MapContentCacheLocation(37.4, 127.1),
                 new MapContentCacheLocation(37.6, 127.6)), SYNC_DATE);
+        verify(cacheRefreshRepository).save(any(), any(), any());
+        verify(cacheSynchronizationService).applyAvailableRefreshes();
         verify(runRepository, never()).fail(any(), any(), any(), any());
     }
 
@@ -154,7 +163,7 @@ class TourApiSyncRunnerTest {
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
-        verify(cacheRefreshService).refreshAfterBatch(List.of(), SYNC_DATE);
+        verify(cacheRefreshService).resolveTiles(List.of(), SYNC_DATE);
         verify(cacheRefreshService, never()).refreshAfterFullSync();
     }
 
