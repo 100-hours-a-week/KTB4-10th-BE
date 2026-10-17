@@ -16,15 +16,15 @@ public class MapContentCachePreloader implements ApplicationRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(MapContentCachePreloader.class);
 
-    private final MapContentCommonCache commonCache;
+    private final MapContentCacheSynchronizationService synchronizationService;
 
-    public MapContentCachePreloader(MapContentCommonCache commonCache) {
-        this.commonCache = commonCache;
+    public MapContentCachePreloader(MapContentCacheSynchronizationService synchronizationService) {
+        this.synchronizationService = synchronizationService;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        commonCache.refresh();
+        synchronizationService.preload();
         LOGGER.info("Map content cache preload completed");
     }
 }

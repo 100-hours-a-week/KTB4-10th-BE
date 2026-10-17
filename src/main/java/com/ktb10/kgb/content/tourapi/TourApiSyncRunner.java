@@ -3,6 +3,8 @@ package com.ktb10.kgb.content.tourapi;
 import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
+import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
+import com.ktb10.kgb.content.service.MapContentCacheTile;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,6 +35,8 @@ public class TourApiSyncRunner {
     private final TourApiSyncService syncService;
     private final TourApiSyncRunRepository runRepository;
     private final MapContentCacheRefreshService cacheRefreshService;
+    private final MapContentCacheSynchronizationService cacheSynchronizationService;
+    private final TourApiCacheRefreshRepository cacheRefreshRepository;
     private final InterestedContentChangeCandidateSelector notificationCandidateSelector;
     private final ApplicationEventPublisher eventPublisher;
     private final TourApiSchedulerProperties properties;
@@ -42,6 +46,8 @@ public class TourApiSyncRunner {
             TourApiSyncService syncService,
             TourApiSyncRunRepository runRepository,
             MapContentCacheRefreshService cacheRefreshService,
+            MapContentCacheSynchronizationService cacheSynchronizationService,
+            TourApiCacheRefreshRepository cacheRefreshRepository,
             InterestedContentChangeCandidateSelector notificationCandidateSelector,
             ApplicationEventPublisher eventPublisher,
             TourApiSchedulerProperties properties,
@@ -49,6 +55,8 @@ public class TourApiSyncRunner {
         this.syncService = syncService;
         this.runRepository = runRepository;
         this.cacheRefreshService = cacheRefreshService;
+        this.cacheSynchronizationService = cacheSynchronizationService;
+        this.cacheRefreshRepository = cacheRefreshRepository;
         this.notificationCandidateSelector = notificationCandidateSelector;
         this.eventPublisher = eventPublisher;
         this.properties = properties;
@@ -76,13 +84,23 @@ public class TourApiSyncRunner {
             return false;
         }
         try {
-            cacheRefreshService.refreshAfterBatch(
-                    cacheLocations(summary.changeSets()),
-                    syncDate);
+            List<MapContentCacheTile> changedTiles = cacheRefreshService.resolveTiles(
+                    cacheLocations(summary.changeSets()), syncDate);
+            cacheRefreshRepository.save(runId, changedTiles, clock.instant());
             runRepository.complete(runId, summary, clock.instant());
         } catch (RuntimeException failure) {
-            recordFailure(runId, syncDate, "CACHE_REFRESH", failure);
+            recordFailure(runId, syncDate, "CACHE_REFRESH_PLAN", failure);
             return false;
+        }
+        try {
+            cacheSynchronizationService.applyAvailableRefreshes();
+        } catch (RuntimeException failure) {
+            LOGGER.error(
+                    "TourAPI 동기화 완료 후 로컬 지도 캐시 반영에 실패했습니다. "
+                            + "runId={}, syncDate={}",
+                    runId,
+                    syncDate,
+                    failure);
         }
         LOGGER.info(
                 "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
