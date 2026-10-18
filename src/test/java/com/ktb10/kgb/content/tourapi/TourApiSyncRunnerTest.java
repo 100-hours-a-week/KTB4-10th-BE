@@ -118,6 +118,26 @@ class TourApiSyncRunnerTest {
     }
 
     @Test
+    void recoversStaleRunThroughTheNormalExecutionFlow() {
+        ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
+        when(runRepository.tryRecoverStale(any(), any(), any(), any())).thenReturn(true);
+        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+
+        assertThat(runner.recoverStaleIfDue(SYNC_DATE)).isTrue();
+
+        verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
+    }
+
+    @Test
+    void skipsRecoveryWhenNoStaleRunExists() {
+        when(runRepository.tryRecoverStale(any(), any(), any(), any())).thenReturn(false);
+
+        assertThat(runner.recoverStaleIfDue(SYNC_DATE)).isFalse();
+
+        verify(syncService, never()).synchronize(any());
+    }
+
+    @Test
     void recordsSuccessfulRun() {
         ContentChangeSet locationChange = ContentChangeSet.of(
                 "100",

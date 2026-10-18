@@ -90,5 +90,6 @@ tour-api:
     max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
     retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
+    recovery-interval-millis: ${TOUR_API_SYNC_RECOVERY_INTERVAL_MILLIS:300000}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"

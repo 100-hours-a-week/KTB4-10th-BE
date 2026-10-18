@@ -36,7 +36,18 @@ public class TourApiSyncScheduler {
         runToday();
     }
 
+    @Scheduled(
+            fixedDelayString = "${tour-api.scheduler.recovery-interval-millis:300000}",
+            initialDelayString = "${tour-api.scheduler.recovery-interval-millis:300000}")
+    public void recoverStaleRun() {
+        runner.recoverStaleIfDue(today());
+    }
+
     private void runToday() {
-        runner.runIfDue(LocalDate.now(clock.withZone(SEOUL)));
+        runner.runIfDue(today());
+    }
+
+    private LocalDate today() {
+        return LocalDate.now(clock.withZone(SEOUL));
     }
 }

@@ -136,6 +136,82 @@ class TourApiSyncRunRepositoryMysqlIntegrationTest {
                 retryRunId, SYNC_DATE, NOW.plusSeconds(60), NOW.minusSeconds(7_140))).isTrue();
     }
 
+    @Test
+    void recoveryTakesOverOnlyAStaleRunningRun() {
+        UUID owner = UUID.randomUUID();
+        assertThat(repository.tryStart(
+                owner, SYNC_DATE, NOW.minusSeconds(10_000), NOW.minusSeconds(17_200)))
+                .isTrue();
+
+        assertThat(repository.tryRecoverStale(
+                UUID.randomUUID(),
+                SYNC_DATE,
+                NOW.minusSeconds(9_000),
+                NOW.minusSeconds(16_200)))
+                .isFalse();
+
+        UUID recoveryRunId = UUID.randomUUID();
+        assertThat(repository.tryRecoverStale(
+                recoveryRunId, SYNC_DATE, NOW, NOW.minusSeconds(7_200)))
+                .isTrue();
+
+        String currentRunId = jdbcTemplate.queryForObject(
+                "SELECT run_id FROM tour_api_sync_runs WHERE sync_date = ?",
+                String.class,
+                SYNC_DATE);
+        assertThat(currentRunId).isEqualTo(recoveryRunId.toString());
+    }
+
+    @Test
+    void recoveryDoesNotRestartFailedRun() {
+        UUID failedRunId = UUID.randomUUID();
+        assertThat(repository.tryStart(
+                failedRunId, SYNC_DATE, NOW.minusSeconds(10_000), NOW.minusSeconds(17_200)))
+                .isTrue();
+        repository.fail(failedRunId, "SYNCHRONIZE", new IllegalStateException("failure"), NOW);
+
+        assertThat(repository.tryRecoverStale(
+                UUID.randomUUID(), SYNC_DATE, NOW.plusSeconds(10_000), NOW.plusSeconds(2_800)))
+                .isFalse();
+    }
+
+    @Test
+    void recoveryDoesNotRestartSuccessfulRun() {
+        UUID successfulRunId = UUID.randomUUID();
+        assertThat(repository.tryStart(
+                successfulRunId, SYNC_DATE, NOW.minusSeconds(10_000), NOW.minusSeconds(17_200)))
+                .isTrue();
+        repository.complete(successfulRunId, emptySummary(), NOW);
+
+        assertThat(repository.tryRecoverStale(
+                UUID.randomUUID(), SYNC_DATE, NOW.plusSeconds(10_000), NOW.plusSeconds(2_800)))
+                .isFalse();
+    }
+
+    @Test
+    void onlyOneConcurrentRecoveryOwnsTheStaleRun() throws Exception {
+        UUID staleRunId = UUID.randomUUID();
+        assertThat(repository.tryStart(
+                staleRunId, SYNC_DATE, NOW.minusSeconds(10_000), NOW.minusSeconds(17_200)))
+                .isTrue();
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            List<Future<Boolean>> results = List.of(
+                    executor.submit(() -> recoverAfterSignal(UUID.randomUUID(), ready, start)),
+                    executor.submit(() -> recoverAfterSignal(UUID.randomUUID(), ready, start)));
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            assertThat(List.of(
+                    results.get(0).get(10, TimeUnit.SECONDS),
+                    results.get(1).get(10, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+    }
+
     private boolean tryStartAfterSignal(
             UUID runId,
             CountDownLatch ready,
@@ -145,6 +221,18 @@ class TourApiSyncRunRepositoryMysqlIntegrationTest {
             throw new IllegalStateException("동시 잠금 검증 시작 신호를 기다리는 시간이 초과되었습니다.");
         }
         return repository.tryStart(runId, SYNC_DATE, NOW, NOW.minusSeconds(7_200));
+    }
+
+    private boolean recoverAfterSignal(
+            UUID runId,
+            CountDownLatch ready,
+            CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("동시 복구 검증 시작 신호를 기다리는 시간이 초과되었습니다.");
+        }
+        return repository.tryRecoverStale(
+                runId, SYNC_DATE, NOW, NOW.minusSeconds(7_200));
     }
 
     private int runCount() {
