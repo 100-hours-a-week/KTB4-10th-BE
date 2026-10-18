@@ -68,6 +68,25 @@ public class TourApiSyncRunner {
             return false;
         }
 
+        return executeOwnedRun(runId, syncDate);
+    }
+
+    public boolean recoverStaleIfDue(LocalDate syncDate) {
+        UUID runId = UUID.randomUUID();
+        Instant startedAt = clock.instant();
+        boolean acquired = runRepository.tryRecoverStale(
+                runId,
+                syncDate,
+                startedAt,
+                startedAt.minus(properties.staleRunTimeout()));
+        if (!acquired) {
+            return false;
+        }
+        LOGGER.warn("TourAPI stale run recovered: runId={}, syncDate={}", runId, syncDate);
+        return executeOwnedRun(runId, syncDate);
+    }
+
+    private boolean executeOwnedRun(UUID runId, LocalDate syncDate) {
         ImportSummary summary;
         try {
             summary = synchronizeWithRetry(runId, syncDate);

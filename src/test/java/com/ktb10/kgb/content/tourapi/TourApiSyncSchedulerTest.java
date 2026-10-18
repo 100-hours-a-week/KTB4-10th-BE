@@ -20,7 +20,9 @@ class TourApiSyncSchedulerTest {
 
         scheduler.recoverMissedRun();
         scheduler.runScheduled();
+        scheduler.recoverStaleRun();
 
         verify(runner, times(2)).runIfDue(LocalDate.of(2026, 10, 12));
+        verify(runner).recoverStaleIfDue(LocalDate.of(2026, 10, 12));
     }
 }

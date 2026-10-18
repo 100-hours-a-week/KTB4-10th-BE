@@ -51,6 +51,35 @@ public class TourApiSyncRunRepository {
                 startedAt,
                 startedAt,
                 Timestamp.from(staleBefore));
+        return ownsRun(runId, syncDate);
+    }
+
+    public boolean tryRecoverStale(
+            UUID runId,
+            LocalDate syncDate,
+            Instant now,
+            Instant staleBefore) {
+        Timestamp startedAt = Timestamp.from(now);
+        int updated = jdbcTemplate.update(
+                """
+                UPDATE tour_api_sync_runs
+                SET run_id = ?, status = 'RUNNING', attempt_count = 0,
+                    started_at = ?, completed_at = NULL,
+                    failure_stage = NULL, failure_message = NULL,
+                    updated_at = ?
+                WHERE sync_date = ?
+                  AND status = 'RUNNING'
+                  AND started_at < ?
+                """,
+                runId.toString(),
+                startedAt,
+                startedAt,
+                syncDate,
+                Timestamp.from(staleBefore));
+        return updated == 1 && ownsRun(runId, syncDate);
+    }
+
+    private boolean ownsRun(UUID runId, LocalDate syncDate) {
         Integer owned = jdbcTemplate.queryForObject(
                 """
                 SELECT COUNT(*)
@@ -59,7 +88,7 @@ public class TourApiSyncRunRepository {
                 """,
                 Integer.class,
                 syncDate,
-                id);
+                runId.toString());
         return owned != null && owned == 1;
     }
 
