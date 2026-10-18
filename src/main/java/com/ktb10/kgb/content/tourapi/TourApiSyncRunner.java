@@ -1,14 +1,11 @@
 package com.ktb10.kgb.content.tourapi;
 
 import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
-import com.ktb10.kgb.content.service.MapContentCacheLocation;
-import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
+import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,19 +17,9 @@ import org.springframework.stereotype.Service;
 public class TourApiSyncRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TourApiSyncRunner.class);
-    private static final Set<ContentChangedField> MAP_CACHE_FIELDS = EnumSet.of(
-            ContentChangedField.TITLE,
-            ContentChangedField.THUMBNAIL_URL,
-            ContentChangedField.ADDRESS,
-            ContentChangedField.START_DATE,
-            ContentChangedField.END_DATE,
-            ContentChangedField.LOCATION,
-            ContentChangedField.CLASSIFICATION_CODE_1,
-            ContentChangedField.STATUS);
-
     private final TourApiSyncService syncService;
     private final TourApiSyncRunRepository runRepository;
-    private final MapContentCacheRefreshService cacheRefreshService;
+    private final MapContentCacheSynchronizationService cacheSynchronizationService;
     private final InterestedContentChangeCandidateSelector notificationCandidateSelector;
     private final ApplicationEventPublisher eventPublisher;
     private final TourApiSchedulerProperties properties;
@@ -41,14 +28,14 @@ public class TourApiSyncRunner {
     public TourApiSyncRunner(
             TourApiSyncService syncService,
             TourApiSyncRunRepository runRepository,
-            MapContentCacheRefreshService cacheRefreshService,
+            MapContentCacheSynchronizationService cacheSynchronizationService,
             InterestedContentChangeCandidateSelector notificationCandidateSelector,
             ApplicationEventPublisher eventPublisher,
             TourApiSchedulerProperties properties,
             Clock clock) {
         this.syncService = syncService;
         this.runRepository = runRepository;
-        this.cacheRefreshService = cacheRefreshService;
+        this.cacheSynchronizationService = cacheSynchronizationService;
         this.notificationCandidateSelector = notificationCandidateSelector;
         this.eventPublisher = eventPublisher;
         this.properties = properties;
@@ -76,13 +63,20 @@ public class TourApiSyncRunner {
             return false;
         }
         try {
-            cacheRefreshService.refreshAfterBatch(
-                    cacheLocations(summary.changeSets()),
-                    syncDate);
             runRepository.complete(runId, summary, clock.instant());
         } catch (RuntimeException failure) {
-            recordFailure(runId, syncDate, "CACHE_REFRESH", failure);
+            recordFailure(runId, syncDate, "COMPLETE", failure);
             return false;
+        }
+        try {
+            cacheSynchronizationService.applyAvailableRefreshes();
+        } catch (RuntimeException failure) {
+            LOGGER.error(
+                    "TourAPI 동기화 완료 후 로컬 지도 캐시 반영에 실패했습니다. "
+                            + "runId={}, syncDate={}",
+                    runId,
+                    syncDate,
+                    failure);
         }
         LOGGER.info(
                 "TourAPI sync completed: runId={}, syncDate={}, sourceContents={}, "
@@ -118,20 +112,6 @@ public class TourApiSyncRunner {
         }
     }
 
-    private List<MapContentCacheLocation> cacheLocations(List<ContentChangeSet> changeSets) {
-        return changeSets.stream()
-                .filter(change -> change.changedFields().stream().anyMatch(MAP_CACHE_FIELDS::contains))
-                .flatMap(change -> java.util.stream.Stream.of(
-                        change.previousLocation(),
-                        change.currentLocation()))
-                .filter(java.util.Objects::nonNull)
-                .map(location -> new MapContentCacheLocation(
-                        location.latitude(),
-                        location.longitude()))
-                .distinct()
-                .toList();
-    }
-
     private void recordFailure(
             UUID runId,
             LocalDate syncDate,
@@ -152,7 +132,7 @@ public class TourApiSyncRunner {
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             runRepository.recordAttempt(runId, attempt, clock.instant());
             try {
-                return syncService.synchronize(syncDate);
+                return syncService.synchronize(runId, syncDate);
             } catch (TourApiException failure) {
                 lastFailure = failure;
                 if (!failure.isRetryable() || attempt == properties.maxAttempts()) {
