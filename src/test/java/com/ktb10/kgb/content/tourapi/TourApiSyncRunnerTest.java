@@ -2,6 +2,7 @@ package com.ktb10.kgb.content.tourapi;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -9,8 +10,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
-import com.ktb10.kgb.content.service.MapContentCacheRefreshService;
-import com.ktb10.kgb.content.service.MapContentCacheLocation;
 import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,12 +29,8 @@ class TourApiSyncRunnerTest {
 
     private final TourApiSyncService syncService = mock(TourApiSyncService.class);
     private final TourApiSyncRunRepository runRepository = mock(TourApiSyncRunRepository.class);
-    private final MapContentCacheRefreshService cacheRefreshService =
-            mock(MapContentCacheRefreshService.class);
     private final MapContentCacheSynchronizationService cacheSynchronizationService =
             mock(MapContentCacheSynchronizationService.class);
-    private final TourApiCacheRefreshRepository cacheRefreshRepository =
-            mock(TourApiCacheRefreshRepository.class);
     private final InterestedContentChangeCandidateSelector notificationCandidateSelector =
             mock(InterestedContentChangeCandidateSelector.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
@@ -52,9 +47,7 @@ class TourApiSyncRunnerTest {
         runner = new TourApiSyncRunner(
                 syncService,
                 runRepository,
-                cacheRefreshService,
                 cacheSynchronizationService,
-                cacheRefreshRepository,
                 notificationCandidateSelector,
                 eventPublisher,
                 properties,
@@ -76,7 +69,7 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(
                 10, 1, 0, 0, 0, 0, 0, 0, java.util.List.of(changeSet));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
         when(notificationCandidateSelector.select(summary.changeSets()))
                 .thenReturn(java.util.List.of(candidate));
 
@@ -92,7 +85,7 @@ class TourApiSyncRunnerTest {
     void doesNotPublishEventWhenNoNotificationCandidateExists() {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
         when(notificationCandidateSelector.select(summary.changeSets()))
                 .thenReturn(java.util.List.of());
 
@@ -105,7 +98,7 @@ class TourApiSyncRunnerTest {
     void keepsSuccessfulSyncWhenNotificationDispatchFails() {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
         when(notificationCandidateSelector.select(summary.changeSets()))
                 .thenThrow(new IllegalStateException("알림 후보 선별 실패"));
 
@@ -121,7 +114,7 @@ class TourApiSyncRunnerTest {
 
         assertThat(runner.runIfDue(SYNC_DATE)).isFalse();
 
-        verify(syncService, never()).synchronize(any());
+        verify(syncService, never()).synchronize(any(), any());
     }
 
     @Test
@@ -135,15 +128,11 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(
                 10, 2, 0, 0, 1, 3, 1, 0, List.of(locationChange));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
         verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
-        verify(cacheRefreshService).resolveTiles(List.of(
-                new MapContentCacheLocation(37.4, 127.1),
-                new MapContentCacheLocation(37.6, 127.6)), SYNC_DATE);
-        verify(cacheRefreshRepository).save(any(), any(), any());
         verify(cacheSynchronizationService).applyAvailableRefreshes();
         verify(runRepository, never()).fail(any(), any(), any(), any());
     }
@@ -159,37 +148,36 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(
                 10, 1, 0, 0, 0, 0, 0, 0, List.of(detailChange));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
-        verify(cacheRefreshService).resolveTiles(List.of(), SYNC_DATE);
-        verify(cacheRefreshService, never()).refreshAfterFullSync();
+        verify(cacheSynchronizationService).applyAvailableRefreshes();
     }
 
     @Test
     void retriesRetryableFailureAndThenSucceeds() {
         ImportSummary summary = new ImportSummary(10, 2, 0, 0, 0, 3, 1, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE))
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE)))
                 .thenThrow(new TourApiException("temporary", true))
                 .thenReturn(summary);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
-        verify(syncService, times(2)).synchronize(SYNC_DATE);
+        verify(syncService, times(2)).synchronize(any(UUID.class), eq(SYNC_DATE));
         verify(runRepository).recordAttempt(any(), org.mockito.ArgumentMatchers.eq(2), any());
     }
 
     @Test
     void recordsFailureWithoutRetryForPermanentError() {
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE))
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE)))
                 .thenThrow(new TourApiException("invalid configuration", false));
 
         assertThat(runner.runIfDue(SYNC_DATE)).isFalse();
 
-        verify(syncService).synchronize(SYNC_DATE);
+        verify(syncService).synchronize(any(UUID.class), eq(SYNC_DATE));
         verify(runRepository).fail(
                 any(),
                 org.mockito.ArgumentMatchers.eq("SYNCHRONIZE"),

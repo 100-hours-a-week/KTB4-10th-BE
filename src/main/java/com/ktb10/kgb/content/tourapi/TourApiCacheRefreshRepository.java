@@ -53,28 +53,24 @@ public class TourApiCacheRefreshRepository {
         return batchId;
     }
 
-    public long findLatestSuccessfulBatchId() {
+    public long findLatestBatchId() {
         Long result = jdbcTemplate.queryForObject(
                 """
-                SELECT COALESCE(MAX(batch.id), 0)
-                FROM tour_api_cache_refresh_batches batch
-                JOIN tour_api_sync_runs run ON run.run_id = batch.run_id
-                WHERE run.status = 'SUCCESS'
+                SELECT COALESCE(MAX(id), 0)
+                FROM tour_api_cache_refresh_batches
                 """,
                 Long.class);
         return result == null ? 0L : result;
     }
 
-    public List<MapContentCacheTile> findSuccessfulTilesAfter(long afterBatchId, long throughBatchId) {
+    public List<MapContentCacheTile> findTilesAfter(long afterBatchId, long throughBatchId) {
         return jdbcTemplate.query(
                 """
                 SELECT DISTINCT tile.latitude_cell, tile.longitude_cell
                 FROM tour_api_cache_refresh_tiles tile
                 JOIN tour_api_cache_refresh_batches batch ON batch.id = tile.batch_id
-                JOIN tour_api_sync_runs run ON run.run_id = batch.run_id
                 WHERE batch.id > ?
                   AND batch.id <= ?
-                  AND run.status = 'SUCCESS'
                 ORDER BY tile.latitude_cell, tile.longitude_cell
                 """,
                 (resultSet, rowNum) -> new MapContentCacheTile(

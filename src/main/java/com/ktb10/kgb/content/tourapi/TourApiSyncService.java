@@ -2,6 +2,7 @@ package com.ktb10.kgb.content.tourapi;
 
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.SnapshotType;
 import com.ktb10.kgb.content.tourapi.TourApiSnapshotValidator.ValidatedSnapshot;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -21,26 +22,29 @@ public class TourApiSyncService {
     private final TourApiClient client;
     private final TourApiSnapshotValidator validator;
     private final TourApiSnapshotStorage storage;
-    private final TourApiImportService importer;
+    private final TourApiBaseImportTransactionService baseImportTransactionService;
     private final TourApiDetailSyncService detailSyncService;
     private final TourApiProperties properties;
+    private final Clock clock;
 
     public TourApiSyncService(
             TourApiClient client,
             TourApiSnapshotValidator validator,
             TourApiSnapshotStorage storage,
-            TourApiImportService importer,
+            TourApiBaseImportTransactionService baseImportTransactionService,
             TourApiDetailSyncService detailSyncService,
-            TourApiProperties properties) {
+            TourApiProperties properties,
+            Clock clock) {
         this.client = client;
         this.validator = validator;
         this.storage = storage;
-        this.importer = importer;
+        this.baseImportTransactionService = baseImportTransactionService;
         this.detailSyncService = detailSyncService;
         this.properties = properties;
+        this.clock = clock;
     }
 
-    public ImportSummary synchronize(LocalDate syncDate) {
+    public ImportSummary synchronize(UUID runId, LocalDate syncDate) {
         LocalDate today = syncDate;
         LocalDate festivalStartDate = today.minusDays(properties.festivalLookbackDays());
         LocalDate festivalEndDate = today.plusYears(properties.festivalLookaheadYears());
@@ -50,13 +54,18 @@ public class TourApiSyncService {
         ValidatedSnapshot festival = validator.validate(
                 SnapshotType.FESTIVAL,
                 client.fetchFestivalSnapshot(festivalStartDate, festivalEndDate));
-        String runId = UUID.randomUUID().toString();
-        storage.save(runId, "areaBasedList2.json", area.raw());
-        storage.save(runId, "searchFestival2.json", festival.raw());
-        ImportSummary summary = importer.importSnapshots(area.raw(), festival.raw());
+        String snapshotRunId = runId.toString();
+        storage.save(snapshotRunId, "areaBasedList2.json", area.raw());
+        storage.save(snapshotRunId, "searchFestival2.json", festival.raw());
+        ImportSummary summary = baseImportTransactionService.importSnapshots(
+                runId,
+                syncDate,
+                area.raw(),
+                festival.raw(),
+                clock.instant());
         logChangeSummary("BASE", summary.changeSets());
         TourApiDetailSyncService.DetailSyncSummary detailSummary = detailSyncService.synchronize(
-                runId,
+                snapshotRunId,
                 syncDate.minusDays(1),
                 area.raw());
         logChangeSummary("DETAIL", detailSummary.changeSets());

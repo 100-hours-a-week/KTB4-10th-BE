@@ -28,7 +28,7 @@ public class MapContentCacheSynchronizationService {
 
     /** Preload 시작 전 버전을 기준으로 잡아 동시 배치 완료도 다음 폴링에서 반영합니다. */
     public void preload() {
-        long baseline = refreshRepository.findLatestSuccessfulBatchId();
+        long baseline = refreshRepository.findLatestBatchId();
         commonCache.refresh();
         lastAppliedBatchId.set(baseline);
     }
@@ -38,12 +38,12 @@ public class MapContentCacheSynchronizationService {
             initialDelayString = "${map.common-cache-sync-poll-initial-delay-millis:30000}")
     public synchronized void applyAvailableRefreshes() {
         long after = lastAppliedBatchId.get();
-        long through = refreshRepository.findLatestSuccessfulBatchId();
+        long through = refreshRepository.findLatestBatchId();
         if (through <= after) {
             return;
         }
         List<MapContentCacheTile> tiles =
-                refreshRepository.findSuccessfulTilesAfter(after, through);
+                refreshRepository.findTilesAfter(after, through);
         commonCache.refreshByTiles(tiles);
         lastAppliedBatchId.set(through);
         LOGGER.info(

@@ -20,23 +20,23 @@ class MapContentCacheSynchronizationServiceTest {
 
     @Test
     void preloadCapturesBaselineBeforeBuildingSnapshot() {
-        when(repository.findLatestSuccessfulBatchId()).thenReturn(7L);
+        when(repository.findLatestBatchId()).thenReturn(7L);
 
         service.preload();
         service.applyAvailableRefreshes();
 
         InOrder order = Mockito.inOrder(repository, commonCache);
-        order.verify(repository).findLatestSuccessfulBatchId();
+        order.verify(repository).findLatestBatchId();
         order.verify(commonCache).refresh();
-        verify(repository, never()).findSuccessfulTilesAfter(7L, 7L);
+        verify(repository, never()).findTilesAfter(7L, 7L);
     }
 
     @Test
     void appliesAllSuccessfulTilesSinceLastLocalVersion() {
         MapContentCacheTile first = new MapContentCacheTile(74, 254);
         MapContentCacheTile second = new MapContentCacheTile(75, 255);
-        when(repository.findLatestSuccessfulBatchId()).thenReturn(3L, 5L, 5L);
-        when(repository.findSuccessfulTilesAfter(3L, 5L))
+        when(repository.findLatestBatchId()).thenReturn(3L, 5L, 5L);
+        when(repository.findTilesAfter(3L, 5L))
                 .thenReturn(List.of(first, second));
 
         service.preload();
@@ -44,6 +44,6 @@ class MapContentCacheSynchronizationServiceTest {
         service.applyAvailableRefreshes();
 
         verify(commonCache).refreshByTiles(List.of(first, second));
-        verify(repository).findSuccessfulTilesAfter(3L, 5L);
+        verify(repository).findTilesAfter(3L, 5L);
     }
 }
