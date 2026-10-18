@@ -14,6 +14,15 @@ spring:
   flyway:
     enabled: true
 
+server:
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
+        path: /
+
 management:
   server:
     port: ${MANAGEMENT_SERVER_PORT:8081}
