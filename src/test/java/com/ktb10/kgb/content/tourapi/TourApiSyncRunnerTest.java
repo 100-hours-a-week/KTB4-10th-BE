@@ -121,7 +121,7 @@ class TourApiSyncRunnerTest {
     void recoversStaleRunThroughTheNormalExecutionFlow() {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryRecoverStale(any(), any(), any(), any())).thenReturn(true);
-        when(syncService.synchronize(SYNC_DATE)).thenReturn(summary);
+        when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
 
         assertThat(runner.recoverStaleIfDue(SYNC_DATE)).isTrue();
 
@@ -134,7 +134,7 @@ class TourApiSyncRunnerTest {
 
         assertThat(runner.recoverStaleIfDue(SYNC_DATE)).isFalse();
 
-        verify(syncService, never()).synchronize(any());
+        verify(syncService, never()).synchronize(any(), any());
     }
 
     @Test

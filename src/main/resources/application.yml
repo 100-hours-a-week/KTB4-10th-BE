@@ -2,6 +2,22 @@ spring:
   application:
     name: kgb
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+
+  session:
+    timeout: ${OAUTH_HTTP_SESSION_TIMEOUT:15m}
+    redis:
+      namespace: ${REDIS_SESSION_NAMESPACE:kgb:local:oauth:session}
+      flush-mode: on-save
+      save-mode: on-set-attribute
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -21,6 +37,7 @@ server:
   servlet:
     session:
       cookie:
+        name: JSESSIONID
         http-only: true
         secure: ${SESSION_COOKIE_SECURE:true}
         same-site: lax
