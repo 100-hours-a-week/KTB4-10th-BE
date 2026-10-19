@@ -17,12 +17,14 @@ import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookRe
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Place;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.AcquisitionType;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryDay;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
+import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.entity.Region;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
@@ -123,13 +125,24 @@ public class GuidebookResultService {
         if (result == null) {
             throw new IllegalStateException("AI 완료 응답에 가이드북 결과가 없습니다.");
         }
-        InitialGenerationRequestPayload payload = deserialize(job.getRequestPayload());
+        if (job.getJobType() == JobType.REGENERATION) {
+            persistRegeneratedResult(job, result, now);
+            return;
+        }
+        persistInitialResult(job, result, now);
+    }
+
+    private void persistInitialResult(
+            GenerationJob job,
+            GuidebookResult result,
+            LocalDateTime now) {
+        InitialGenerationRequestPayload payload = deserializeInitial(job.getRequestPayload());
         GuidebookGenerationRequest request = payload.request();
         Region region = regionRepository.findProvinceByName(request.province())
                 .orElseThrow(() -> new IllegalStateException(
                         "가이드북 지역 기준 정보를 찾을 수 없습니다: " + request.province()));
 
-        validateItinerary(result, request);
+        validateItinerary(result, request, true);
         Map<String, TourismContentSnapshot> selectedContents = loadSelectedContents(
                 result, request);
         Guidebook guidebook = guidebookRepository.save(Guidebook.create(
@@ -141,6 +154,36 @@ public class GuidebookResultService {
                 request.peopleCount(),
                 result.contentHtml(),
                 now));
+
+        saveItinerary(guidebook, result, selectedContents, now);
+        memberGuidebookRepository.save(MemberGuidebook.create(
+                job.getMember(), guidebook, AcquisitionType.CREATED, now));
+        complete(job, guidebook, now);
+    }
+
+    private void persistRegeneratedResult(
+            GenerationJob job,
+            GuidebookResult result,
+            LocalDateTime now) {
+        RegenerationRequestPayload payload = deserializeRegeneration(job.getRequestPayload());
+        GuidebookGenerationRequest request = payload.sourceRequest().request();
+        Guidebook guidebook = guidebookRepository.findById(job.getGuidebookId())
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+
+        validateItinerary(result, request, false);
+        Map<String, TourismContentSnapshot> selectedContents = loadSelectedContents(
+                result, request);
+        replaceItinerary(guidebook);
+        guidebook.replaceGeneratedContent(result.contentHtml(), now);
+        saveItinerary(guidebook, result, selectedContents, now);
+        complete(job, guidebook, now);
+    }
+
+    private void saveItinerary(
+            Guidebook guidebook,
+            GuidebookResult result,
+            Map<String, TourismContentSnapshot> selectedContents,
+            LocalDateTime now) {
 
         List<AiGenerationStatusResponse.ItineraryDay> days = result.itinerary().stream()
                 .sorted(Comparator.comparingInt(AiGenerationStatusResponse.ItineraryDay::day))
@@ -162,9 +205,24 @@ public class GuidebookResultService {
                         now));
             }
         }
+    }
 
-        memberGuidebookRepository.save(MemberGuidebook.create(
-                job.getMember(), guidebook, AcquisitionType.CREATED, now));
+    private void replaceItinerary(Guidebook guidebook) {
+        List<ItineraryDay> existingDays = itineraryDayRepository
+                .findAllByGuidebookIdOrderByDayNumberAsc(guidebook.getId());
+        if (existingDays.isEmpty()) {
+            return;
+        }
+        List<Long> dayIds = existingDays.stream().map(ItineraryDay::getId).toList();
+        List<ItineraryItem> existingItems = itineraryItemRepository
+                .findAllByItineraryDayIdInOrderByItineraryDayDayNumberAscSequenceAsc(dayIds);
+        itineraryItemRepository.deleteAll(existingItems);
+        itineraryItemRepository.flush();
+        itineraryDayRepository.deleteAll(existingDays);
+        itineraryDayRepository.flush();
+    }
+
+    private void complete(GenerationJob job, Guidebook guidebook, LocalDateTime now) {
         consumeCredit(job, now);
         job.complete(guidebook.getId(), now);
         eventPublisher.publishEvent(new GuidebookCompletedEvent(
@@ -226,11 +284,15 @@ public class GuidebookResultService {
 
     private void validateItinerary(
             GuidebookResult result,
-            GuidebookGenerationRequest request) {
-        if (result.title() == null
+            GuidebookGenerationRequest request,
+            boolean validateTitle) {
+        if (validateTitle && (result.title() == null
                 || result.title().isBlank()
-                || result.title().length() > 15) {
+                || result.title().length() > 15)) {
             throw new IllegalStateException("AI 가이드북 제목은 1자 이상 15자 이하여야 합니다.");
+        }
+        if (result.contentHtml() == null || result.contentHtml().isBlank()) {
+            throw new IllegalStateException("AI 가이드북 HTML 본문은 비어 있을 수 없습니다.");
         }
         List<AiGenerationStatusResponse.ItineraryDay> days = result.itinerary().stream()
                 .sorted(Comparator.comparingInt(AiGenerationStatusResponse.ItineraryDay::day))
@@ -312,11 +374,19 @@ public class GuidebookResultService {
                 || status == GenerationStatus.CANCELED;
     }
 
-    private InitialGenerationRequestPayload deserialize(String requestPayload) {
+    private InitialGenerationRequestPayload deserializeInitial(String requestPayload) {
         try {
             return objectMapper.readValue(requestPayload, InitialGenerationRequestPayload.class);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("저장된 가이드북 생성 요청을 읽을 수 없습니다.", exception);
+        }
+    }
+
+    private RegenerationRequestPayload deserializeRegeneration(String requestPayload) {
+        try {
+            return objectMapper.readValue(requestPayload, RegenerationRequestPayload.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("저장된 가이드북 재생성 요청을 읽을 수 없습니다.", exception);
         }
     }
 
