@@ -37,16 +37,44 @@ class ContentReadServiceTest {
         var pageable = PageRequest.of(1, 20);
         when(listProjection.getContentId()).thenReturn("event-1");
         when(listProjection.getStartDate()).thenReturn(LocalDate.of(2026, 8, 14));
-        when(contentReadRepository.findEvents("야행", pageable))
+        when(contentReadRepository.existsProvinceByCode("11")).thenReturn(true);
+        when(contentReadRepository.findEvents(
+                        "야행",
+                        "11",
+                        LocalDate.of(2026, 10, 1),
+                        LocalDate.of(2026, 10, 31),
+                        pageable))
                 .thenReturn(new PageImpl<>(List.of(listProjection), pageable, 21));
 
-        var response = service.getEvents("  야행  ", 2, 20);
+        var response = service.getEvents("  야행  ", " 11 ", "2026-10", 2, 20);
 
         assertThat(response.totalItems()).isEqualTo(21);
         assertThat(response.totalPages()).isEqualTo(2);
         assertThat(response.items().getFirst().eventPeriod().startDate())
                 .isEqualTo(LocalDate.of(2026, 8, 14));
-        verify(contentReadRepository).findEvents("야행", pageable);
+        verify(contentReadRepository).findEvents(
+                "야행",
+                "11",
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 31),
+                pageable);
+    }
+
+    @Test
+    void rejectsUnknownProvinceCode() {
+        ContentReadService service = new ContentReadService(contentReadRepository);
+        when(contentReadRepository.existsProvinceByCode("unknown")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.getEvents(null, "unknown", null, 1, 20))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void rejectsInvalidMonth() {
+        ContentReadService service = new ContentReadService(contentReadRepository);
+
+        assertThatThrownBy(() -> service.getEvents(null, null, "2026-13", 1, 20))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test

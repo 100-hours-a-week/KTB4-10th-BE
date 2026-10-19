@@ -1,6 +1,7 @@
 package com.ktb10.kgb.content.controller;
 
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -42,7 +43,8 @@ class ContentReadApiTest {
 
     @Test
     void returnsEventList() throws Exception {
-        when(contentReadService.getEvents(null, 1, 20)).thenReturn(new ContentListResponse(
+        when(contentReadService.getEvents(null, null, null, 1, 20))
+                .thenReturn(new ContentListResponse(
                 List.of(new ContentListItemResponse(
                         "event-1", "수원 야행", "EVENT",
                         new ContentRegionResponse("41", "경기도"), "수원시", null,
@@ -58,6 +60,29 @@ class ContentReadApiTest {
                 .andExpect(jsonPath("$.data.items[0].content_id").value("event-1"))
                 .andExpect(jsonPath("$.data.items[0].event_period.start_date")
                         .value("2026-08-14"));
+    }
+
+    @Test
+    void forwardsRegionAndMonthFilters() throws Exception {
+        when(contentReadService.getEvents("야행", "11", "2026-10", 1, 20))
+                .thenReturn(new ContentListResponse(List.of(), 1, 20, 0, 0));
+
+        mockMvc.perform(get("/api/v1/contents")
+                        .with(authentication(authenticatedMember()))
+                        .param("q", "야행")
+                        .param("region_code", "11")
+                        .param("month", "2026-10"))
+                .andExpect(status().isOk());
+
+        verify(contentReadService).getEvents("야행", "11", "2026-10", 1, 20);
+    }
+
+    @Test
+    void rejectsInvalidMonthFormat() throws Exception {
+        mockMvc.perform(get("/api/v1/contents")
+                        .with(authentication(authenticatedMember()))
+                        .param("month", "2026-13"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

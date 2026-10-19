@@ -6,6 +6,7 @@ import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.service.ContentReadService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -31,11 +32,15 @@ public class ContentReadController {
     public ResponseEntity<ApiResponse<ContentListResponse>> getContents(
             @RequestParam(defaultValue = "EVENT") ContentCategory category,
             @RequestParam(required = false) @Size(max = 10) String q,
+            @RequestParam(name = "region_code", required = false)
+                    @Size(max = 20) String regionCode,
+            @RequestParam(required = false)
+                    @Pattern(regexp = "\\d{4}-(0[1-9]|1[0-2])") String month,
             @RequestParam(defaultValue = "1") @Min(1) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(20) int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 "content_list_success",
-                contentReadService.getEvents(q, page, size)));
+                contentReadService.getEvents(q, regionCode, month, page, size)));
     }
 
     @GetMapping("/{contentId}")

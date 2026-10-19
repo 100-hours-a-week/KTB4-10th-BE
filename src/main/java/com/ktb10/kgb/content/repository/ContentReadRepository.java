@@ -26,27 +26,58 @@ public interface ContentReadRepository extends JpaRepository<TourismContentReadE
                            event.end_date AS endDate
                     FROM tourism_contents content
                     JOIN regions region ON region.id = content.region_id
+                    JOIN regions province
+                      ON province.id = COALESCE(region.parent_id, region.id)
                     JOIN event_details event ON event.content_id = content.id
                     WHERE content.status = 'ACTIVE'
                       AND content.deleted_at IS NULL
                       AND content.classification_code_1 = 'EV'
                       AND (:query IS NULL OR LOCATE(:query, content.title) > 0)
+                      AND (:regionCode IS NULL OR province.administrative_code = :regionCode)
+                      AND (:monthStart IS NULL OR (
+                            event.start_date <= :monthEnd
+                            AND event.end_date >= :monthStart
+                      ))
                     ORDER BY content.created_at DESC, content.id DESC
                     """,
             countQuery =
                     """
                     SELECT COUNT(*)
                     FROM tourism_contents content
+                    JOIN regions region ON region.id = content.region_id
+                    JOIN regions province
+                      ON province.id = COALESCE(region.parent_id, region.id)
                     JOIN event_details event ON event.content_id = content.id
                     WHERE content.status = 'ACTIVE'
                       AND content.deleted_at IS NULL
                       AND content.classification_code_1 = 'EV'
                       AND (:query IS NULL OR LOCATE(:query, content.title) > 0)
+                      AND (:regionCode IS NULL OR province.administrative_code = :regionCode)
+                      AND (:monthStart IS NULL OR (
+                            event.start_date <= :monthEnd
+                            AND event.end_date >= :monthStart
+                      ))
                     """,
             nativeQuery = true)
     Page<ContentListProjection> findEvents(
             @Param("query") String query,
+            @Param("regionCode") String regionCode,
+            @Param("monthStart") LocalDate monthStart,
+            @Param("monthEnd") LocalDate monthEnd,
             Pageable pageable);
+
+    @Query(
+            value =
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM regions
+                        WHERE administrative_code = :regionCode
+                          AND region_level = 'PROVINCE'
+                    )
+                    """,
+            nativeQuery = true)
+    boolean existsProvinceByCode(@Param("regionCode") String regionCode);
 
     @Query(
             value =
