@@ -14,6 +14,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface MemberGuidebookRepository extends JpaRepository<MemberGuidebook, Long> {
 
+    boolean existsByGuidebookIdAndDeletedAtIsNull(Long guidebookId);
+
     @Query(
             """
             select memberGuidebook

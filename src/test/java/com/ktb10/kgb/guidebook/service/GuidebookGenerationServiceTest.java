@@ -17,14 +17,19 @@ import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
+import com.ktb10.kgb.guidebook.entity.Guidebook;
+import com.ktb10.kgb.guidebook.entity.AcquisitionType;
+import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
+import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.OauthProvider;
@@ -67,6 +72,9 @@ class GuidebookGenerationServiceTest {
     private MemberPreferenceRepository memberPreferenceRepository;
 
     @Mock
+    private MemberGuidebookRepository memberGuidebookRepository;
+
+    @Mock
     private CreditWalletRepository creditWalletRepository;
 
     @Mock
@@ -92,6 +100,7 @@ class GuidebookGenerationServiceTest {
                 generationJobRepository,
                 memberRepository,
                 memberPreferenceRepository,
+                memberGuidebookRepository,
                 creditWalletRepository,
                 eventPublisher,
                 guidebookAiClientProvider,
@@ -99,6 +108,68 @@ class GuidebookGenerationServiceTest {
                 aiIntegrationErrorLogger,
                 objectMapper,
                 CLOCK);
+    }
+
+    @Test
+    void createsPendingRegenerationJobForExistingGuidebook() throws Exception {
+        Member member = member();
+        Guidebook guidebook = Guidebook.create(
+                "경주 여행",
+                1L,
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                Companion.FRIEND,
+                2,
+                "<article>기존</article>",
+                LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(guidebook, "id", 50L);
+        GenerationJob sourceJob = GenerationJob.createInitial(
+                member,
+                requestPayload(validRequest()),
+                "initial-key",
+                LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(sourceJob, "id", 300L);
+        sourceJob.registerAiJob("ai-original", LocalDateTime.now(CLOCK));
+        sourceJob.complete(50L, LocalDateTime.now(CLOCK));
+
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, "regeneration-key")).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(memberGuidebookRepository.findActiveWithGuidebook(MEMBER_ID, 50L))
+                .willReturn(Optional.of(MemberGuidebook.create(
+                        member,
+                        guidebook,
+                        AcquisitionType.CREATED,
+                        LocalDateTime.now(CLOCK))));
+        given(generationJobRepository.existsByMemberIdAndStatusIn(
+                any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
+                .willReturn(false);
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
+        given(memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
+        given(generationJobRepository
+                .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
+                        50L, GenerationStatus.COMPLETED))
+                .willReturn(Optional.of(sourceJob));
+        given(generationJobRepository.save(any(GenerationJob.class)))
+                .willAnswer(invocation -> {
+                    GenerationJob job = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(job, "id", 301L);
+                    return job;
+                });
+
+        var response = service.regenerate(
+                MEMBER_ID,
+                50L,
+                "regeneration-key",
+                new GuidebookRegenerationRequest("  걷는 시간을 줄여 주세요.  "));
+
+        assertThat(response.jobType().name()).isEqualTo("REGENERATION");
+        assertThat(response.guidebookId()).isEqualTo(50L);
+        assertThat(response.currentVersion()).isEqualTo(1);
+        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
     }
 
     @Test
