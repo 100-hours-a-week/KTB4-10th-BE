@@ -3,6 +3,15 @@ spring:
     activate:
       on-profile: prod
 
+  data:
+    redis:
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+
+  session:
+    redis:
+      namespace: ${REDIS_SESSION_NAMESPACE:kgb:prod:oauth:session}
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
