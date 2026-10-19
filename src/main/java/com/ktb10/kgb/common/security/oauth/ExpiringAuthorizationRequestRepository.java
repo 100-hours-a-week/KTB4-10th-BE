@@ -1,5 +1,6 @@
 package com.ktb10.kgb.common.security.oauth;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -120,6 +121,7 @@ public class ExpiringAuthorizationRequestRepository
                 .ifPresent(attempts::remove);
     }
 
+    @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS)
     private record StoredAuthorizationRequest(
             OAuth2AuthorizationRequest authorizationRequest,
             Instant createdAt,
