@@ -200,13 +200,13 @@
 | 항목 | 확정 내용 |
 |---|---|
 | 실행 방식 | 웹 리다이렉트 Authorization Code + Spring Security `oauth2Login()`. 시작·콜백·코드 교환 모두 백엔드 담당. 프론트 SDK 코드 전달 방식은 사용하지 않음 |
-| state | 암호학적 난수로 생성. 로그인 전 HttpSession에 로그인 시도별로 provider·고정 redirect_uri·생성 시각과 함께 저장하고 해당 브라우저의 임시 세션 쿠키에 결속 |
-| 임시 보관 | Spring AuthorizationRequestRepository를 HttpSession 기반으로 구성. state별 map에 verifier 원문·필요한 nonce를 보관. 생성부터 10분 후 만료, 연장 없음. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
+| state | 암호학적 난수로 생성. 로그인 시도별 provider·고정 redirect_uri·생성 시각과 함께 Redis에 저장하고 해시한 HttpSession ID로 해당 브라우저의 임시 세션 쿠키에 결속 |
+| 임시 보관 | Spring AuthorizationRequestRepository를 Redis 기반으로 구성. state별 key에 verifier 원문·필요한 nonce를 10분 보관하고 callback에서 GETDEL로 원자적으로 한 번 소비한다. 브라우저별 Sorted Set은 최대 5개 시도를 관리한다. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
 | 일회성·다중 탭 | 동일 state의 검증·소비를 원자 처리해 콜백 중복 교환 금지. 각 탭은 별도 state로 관리. 만료 정리 및 브라우저당 최대 5개 시도, 초과 시작은 가장 오래된 시도를 폐기 |
 | PKCE | 두 공급자 로그인에 S256 사용. 서버에서 32바이트 난수를 base64url(no padding)로 인코딩한 verifier 생성. challenge는 BASE64URL(SHA256(verifier)). challenge만 인가 요청에, verifier 원문은 토큰 교환에 전달 |
 | 공급자·OIDC | Google은 OIDC(scope openid)로 ID token 서명·iss·aud·exp·nonce 검증. Kakao는 별도 OIDC를 활성화하지 않고 OAuth 사용자 정보 API의 검증된 id로 식별. 공급자별 응답을 공통 회원 식별로 매핑 |
 | 비밀값 | client_secret·verifier·공급자 토큰은 서버에서만 처리, 브라우저와 로그에 노출 금지. 서비스 세션 ID는 DB에 SHA-256 해시만 보관 |
-| 다중 서버 | 로그인 후 세션은 기존 공용 MySQL 사용. 로그인 전 HttpSession 저장소는 별개다. 단일 서버에서는 메모리 사용, 다중 서버 배포 전에 공유 HttpSession 저장소와 원자 소비를 적용·검증해야 함. Redis/새 업무 테이블을 지금 추가하지 않음 |
+| 다중 서버 | 로그인 후 세션은 기존 공용 MySQL을 사용한다. 로그인 전에는 Redis의 state별 key와 브라우저별 Sorted Set을 공유하며 GETDEL로 인스턴스 간 원자 소비를 보장한다. HttpSession은 JSESSIONID 발급과 브라우저 결속에 사용한다. |
 | 쿠키·CSRF | 임시 세션 쿠키도 운영 HttpOnly·Secure·SameSite=Lax·host-only 적용. 서비스 세션 인증의 POST/PUT/PATCH/DELETE에는 Spring Security CSRF 토큰 검증 적용. PKCE/state가 일반 API의 CSRF 방어를 대체하지 않음 |
 | 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 회원당 유효 세션은 1개이며 새 로그인은 기존 세션을 폐기. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
 
