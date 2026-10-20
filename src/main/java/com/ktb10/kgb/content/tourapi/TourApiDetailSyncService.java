@@ -50,8 +50,13 @@ public class TourApiDetailSyncService {
         this.properties = properties;
     }
 
-    public DetailSyncSummary synchronize(String runId, LocalDate targetDate, byte[] areaRaw) {
-        List<TourApiDetailTarget> targets = resolveTargets(areaRaw, targetDate);
+    public DetailSyncSummary synchronize(
+            String runId,
+            LocalDate targetDate,
+            byte[] areaRaw,
+            Set<String> newSourceContentIds) {
+        List<TourApiDetailTarget> targets = resolveTargets(
+                areaRaw, targetDate, newSourceContentIds);
         int completed = 0;
         int failed = 0;
         List<ContentChangeSet> changeSets = new ArrayList<>();
@@ -82,27 +87,34 @@ public class TourApiDetailSyncService {
         return new DetailSyncSummary(targets.size(), completed, failed, changeSets);
     }
 
-    private List<TourApiDetailTarget> resolveTargets(byte[] areaRaw, LocalDate targetDate) {
+    private List<TourApiDetailTarget> resolveTargets(
+            byte[] areaRaw,
+            LocalDate targetDate,
+            Set<String> newSourceContentIds) {
         Map<String, SourceTarget> sourceTargets = new LinkedHashMap<>();
         for (JsonNode item : readItems(areaRaw)) {
             String classification = text(item, "lclsSystm1");
             if (!ALLOWED_CLASSIFICATIONS.contains(classification)) {
                 continue;
             }
-            if (!targetDate.equals(sourceDate(item, "createdtime"))
-                    && !targetDate.equals(sourceDate(item, "modifiedtime"))) {
+            String sourceContentId = text(item, "contentid");
+            if (sourceContentId == null) {
                 continue;
             }
-            String sourceContentId = text(item, "contentid");
-            String sourceContentTypeId = text(item, "contenttypeid");
-            if (sourceContentId != null) {
-                sourceTargets.put(
-                        sourceContentId,
-                        new SourceTarget(
-                                sourceContentId,
-                                sourceContentTypeId,
-                                "EV".equals(classification)));
+            boolean newlyImported = newSourceContentIds.contains(sourceContentId);
+            boolean createdOrModifiedOnTargetDate =
+                    targetDate.equals(sourceDate(item, "createdtime"))
+                            || targetDate.equals(sourceDate(item, "modifiedtime"));
+            if (!newlyImported && !createdOrModifiedOnTargetDate) {
+                continue;
             }
+            String sourceContentTypeId = text(item, "contenttypeid");
+            sourceTargets.put(
+                    sourceContentId,
+                    new SourceTarget(
+                            sourceContentId,
+                            sourceContentTypeId,
+                            "EV".equals(classification)));
         }
         List<TourApiDetailTarget> result = new ArrayList<>();
         for (SourceTarget source : sourceTargets.values()) {

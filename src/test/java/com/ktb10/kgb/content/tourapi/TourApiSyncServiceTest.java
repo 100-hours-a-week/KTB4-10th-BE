@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,11 +61,26 @@ class TourApiSyncServiceTest {
                 org.mockito.ArgumentMatchers.eq(area),
                 org.mockito.ArgumentMatchers.eq(festival),
                 org.mockito.ArgumentMatchers.any()))
-                .thenReturn(new ImportSummary(10, 2, 0, 0, 0, 3, 1, 0));
+                .thenReturn(new ImportSummary(
+                        10,
+                        2,
+                        0,
+                        0,
+                        0,
+                        3,
+                        1,
+                        0,
+                        List.of(ContentChangeSet.of(
+                                "late-content",
+                                Set.of(ContentChangedField.TITLE),
+                                ContentLifecycleChange.NEW,
+                                null,
+                                null))));
         when(detailSyncService.synchronize(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
-                org.mockito.ArgumentMatchers.eq(area)))
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(Set.of("late-content"))))
                 .thenReturn(new TourApiDetailSyncService.DetailSyncSummary(0, 0, 0, List.of()));
 
         UUID runId = UUID.randomUUID();
@@ -79,7 +95,8 @@ class TourApiSyncServiceTest {
         verify(detailSyncService).synchronize(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
-                org.mockito.ArgumentMatchers.eq(area));
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(Set.of("late-content")));
     }
 
     @Test
