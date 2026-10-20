@@ -18,8 +18,8 @@ public interface ContentReadRepository extends JpaRepository<TourismContentReadE
                     """
                     SELECT content.source_content_id AS contentId,
                            content.title AS title,
-                           region.administrative_code AS regionCode,
-                           region.name AS regionName,
+                           province.administrative_code AS regionCode,
+                           province.name AS regionName,
                            content.address AS address,
                            content.thumbnail_url AS thumbnailUrl,
                            event.start_date AS startDate,

@@ -147,6 +147,8 @@ class ContentReadRepositoryMysqlIntegrationTest {
         assertThat(result.getContent())
                 .extracting(ContentReadRepository.ContentListProjection::getContentId)
                 .containsExactly("seoul-overlap");
+        assertThat(result.getContent().getFirst().getRegionCode()).isEqualTo("11");
+        assertThat(result.getContent().getFirst().getRegionName()).isEqualTo("서울특별시");
         assertThat(repository.countProvinceByCode("11")).isEqualTo(1L);
         assertThat(repository.countProvinceByCode("unknown")).isZero();
     }
