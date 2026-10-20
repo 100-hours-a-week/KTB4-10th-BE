@@ -85,7 +85,8 @@ class TourApiDetailSyncServiceTest {
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 "run-1",
                 LocalDate.of(2026, 10, 13),
-                area);
+                area,
+                Set.of());
 
         assertThat(summary.targets()).isEqualTo(2);
         assertThat(summary.completed()).isEqualTo(2);
@@ -121,10 +122,46 @@ class TourApiDetailSyncServiceTest {
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 "run-2",
                 LocalDate.of(2026, 10, 13),
-                area);
+                area,
+                Set.of());
 
         assertThat(summary.targets()).isZero();
         verify(client, never()).fetchDetailCommon(anyString());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void synchronizesNewlyImportedTargetRegardlessOfSourceDate() {
+        byte[] area = response("""
+                [
+                  {
+                    "contentid":"500",
+                    "contenttypeid":"15",
+                    "lclsSystm1":"EV",
+                    "createdtime":"20261016010000",
+                    "modifiedtime":"20261016020000"
+                  }
+                ]
+                """);
+        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("500")))
+                .thenReturn(List.of(50L));
+        when(client.fetchDetailCommon("500")).thenReturn(response("[]"));
+        when(client.fetchDetailIntro("500", "15")).thenReturn(response("[]"));
+        when(importer.importDetail(
+                eq(new TourApiDetailTarget(50L, "500", "15", true)),
+                any(byte[].class),
+                any(byte[].class))).thenReturn(emptyChangeSet("500"));
+
+        TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
+                "run-3",
+                LocalDate.of(2026, 10, 17),
+                area,
+                Set.of("500"));
+
+        assertThat(summary.targets()).isEqualTo(1);
+        assertThat(summary.completed()).isEqualTo(1);
+        verify(client).fetchDetailCommon("500");
+        verify(client).fetchDetailIntro("500", "15");
     }
 
     private static byte[] response(String items) {

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,10 +65,15 @@ public class TourApiSyncService {
                 festival.raw(),
                 clock.instant());
         logChangeSummary("BASE", summary.changeSets());
+        Set<String> newSourceContentIds = summary.changeSets().stream()
+                .filter(change -> change.lifecycleChange() == ContentLifecycleChange.NEW)
+                .map(ContentChangeSet::sourceContentId)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
         TourApiDetailSyncService.DetailSyncSummary detailSummary = detailSyncService.synchronize(
                 snapshotRunId,
                 syncDate.minusDays(1),
-                area.raw());
+                area.raw(),
+                newSourceContentIds);
         logChangeSummary("DETAIL", detailSummary.changeSets());
         List<ContentChangeSet> changes = new ArrayList<>(summary.changeSets());
         changes.addAll(detailSummary.changeSets());
