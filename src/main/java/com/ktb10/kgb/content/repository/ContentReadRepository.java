@@ -69,15 +69,13 @@ public interface ContentReadRepository extends JpaRepository<TourismContentReadE
     @Query(
             value =
                     """
-                    SELECT EXISTS(
-                        SELECT 1
-                        FROM regions
-                        WHERE administrative_code = :regionCode
-                          AND region_level = 'PROVINCE'
-                    )
+                    SELECT COUNT(*)
+                    FROM regions
+                    WHERE administrative_code = :regionCode
+                      AND region_level = 'PROVINCE'
                     """,
             nativeQuery = true)
-    boolean existsProvinceByCode(@Param("regionCode") String regionCode);
+    long countProvinceByCode(@Param("regionCode") String regionCode);
 
     @Query(
             value =

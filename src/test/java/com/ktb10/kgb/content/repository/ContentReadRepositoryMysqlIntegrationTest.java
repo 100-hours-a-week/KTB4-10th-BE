@@ -147,6 +147,8 @@ class ContentReadRepositoryMysqlIntegrationTest {
         assertThat(result.getContent())
                 .extracting(ContentReadRepository.ContentListProjection::getContentId)
                 .containsExactly("seoul-overlap");
+        assertThat(repository.countProvinceByCode("11")).isEqualTo(1L);
+        assertThat(repository.countProvinceByCode("unknown")).isZero();
     }
 
     private Long insertEvent(

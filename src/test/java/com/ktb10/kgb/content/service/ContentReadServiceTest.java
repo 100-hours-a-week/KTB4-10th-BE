@@ -37,7 +37,7 @@ class ContentReadServiceTest {
         var pageable = PageRequest.of(1, 20);
         when(listProjection.getContentId()).thenReturn("event-1");
         when(listProjection.getStartDate()).thenReturn(LocalDate.of(2026, 8, 14));
-        when(contentReadRepository.existsProvinceByCode("11")).thenReturn(true);
+        when(contentReadRepository.countProvinceByCode("11")).thenReturn(1L);
         when(contentReadRepository.findEvents(
                         "야행",
                         "11",
@@ -63,7 +63,7 @@ class ContentReadServiceTest {
     @Test
     void rejectsUnknownProvinceCode() {
         ContentReadService service = new ContentReadService(contentReadRepository);
-        when(contentReadRepository.existsProvinceByCode("unknown")).thenReturn(false);
+        when(contentReadRepository.countProvinceByCode("unknown")).thenReturn(0L);
 
         assertThatThrownBy(() -> service.getEvents(null, "unknown", null, 1, 20))
                 .isInstanceOf(BusinessException.class);

@@ -53,7 +53,7 @@ public class ContentReadService {
         }
         String regionCode = rawRegionCode.trim();
         if (!StringUtils.hasText(regionCode)
-                || !contentReadRepository.existsProvinceByCode(regionCode)) {
+                || contentReadRepository.countProvinceByCode(regionCode) == 0) {
             throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
         }
         return regionCode;
