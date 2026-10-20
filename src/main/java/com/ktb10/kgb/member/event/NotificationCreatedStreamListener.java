@@ -1,6 +1,6 @@
 package com.ktb10.kgb.member.event;
 
-import com.ktb10.kgb.member.service.NotificationStreamService;
+import com.ktb10.kgb.member.service.NotificationRealtimePublisher;
 import com.ktb10.kgb.member.service.WebPushDispatchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,23 +15,25 @@ public class NotificationCreatedStreamListener {
     private static final Logger LOGGER =
             LoggerFactory.getLogger(NotificationCreatedStreamListener.class);
 
-    private final NotificationStreamService notificationStreamService;
+    private final NotificationRealtimePublisher notificationRealtimePublisher;
     private final WebPushDispatchService webPushDispatchService;
 
     public NotificationCreatedStreamListener(
-            NotificationStreamService notificationStreamService,
+            NotificationRealtimePublisher notificationRealtimePublisher,
             WebPushDispatchService webPushDispatchService) {
-        this.notificationStreamService = notificationStreamService;
+        this.notificationRealtimePublisher = notificationRealtimePublisher;
         this.webPushDispatchService = webPushDispatchService;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handle(NotificationCreatedEvent event) {
         try {
-            notificationStreamService.publish(event);
+            if (event.realtimeDeliveryEnabled()) {
+                notificationRealtimePublisher.publishNotification(event);
+            }
         } catch (RuntimeException exception) {
             LOGGER.warn(
-                    "SSE 알림 전송 중 예상하지 못한 오류가 발생했습니다. "
+                    "SSE 알림 fan-out 이벤트 발행 중 예상하지 못한 오류가 발생했습니다. "
                             + "notificationId={}, memberId={}",
                     event.notification().notificationId(),
                     event.recipientMemberId(),
