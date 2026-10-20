@@ -7,6 +7,8 @@ import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
 import com.ktb10.kgb.content.repository.ContentReadRepository;
 import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import java.time.YearMonth;
+import java.time.format.DateTimeParseException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,14 +25,49 @@ public class ContentReadService {
     }
 
     @Transactional(readOnly = true)
-    public ContentListResponse getEvents(String rawQuery, int page, int size) {
+    public ContentListResponse getEvents(
+            String rawQuery,
+            String rawRegionCode,
+            String rawMonth,
+            int page,
+            int size) {
         String query = StringUtils.hasText(rawQuery) ? rawQuery.trim() : null;
-        var result = contentReadRepository.findEvents(query, PageRequest.of(page - 1, size));
+        String regionCode = normalizeRegionCode(rawRegionCode);
+        YearMonth month = parseMonth(rawMonth);
+        var result = contentReadRepository.findEvents(
+                query,
+                regionCode,
+                month == null ? null : month.atDay(1),
+                month == null ? null : month.atEndOfMonth(),
+                PageRequest.of(page - 1, size));
         var items = result.getContent().stream()
                 .map(ContentListItemResponse::from)
                 .toList();
         return new ContentListResponse(
                 items, page, size, result.getTotalElements(), result.getTotalPages());
+    }
+
+    private String normalizeRegionCode(String rawRegionCode) {
+        if (rawRegionCode == null) {
+            return null;
+        }
+        String regionCode = rawRegionCode.trim();
+        if (!StringUtils.hasText(regionCode)
+                || contentReadRepository.countProvinceByCode(regionCode) == 0) {
+            throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
+        }
+        return regionCode;
+    }
+
+    private YearMonth parseMonth(String rawMonth) {
+        if (rawMonth == null) {
+            return null;
+        }
+        try {
+            return YearMonth.parse(rawMonth);
+        } catch (DateTimeParseException exception) {
+            throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
+        }
     }
 
     @Transactional(readOnly = true)
