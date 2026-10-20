@@ -5,6 +5,7 @@ import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
@@ -26,11 +27,66 @@ public class HttpGuidebookAiClient implements GuidebookAiClient {
 
     private static final String GENERATIONS_PATH = "/guidebooks-generations";
     private static final String GENERATION_STATUS_ROUTE = GENERATIONS_PATH + "/{jobId}";
+    private static final String REGENERATION_ROUTE = GENERATIONS_PATH + "/{jobId}/regenerate";
 
     private final RestClient restClient;
 
     public HttpGuidebookAiClient(RestClient restClient) {
         this.restClient = restClient;
+    }
+
+    @Override
+    public AiGenerationAcceptedResponse requestRegeneration(
+            String sourceAiJobId,
+            AiGuidebookRegenerationRequest request) {
+        long startedAt = System.nanoTime();
+        try {
+            ResponseEntity<AiGenerationAcceptedEnvelope> response = restClient.post()
+                    .uri(REGENERATION_ROUTE, sourceAiJobId)
+                    .body(request)
+                    .retrieve()
+                    .toEntity(AiGenerationAcceptedEnvelope.class);
+            if (response.getStatusCode() != HttpStatus.ACCEPTED) {
+                throw invalidResponse(
+                        "AI 재생성 접수 응답 상태가 올바르지 않습니다.",
+                        REGENERATION_ROUTE,
+                        startedAt,
+                        null);
+            }
+            AiGenerationAcceptedEnvelope envelope = Objects.requireNonNull(
+                    response.getBody(), "AI 재생성 접수 응답 본문이 없습니다.");
+            AiGenerationAcceptedResponse data = envelope.data();
+            if (data.jobId() == null || data.jobId().isBlank() || data.status() == null) {
+                throw invalidResponse(
+                        "AI 재생성 접수 응답 형식이 올바르지 않습니다.",
+                        REGENERATION_ROUTE,
+                        startedAt,
+                        null);
+            }
+            if (data.status() != AiGenerationStatus.PENDING
+                    && data.status() != AiGenerationStatus.PROCESSING) {
+                throw invalidResponse(
+                        "AI 재생성 접수 상태가 올바르지 않습니다.",
+                        REGENERATION_ROUTE,
+                        startedAt,
+                        null);
+            }
+            return data;
+        } catch (AiClientException exception) {
+            throw exception;
+        } catch (RestClientResponseException exception) {
+            throw upstreamError(exception, REGENERATION_ROUTE, startedAt);
+        } catch (RestClientException exception) {
+            throw restClientError(exception, REGENERATION_ROUTE, startedAt);
+        } catch (IllegalArgumentException | NullPointerException exception) {
+            throw invalidResponse(
+                    "AI 재생성 접수 응답 형식이 올바르지 않습니다.",
+                    REGENERATION_ROUTE,
+                    startedAt,
+                    exception);
+        } catch (RuntimeException exception) {
+            throw unexpectedError(exception, REGENERATION_ROUTE, startedAt);
+        }
     }
 
     @Override

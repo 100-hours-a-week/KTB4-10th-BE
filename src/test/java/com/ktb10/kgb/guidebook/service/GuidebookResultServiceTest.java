@@ -23,6 +23,8 @@ import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
@@ -170,6 +172,84 @@ class GuidebookResultServiceTest {
         verify(memberGuidebookRepository).save(any());
         verify(creditTransactionRepository).save(any(CreditTransaction.class));
         verify(eventPublisher).publishEvent(any(GuidebookCompletedEvent.class));
+    }
+
+    @Test
+    void replacesExistingGuidebookResultAndKeepsTitle() throws Exception {
+        Member member = Member.register(
+                OauthProvider.KAKAO, "regeneration-subject", "traveler", null, null,
+                NOW.minusDays(1));
+        ReflectionTestUtils.setField(member, "id", 1L);
+        GuidebookGenerationRequest sourceRequest = new GuidebookGenerationRequest(
+                "경상북도",
+                "경주시",
+                LocalDate.of(2026, 10, 1),
+                LocalDate.of(2026, 10, 1),
+                Companion.COUPLE,
+                2);
+        InitialGenerationRequestPayload sourcePayload = new InitialGenerationRequestPayload(
+                sourceRequest,
+                List.of(new PreferenceSnapshot("THEME", "NATURE")));
+        String payload = objectMapper.writeValueAsString(new RegenerationRequestPayload(
+                new GuidebookRegenerationRequest("일정을 여유롭게 바꿔 주세요."),
+                sourcePayload,
+                "ai-original"));
+        GenerationJob job = GenerationJob.createRegeneration(
+                member, 501L, payload, "regeneration-key", NOW);
+        ReflectionTestUtils.setField(job, "id", 302L);
+        job.registerAiJob("ai-regenerated", NOW);
+        Guidebook guidebook = Guidebook.create(
+                "기존 경주 여행",
+                47L,
+                sourceRequest.startDate(),
+                sourceRequest.endDate(),
+                sourceRequest.companion(),
+                sourceRequest.peopleCount(),
+                "<article>기존</article>",
+                NOW.minusDays(1));
+        ReflectionTestUtils.setField(guidebook, "id", 501L);
+        com.ktb10.kgb.guidebook.entity.ItineraryDay oldDay =
+                com.ktb10.kgb.guidebook.entity.ItineraryDay.create(
+                        guidebook, 1, sourceRequest.startDate());
+        ReflectionTestUtils.setField(oldDay, "id", 601L);
+        CreditWallet wallet = CreditWallet.open(member, NOW.minusDays(1));
+        wallet.grant(2, NOW.minusDays(1));
+
+        given(generationJobRepository.findByIdForUpdate(302L)).willReturn(Optional.of(job));
+        given(guidebookRepository.findById(501L)).willReturn(Optional.of(guidebook));
+        given(contentQuery.findAll(
+                "경상북도", "경주시", sourceRequest.startDate(), sourceRequest.endDate()))
+                .willReturn(List.of(candidate()));
+        given(contentSnapshotQuery.findBySourceContentId("content-1"))
+                .willReturn(Optional.of(new TourismContentSnapshot(
+                        701L, "content-1", "첨성대", "HS", "경상북도 경주시",
+                        35.8, 129.2, null, null, null)));
+        given(itineraryDayRepository.findAllByGuidebookIdOrderByDayNumberAsc(501L))
+                .willReturn(List.of(oldDay));
+        given(itineraryItemRepository
+                .findAllByItineraryDayIdInOrderByItineraryDayDayNumberAscSequenceAsc(
+                        List.of(601L)))
+                .willReturn(List.of());
+        given(itineraryDayRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        given(creditWalletRepository.findByMemberIdForUpdate(1L))
+                .willReturn(Optional.of(wallet));
+
+        GuidebookResult regenerated = new GuidebookResult(
+                "AI가 바꾼 제목",
+                "재생성 요약",
+                "<article>재생성</article>",
+                result().itinerary());
+        resultService.apply(
+                302L,
+                AiGenerationStatusResponse.completed("ai-regenerated", regenerated));
+
+        assertThat(guidebook.getTitle()).isEqualTo("기존 경주 여행");
+        assertThat(guidebook.getContentHtml()).isEqualTo("<article>재생성</article>");
+        assertThat(guidebook.getVersion()).isEqualTo(2);
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.COMPLETED);
+        assertThat(wallet.getCreditBalance()).isEqualTo(1);
+        verify(itineraryDayRepository).deleteAll(List.of(oldDay));
+        verify(memberGuidebookRepository, never()).save(any());
     }
 
     @Test

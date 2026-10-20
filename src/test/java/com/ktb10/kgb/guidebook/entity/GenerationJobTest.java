@@ -25,6 +25,20 @@ class GenerationJobTest {
     }
 
     @Test
+    void createsPendingRegenerationJobLinkedToGuidebook() {
+        GenerationJob job = GenerationJob.createRegeneration(
+                member(),
+                50L,
+                "{\"feedback\":\"여유롭게\"}",
+                "regeneration-key",
+                NOW);
+
+        assertThat(job.getJobType()).isEqualTo(JobType.REGENERATION);
+        assertThat(job.getGuidebookId()).isEqualTo(50L);
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
+    }
+
+    @Test
     void registersExternalAiJobIdOnce() {
         GenerationJob job = initialJob();
         LocalDateTime registeredAt = NOW.plusMinutes(1);
@@ -109,15 +123,19 @@ class GenerationJobTest {
 
     private static GenerationJob initialJob() {
         return GenerationJob.createInitial(
-                Member.register(
-                        OauthProvider.KAKAO,
-                        "generation-job-member",
-                        "여행자",
-                        null,
-                        null,
-                        NOW),
+                member(),
                 "{\"regionId\":1}",
                 "initial-key",
+                NOW);
+    }
+
+    private static Member member() {
+        return Member.register(
+                OauthProvider.KAKAO,
+                "generation-job-member",
+                "여행자",
+                null,
+                null,
                 NOW);
     }
 }

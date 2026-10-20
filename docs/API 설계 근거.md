@@ -70,7 +70,7 @@
 | API-GDE-03 | FR-GDE-02/07; 요구사항 11.2 | 진행률을 추정해서 꾸미지 않고 저장된 작업 상태를 반환한다. 접수 후 실패는 이 API에서 FAILED로 확인한다. |
 | API-GDE-05 | FR-GDE-02~03; BR-GDE-14 | 비동기 생성 완료 후 GUIDE-05를 다시 구성하고 이후 지도·공유에서도 재사용할 수 있도록 가이드북 기본 정보와 전체 구조화 일정을 제공한다. 대표 장소 문구는 프론트엔드가 계산하고 HTML 본문은 뷰어 API로 분리한다. |
 | API-GDE-07 | US-04; BR-GDE-06~07 | V1은 API-GDE-05의 전체 itinerary를 재사용한다. 지도·공유·평가가 별도 수명주기나 권한의 일정 조회를 요구할 때 독립 엔드포인트로 분리한다. |
-| API-GDE-09 | FR-GDE-07; BR-GDE-13; BR-PAY-04 | 사용자가 공백이 아닌 제목과 자연어 피드백을 함께 보내면 기존 가이드북을 직접 편집하는 대신 새 재생성 작업을 시작한다. 성공 시 제목·본문·일정을 갱신하고 1개 차감하며, 실패하면 기존 결과를 보존한다. 기술 재시도와는 다른 사용자 요청이다. |
+| API-GDE-09 | FR-GDE-07; BR-GDE-13; BR-PAY-04 | 사용자가 공백이 아닌 자연어 피드백을 보내면 기존 가이드북을 직접 편집하는 대신 새 재생성 작업을 시작한다. 성공 시 제목은 유지하고 본문·일정을 교체하며 1개 차감하고, 실패하면 기존 결과를 보존한다. 기술 재시도와는 다른 사용자 요청이다. |
 | API-GDE-10 | FR-GDE-04; BR-GDE-08 | 난수 원문은 URL로 반환하고 해시만 저장하며 만료 시각은 발급 후 24시간으로 서버가 계산한다. 현재 테이블에는 링크 요청 멱등 키가 없으므로 결과 재생을 약속하지 않는다. |
 | API-GDE-11 | FR-GDE-04; BR-GDE-08/12/14/15 | 로그인한 수신자만 이용하는 제한 미리보기다. 화면에 필요한 공유자 닉네임·제목·여행 기간·장소 수만 반환하고 상세 일정·HTML·개인화 입력은 포함하지 않는다. |
 | API-GDE-12 | FR-GDE-05; BR-GDE-09~10 | 가이드북·일정을 복제하지 않고 `member_guidebooks` 관계를 생성한다. 회원+가이드북 UNIQUE로 중복을 막고 삭제된 관계는 복구한다. |
@@ -186,7 +186,7 @@ V2 Web Push도 알림 저장 커밋 뒤 실행하지만 외부 Push 서비스 �
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
 | API-NOT-04 | GET /push-preferences | MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | MEM-11 회원 설정 부분 수정으로 통합. |
-| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목만 직접 수정하는 기능은 제외. 제목 변경은 필수 feedback과 함께 GDE-09 재생성으로 처리. |
+| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목·일정 직접 수정은 제외. GDE-09는 feedback으로 본문·일정만 재생성하고 제목을 유지. |
 | API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 일정 직접 편집 제외. 변경은 GDE-09 자연어 재생성. |
 | API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |
