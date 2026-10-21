@@ -29,14 +29,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -56,24 +49,13 @@ import org.testcontainers.utility.DockerImageName;
                 "KAKAO_REDIRECT_URI=http://localhost/api/v1/auth/oauth/callback/kakao",
                 "SESSION_COOKIE_SECURE=false"
         })
-class RedisOauthSessionIntegrationTest {
+class RedisOauthSessionIntegrationTest extends RedisIntegrationTestSupport {
 
     private static final String SESSION_PATTERN = "kgb:test:oauth:session:sessions:*";
     private static final String ATTEMPT_PATTERN =
             "kgb:test:oauth:authorization-request:attempt:*";
     private static final String INDEX_PATTERN =
             "kgb:test:oauth:authorization-request:index:*";
-
-    @Container
-    static final GenericContainer<?> REDIS = new GenericContainer<>(
-            DockerImageName.parse("redis:7.4-alpine"))
-            .withExposedPorts(6379);
-
-    @DynamicPropertySource
-    static void redisProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.data.redis.host", REDIS::getHost);
-        registry.add("spring.data.redis.port", REDIS::getFirstMappedPort);
-    }
 
     @LocalServerPort
     private int serverPort;
