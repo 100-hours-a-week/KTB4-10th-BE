@@ -3,6 +3,7 @@ package com.ktb10.kgb.member.controller;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.CsrfTokenLifecycle;
 import com.ktb10.kgb.common.security.SessionCookieManager;
+import com.ktb10.kgb.member.service.NotificationRealtimePublisher;
 import com.ktb10.kgb.member.service.NotificationStreamService;
 import com.ktb10.kgb.member.service.ServiceSessionService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,16 +24,19 @@ public class AuthController {
     private final SessionCookieManager sessionCookieManager;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
     private final NotificationStreamService notificationStreamService;
+    private final NotificationRealtimePublisher notificationRealtimePublisher;
 
     public AuthController(
             ServiceSessionService serviceSessionService,
             SessionCookieManager sessionCookieManager,
             CsrfTokenLifecycle csrfTokenLifecycle,
-            NotificationStreamService notificationStreamService) {
+            NotificationStreamService notificationStreamService,
+            NotificationRealtimePublisher notificationRealtimePublisher) {
         this.serviceSessionService = serviceSessionService;
         this.sessionCookieManager = sessionCookieManager;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
         this.notificationStreamService = notificationStreamService;
+        this.notificationRealtimePublisher = notificationRealtimePublisher;
     }
 
     @PostMapping("/logout")
@@ -42,6 +46,9 @@ public class AuthController {
             HttpServletResponse response) {
         serviceSessionService.revokeCurrent(member.memberId(), member.sessionId());
         notificationStreamService.disconnectSession(member.memberId(), member.sessionId());
+        notificationRealtimePublisher.publishSessionDisconnected(
+                member.memberId(),
+                member.sessionId());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,

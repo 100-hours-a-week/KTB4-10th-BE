@@ -13,6 +13,7 @@ import com.ktb10.kgb.member.dto.response.NotificationItemResponse;
 import com.ktb10.kgb.member.entity.NotificationReferenceType;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.event.NotificationCreatedEvent;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -39,14 +40,18 @@ class NotificationStreamServiceTest {
     private SseEmitter otherMemberEmitter;
 
     private NotificationStreamService streamService;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         streamService = new NotificationStreamService(
                 emitterFactory,
                 Duration.ofMinutes(25),
                 3000L,
-                5);
+                5,
+                new NotificationRealtimeMetrics(meterRegistry),
+                meterRegistry);
     }
 
     @Test
@@ -158,7 +163,9 @@ class NotificationStreamServiceTest {
                 emitterFactory,
                 Duration.ofMinutes(25),
                 3000L,
-                2);
+                2,
+                new NotificationRealtimeMetrics(meterRegistry),
+                meterRegistry);
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
 

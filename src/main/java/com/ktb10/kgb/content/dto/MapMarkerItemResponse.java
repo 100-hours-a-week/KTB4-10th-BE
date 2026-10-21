@@ -12,6 +12,8 @@ public record MapMarkerItemResponse(
         ContentType contentType,
         double latitude,
         double longitude,
+        @JsonProperty("thumbnail_url")
+        String thumbnailUrl,
         @JsonProperty("is_favorite")
         boolean favorite,
         @JsonProperty("is_in_guidebook")

@@ -60,4 +60,29 @@ class HttpTourApiClientTest {
                 .extracting(exception -> ((TourApiException) exception).isRetryable())
                 .isEqualTo(true);
     }
+
+    @Test
+    void requestsDetailEndpointsWithContentParameters() {
+        RestClient.Builder builder = RestClient.builder()
+                .baseUrl("https://apis.data.go.kr/B551011/KorService2");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        byte[] response = "{\"response\":{}}".getBytes(StandardCharsets.UTF_8);
+        server.expect(request -> {
+            assertThat(request.getURI().getPath()).endsWith("/detailCommon2");
+            assertThat(request.getURI().getQuery()).contains("contentId=123");
+        }).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        server.expect(request -> {
+            assertThat(request.getURI().getPath()).endsWith("/detailIntro2");
+            assertThat(request.getURI().getQuery())
+                    .contains("contentId=123")
+                    .contains("contentTypeId=15");
+        }).andRespond(withSuccess(response, MediaType.APPLICATION_JSON));
+        TourApiClient client = new HttpTourApiClient(
+                builder.build(),
+                TourApiTestFixtures.properties("data/tourism/raw"));
+
+        assertThat(client.fetchDetailCommon("123")).isEqualTo(response);
+        assertThat(client.fetchDetailIntro("123", "15")).isEqualTo(response);
+        server.verify();
+    }
 }

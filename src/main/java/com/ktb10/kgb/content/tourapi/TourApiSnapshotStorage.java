@@ -55,6 +55,18 @@ public class TourApiSnapshotStorage {
         return saveToLocal(location, suffix, raw);
     }
 
+    /** 상세 API 원본을 실행과 콘텐츠별 경로로 저장합니다. */
+    public String saveDetail(
+            String runId,
+            String contentId,
+            String operation,
+            byte[] raw) {
+        return save(
+                runId,
+                "detail/" + contentId + "/" + operation + ".json",
+                raw);
+    }
+
     private String snapshotSuffix(String runId, String fileName) {
         LocalDate date = LocalDate.now(clock.withZone(SEOUL));
         return DATE_PATH.format(date) + "/" + runId + "/" + fileName;

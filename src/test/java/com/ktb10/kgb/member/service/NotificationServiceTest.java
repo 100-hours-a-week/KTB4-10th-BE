@@ -10,6 +10,7 @@ import com.ktb10.kgb.member.entity.Notification;
 import com.ktb10.kgb.member.entity.NotificationReferenceType;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.repository.NotificationOccurrenceRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import java.time.Clock;
 import java.util.List;
@@ -34,6 +35,9 @@ class NotificationServiceTest {
     private MemberRepository memberRepository;
 
     @Mock
+    private NotificationOccurrenceRepository notificationOccurrenceRepository;
+
+    @Mock
     private ApplicationEventPublisher eventPublisher;
 
     private NotificationService notificationService;
@@ -42,6 +46,7 @@ class NotificationServiceTest {
     void setUp() {
         notificationService = new NotificationService(
                 notificationRepository,
+                notificationOccurrenceRepository,
                 memberRepository,
                 Clock.systemUTC(),
                 eventPublisher);

@@ -2,7 +2,9 @@ package com.ktb10.kgb.content.repository;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
+import com.ktb10.kgb.content.model.TourismContentCategoryPolicy;
 import java.sql.Date;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -12,8 +14,12 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class MapContentQuery {
 
-    private static final List<String> SUPPORTED_CLASSIFICATION_CODES =
-            List.of("NA", "HS", "VE", "EX", "LS", "EV");
+    private static final List<String> ALLOWED_PLACE_CLASSIFICATION_CODES =
+            TourismContentCategoryPolicy.allowedSourceCodes();
+    private static final String ALLOWED_PLACE_CLASSIFICATION_PLACEHOLDERS =
+            String.join(", ", ALLOWED_PLACE_CLASSIFICATION_CODES.stream()
+                    .map(ignored -> "?")
+                    .toList());
     private static final RowMapper<MapContentCommonData> COMMON_CONTENT_ROW_MAPPER =
             (resultSet, rowNumber) -> new MapContentCommonData(
                     resultSet.getLong("id"),
@@ -41,6 +47,21 @@ public class MapContentQuery {
             double west,
             double north,
             double east) {
+        Object[] arguments = new Object[ALLOWED_PLACE_CLASSIFICATION_CODES.size() + 10];
+        int index = 0;
+        for (String code : ALLOWED_PLACE_CLASSIFICATION_CODES) {
+            arguments[index++] = code;
+        }
+        arguments[index++] = west;
+        arguments[index++] = south;
+        arguments[index++] = east;
+        arguments[index++] = south;
+        arguments[index++] = east;
+        arguments[index++] = north;
+        arguments[index++] = west;
+        arguments[index++] = north;
+        arguments[index++] = west;
+        arguments[index] = south;
         return jdbcTemplate.query(
                 """
                 SELECT
@@ -58,10 +79,13 @@ public class MapContentQuery {
                 LEFT JOIN event_details event ON event.content_id = content.id
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
-                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
+                  AND (
+                      content.classification_code_1 = 'EV'
+                      OR content.classification_code_2 IN (%s)
+                  )
                   AND (
                       content.classification_code_1 <> 'EV'
-                      OR event.end_date >= CURRENT_DATE
+                      OR event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)
                   )
                   AND MBRContains(
                       ST_GeomFromText(
@@ -77,19 +101,9 @@ public class MapContentQuery {
                           'axis-order=long-lat'),
                       content.location)
                 ORDER BY content.id
-                """,
+                """.formatted(ALLOWED_PLACE_CLASSIFICATION_PLACEHOLDERS),
                 COMMON_CONTENT_ROW_MAPPER,
-                SUPPORTED_CLASSIFICATION_CODES.get(0),
-                SUPPORTED_CLASSIFICATION_CODES.get(1),
-                SUPPORTED_CLASSIFICATION_CODES.get(2),
-                SUPPORTED_CLASSIFICATION_CODES.get(3),
-                SUPPORTED_CLASSIFICATION_CODES.get(4),
-                SUPPORTED_CLASSIFICATION_CODES.get(5),
-                west, south,
-                east, south,
-                east, north,
-                west, north,
-                west, south);
+                arguments);
     }
 
     public List<MapContentCommonData> findAllCacheable() {
@@ -110,15 +124,45 @@ public class MapContentQuery {
                 LEFT JOIN event_details event ON event.content_id = content.id
                 WHERE content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
-                  AND content.classification_code_1 IN (?, ?, ?, ?, ?, ?)
+                  AND (
+                      content.classification_code_1 = 'EV'
+                      OR content.classification_code_2 IN (%s)
+                  )
                   AND (
                       content.classification_code_1 <> 'EV'
-                      OR event.end_date >= CURRENT_DATE
+                      OR event.end_date >= DATE(UTC_TIMESTAMP() + INTERVAL 9 HOUR)
                   )
+                ORDER BY content.id
+                """.formatted(ALLOWED_PLACE_CLASSIFICATION_PLACEHOLDERS),
+                COMMON_CONTENT_ROW_MAPPER,
+                ALLOWED_PLACE_CLASSIFICATION_CODES.toArray());
+    }
+
+    /** 기준일에 종료되어 오늘 지도 노출 대상에서 빠지는 행사 위치를 조회합니다. */
+    public List<MapContentCommonData> findEventsEndingOn(LocalDate endDate) {
+        return jdbcTemplate.query(
+                """
+                SELECT
+                    content.id,
+                    content.source_content_id,
+                    content.title,
+                    content.classification_code_1,
+                    content.address,
+                    ST_Latitude(content.location) AS latitude,
+                    ST_Longitude(content.location) AS longitude,
+                    content.thumbnail_url,
+                    event.start_date,
+                    event.end_date
+                FROM tourism_contents content
+                JOIN event_details event ON event.content_id = content.id
+                WHERE content.status = 'ACTIVE'
+                  AND content.deleted_at IS NULL
+                  AND content.classification_code_1 = 'EV'
+                  AND event.end_date = ?
                 ORDER BY content.id
                 """,
                 COMMON_CONTENT_ROW_MAPPER,
-                SUPPORTED_CLASSIFICATION_CODES.toArray());
+                endDate);
     }
 
     private static EventPeriod eventPeriod(Date startDate, Date endDate) {

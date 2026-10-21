@@ -10,6 +10,7 @@ import com.ktb10.kgb.member.entity.NotificationReferenceType;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.event.NotificationCreatedEvent;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.repository.NotificationOccurrenceRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -29,16 +30,19 @@ public class NotificationService {
     private static final int MAX_NOTIFICATIONS_PER_MEMBER = 20;
 
     private final NotificationRepository notificationRepository;
+    private final NotificationOccurrenceRepository notificationOccurrenceRepository;
     private final MemberRepository memberRepository;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
 
     public NotificationService(
             NotificationRepository notificationRepository,
+            NotificationOccurrenceRepository notificationOccurrenceRepository,
             MemberRepository memberRepository,
             Clock clock,
             ApplicationEventPublisher eventPublisher) {
         this.notificationRepository = notificationRepository;
+        this.notificationOccurrenceRepository = notificationOccurrenceRepository;
         this.memberRepository = memberRepository;
         this.clock = clock;
         this.eventPublisher = eventPublisher;
@@ -76,6 +80,56 @@ public class NotificationService {
             String body,
             NotificationReferenceType referenceType,
             String referenceId) {
+        createNotification(
+                recipientMemberId,
+                type,
+                title,
+                body,
+                referenceType,
+                referenceId,
+                LocalDateTime.now(clock));
+    }
+
+    /** 같은 발생 건은 인스턴스 수와 재실행 횟수에 관계없이 한 번만 저장합니다. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public boolean createOnce(
+            Long recipientMemberId,
+            NotificationType type,
+            String title,
+            String body,
+            NotificationReferenceType referenceType,
+            String referenceId,
+            String occurrenceKey) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        int claimed = notificationOccurrenceRepository.insertIfAbsent(
+                recipientMemberId,
+                type.name(),
+                referenceType.name(),
+                referenceId,
+                occurrenceKey,
+                now);
+        if (claimed == 0) {
+            return false;
+        }
+        createNotification(
+                recipientMemberId,
+                type,
+                title,
+                body,
+                referenceType,
+                referenceId,
+                now);
+        return true;
+    }
+
+    private void createNotification(
+            Long recipientMemberId,
+            NotificationType type,
+            String title,
+            String body,
+            NotificationReferenceType referenceType,
+            String referenceId,
+            LocalDateTime now) {
         Member recipient = memberRepository.findActiveByIdForUpdate(recipientMemberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         Notification notification = notificationRepository.saveAndFlush(Notification.create(
@@ -85,7 +139,7 @@ public class NotificationService {
                 body,
                 referenceType,
                 referenceId,
-                LocalDateTime.now(clock)));
+                now));
         trimOldNotifications(recipientMemberId);
         eventPublisher.publishEvent(new NotificationCreatedEvent(
                 recipientMemberId,

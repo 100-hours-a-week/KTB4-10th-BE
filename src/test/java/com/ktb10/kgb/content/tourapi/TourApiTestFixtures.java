@@ -26,4 +26,12 @@ final class TourApiTestFixtures {
                 90,
                 2);
     }
+
+    static TourApiSchedulerProperties schedulerProperties() {
+        return new TourApiSchedulerProperties(
+                true,
+                1,
+                Duration.ZERO,
+                Duration.ofMinutes(30));
+    }
 }

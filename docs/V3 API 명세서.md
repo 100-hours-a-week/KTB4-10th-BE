@@ -28,7 +28,7 @@
 
 - 미지원 Body/Query 필드는 400 COMMON_VALIDATION_ERROR. V1 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
-- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일 0~4. THEME:DETAIL은 1:N이며 중복/부모/코드/개수 오류는 422 PREFERENCE_INVALID.
+- 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
 - GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. FAILED의 error에는 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
@@ -66,10 +66,11 @@
 | API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
 | API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
-| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size만; q/region_code/month/category 미지원 |
+| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT),region_code,month |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
+| API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 예 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -199,13 +200,13 @@
 | 항목 | 확정 내용 |
 |---|---|
 | 실행 방식 | 웹 리다이렉트 Authorization Code + Spring Security `oauth2Login()`. 시작·콜백·코드 교환 모두 백엔드 담당. 프론트 SDK 코드 전달 방식은 사용하지 않음 |
-| state | 암호학적 난수로 생성. 로그인 전 HttpSession에 로그인 시도별로 provider·고정 redirect_uri·생성 시각과 함께 저장하고 해당 브라우저의 임시 세션 쿠키에 결속 |
-| 임시 보관 | Spring AuthorizationRequestRepository를 HttpSession 기반으로 구성. state별 map에 verifier 원문·필요한 nonce를 보관. 생성부터 10분 후 만료, 연장 없음. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
+| state | 암호학적 난수로 생성. 로그인 시도별 provider·고정 redirect_uri·생성 시각과 함께 Redis에 저장하고 해시한 HttpSession ID로 해당 브라우저의 임시 세션 쿠키에 결속 |
+| 임시 보관 | Spring AuthorizationRequestRepository를 Redis 기반으로 구성. state별 key에 verifier 원문·필요한 nonce를 10분 보관하고 callback에서 GETDEL로 원자적으로 한 번 소비한다. 브라우저별 Sorted Set은 최대 5개 시도를 관리한다. 10분은 프로젝트 기본값이지 OAuth 표준 고정값이 아님 |
 | 일회성·다중 탭 | 동일 state의 검증·소비를 원자 처리해 콜백 중복 교환 금지. 각 탭은 별도 state로 관리. 만료 정리 및 브라우저당 최대 5개 시도, 초과 시작은 가장 오래된 시도를 폐기 |
 | PKCE | 두 공급자 로그인에 S256 사용. 서버에서 32바이트 난수를 base64url(no padding)로 인코딩한 verifier 생성. challenge는 BASE64URL(SHA256(verifier)). challenge만 인가 요청에, verifier 원문은 토큰 교환에 전달 |
 | 공급자·OIDC | Google은 OIDC(scope openid)로 ID token 서명·iss·aud·exp·nonce 검증. Kakao는 별도 OIDC를 활성화하지 않고 OAuth 사용자 정보 API의 검증된 id로 식별. 공급자별 응답을 공통 회원 식별로 매핑 |
 | 비밀값 | client_secret·verifier·공급자 토큰은 서버에서만 처리, 브라우저와 로그에 노출 금지. 서비스 세션 ID는 DB에 SHA-256 해시만 보관 |
-| 다중 서버 | 로그인 후 세션은 기존 공용 MySQL 사용. 로그인 전 HttpSession 저장소는 별개다. 단일 서버에서는 메모리 사용, 다중 서버 배포 전에 공유 HttpSession 저장소와 원자 소비를 적용·검증해야 함. Redis/새 업무 테이블을 지금 추가하지 않음 |
+| 다중 서버 | 로그인 후 세션은 기존 공용 MySQL을 사용한다. 로그인 전에는 Redis의 state별 key와 브라우저별 Sorted Set을 공유하며 GETDEL로 인스턴스 간 원자 소비를 보장한다. HttpSession은 JSESSIONID 발급과 브라우저 결속에 사용한다. |
 | 쿠키·CSRF | 임시 세션 쿠키도 운영 HttpOnly·Secure·SameSite=Lax·host-only 적용. 서비스 세션 인증의 POST/PUT/PATCH/DELETE에는 Spring Security CSRF 토큰 검증 적용. PKCE/state가 일반 API의 CSRF 방어를 대체하지 않음 |
 | 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 회원당 유효 세션은 1개이며 새 로그인은 기존 세션을 폐기. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
 
@@ -405,7 +406,7 @@ Body 없음.
 - selections: 필수 Array, 전체 선택 집합
 - preference_type: 필수 THEME|DETAIL|TRAVEL_STYLE
 - preference_code: 필수 String ≤50자, 허용 Enum
-- THEME 1~3개; 선택한 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE 0~4개; THEME:DETAIL은 1:N이며 부모 없는 중분류·중복 조합 불가
+- THEME 1~3개; 선택한 각 THEME별 DETAIL 1~3개; TRAVEL_STYLE은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹에서 각 최대 1개; THEME:DETAIL은 1:N이며 부모 없는 중분류·중복·동일 그룹 복수 선택 불가
 - 누락 선택 제거; 최초 유효 저장 후 ACTIVE
 
 **Request Body**
@@ -416,6 +417,7 @@ Body 없음.
     {"preference_type":"THEME","preference_code":"NATURE"},
     {"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},
     {"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"}
+    ,{"preference_type":"TRAVEL_STYLE","preference_code":"WALK_FRIENDLY"}
   ]
 }
 ```
@@ -426,7 +428,7 @@ Body 없음.
 {
   "message": "preference_update_success",
   "data": {
-    "selections": [{"preference_type":"THEME","preference_code":"NATURE"},{"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"}],
+    "selections": [{"preference_type":"THEME","preference_code":"NATURE"},{"preference_type":"DETAIL","preference_code":"NATURE_MOUNTAIN"},{"preference_type":"TRAVEL_STYLE","preference_code":"RELAXING"},{"preference_type":"TRAVEL_STYLE","preference_code":"WALK_FRIENDLY"}],
     "status": "ACTIVE"
   }
 }
@@ -437,9 +439,9 @@ Body 없음.
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
-| 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
+| 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계·여행 스타일 배타 그룹 위반 |
 
-**구현 기준:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 선택한 부모별 DETAIL 1~3, 스타일 0~4를 적용한다. THEME·DETAIL은 TourAPI 기반 관광 분류와 동일한 안정 코드로 매핑한다.
+**구현 기준:** API-DEC-03 보완: V1 코드표의 THEME 1~3, 선택한 부모별 DETAIL 1~3, 스타일은 선택 사항으로 일정·이동 성향 그룹별 최대 1개를 적용한다. THEME·DETAIL은 TourAPI 기반 관광 분류와 동일한 안정 코드로 매핑한다. 선택지 조회의 TRAVEL_STYLE은 `selection_group`으로 배타 그룹을 제공한다.
 
 ### API-MEM-10 설정 조회
 
@@ -694,6 +696,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 - 브라우저 `EventSource`의 자동 재연결을 사용한다. FE·BE가 교차 Origin이면 쿠키 전달을 위해 `withCredentials: true`와 허용된 CORS Origin이 필요하다.
 - 서버는 `Last-Event-ID` 기반 과거 이벤트 재전송을 제공하지 않는다. 연결이 끊겼다가 복구되면 `GET /notifications`를 호출해 DB에 남은 미읽음 알림을 동기화한다.
 - 응답에는 `Cache-Control: no-cache`, `X-Accel-Buffering: no`를 설정한다. 배포 프록시도 SSE 버퍼링과 짧은 응답 타임아웃을 사용하지 않아야 한다.
+- SSE 호출 한 번을 연결 하나로 계산하며, 같은 세션의 여러 탭도 각각 별도 연결이 될 수 있다. 회원별 기본 최대 5개는 인스턴스별 메모리 보호 상한으로 적용하고, 초과 시 해당 인스턴스의 가장 오래된 연결을 종료한다. 다중 인스턴스 전체에서 전역 5개를 보장하는 계약은 아니다.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
@@ -739,7 +742,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 
 ```json
 {
-  "endpoint": "https://push.example.com/subscriptions/browser-token",
+  "endpoint": "https://fcm.googleapis.com/fcm/send/browser-token",
   "expiration_time": null,
   "keys": {
     "p256dh": "Base64URL P-256 공개키",
@@ -748,11 +751,13 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 }
 ```
 
-- `endpoint`: 필수 HTTPS URL, 최대 4096자
+- `endpoint`: 필수 HTTPS URL, 최대 4096자. Chrome·Firefox·Safari·Windows의 알려진 Push Service만 허용한다.
 - `expiration_time`: 선택 epoch milliseconds, 브라우저가 제공하지 않으면 null
 - `keys.p256dh`: 필수 Base64URL, 디코딩한 비압축 P-256 공개키 65바이트
 - `keys.auth`: 필수 Base64URL, 디코딩한 인증 값 16바이트
 - 동일 endpoint는 SHA-256 해시 UNIQUE를 기준으로 갱신한다. 다른 회원의 활성 endpoint는 이전 회원의 명시적인 로그아웃·구독 해제 없이 가져올 수 없다.
+- 등록과 발송은 동일한 Push Service allowlist를 사용하고 redirect를 따라가지 않는다.
+- 회원별 활성 구독은 최대 5개이며 만료·`INVALID`·`REVOKED` 구독은 개수에서 제외한다. 제한에 도달한 상태에서 다른 endpoint를 등록하면 기존 구독을 자동 폐기하지 않고 거절한다.
 
 **응답 200**
 
@@ -773,6 +778,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 403 | RESOURCE_FORBIDDEN | CSRF 누락·불일치 또는 ACTIVE 상태가 아님 |
 | 409 | WEB_PUSH_SUBSCRIPTION_CONFLICT | 다른 회원이 사용 중인 활성 endpoint |
+| 409 | WEB_PUSH_SUBSCRIPTION_LIMIT_EXCEEDED | 회원별 활성 구독 5개 초과 |
 | 422 | WEB_PUSH_SUBSCRIPTION_INVALID | endpoint·암호화 키·만료 시각 형식 오류 |
 
 ### API-NOT-07 현재 브라우저 Push 구독 해제
@@ -806,7 +812,7 @@ Body 없음.
 ### Web Push 서버 전송 계약
 
 - 브라우저별 구독 API와 달리 서버 발송은 외부 공개 endpoint가 아닌 내부 이벤트 처리다.
-- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않고, 이번 알림이 하나 이상의 SSE 연결에 정상적으로 `send()`된 경우에만 Web Push를 생략한다. 연결 객체만 남은 stale 연결이거나 모든 SSE 전송이 실패하면 Web Push를 fallback으로 등록한다.
+- `NotificationCreatedEvent`는 알림 저장 커밋 뒤 처리한다. `push_enabled=false`이면 실시간 채널을 전송하지 않는다. true이면 SSE와 Web Push를 독립적으로 시도하고, FE는 동일 `notification_id`의 중복 표시를 막는다. 보이는 KGB 화면에서는 SSE 토스트만 표시하고 Service Worker가 시스템 알림을 생략한다.
 - payload는 Service Worker가 기존 알림과 이동 대상을 복원할 최소 필드만 포함한다.
 
 ```json
@@ -848,12 +854,13 @@ Body 없음.
 | GET | `/contents` | 세션 쿠키 필수 |
 
 - Query q: 선택 String, 최대 10자; 빈 값=전체
-- region_code: 선택 String ≤20자, 광역 행정코드; 생략=전체
-- category: 선택 EVENT|CULTURAL_HERITAGE|ATTRACTION
-- month: 선택 YYYY-MM. `EVENT`는 선택 월과 행사 기간이 겹치면 포함하고 `ATTRACTION`·`CULTURAL_HERITAGE`는 기간이 없으므로 항상 포함
-- page Integer ≥1 기본1; size 1~20 기본5
+- category: 현재 `EVENT`만 지원하며 생략 시 `EVENT`
+- region_code: 선택 String, 가이드북 생성과 동일한 16개 서비스 광역 `PROVINCE`의 행정구역 코드; 생략=전체 지역
+- month: 선택 `YYYY-MM`; 생략=전체 월
+- page Integer ≥1 기본1; size 1~20 기본20
 - 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
-- 조건 AND; 결과 없음 items=[]
+- q, region_code, month는 AND로 적용하며 결과 없음은 items=[]
+- month는 행사 시작일·종료일이 선택 월과 하루라도 겹치면 포함
 
 **Request Body**
 
@@ -865,9 +872,9 @@ Body 없음.
 {
   "message": "content_list_success",
   "data": {
-    "items": [{"content_id":"101","title":"불국사","category":"CULTURAL_HERITAGE","region":{"administrative_code":"47","name":"경상북도"},"latitude":35.7898,"longitude":129.3321,"thumbnail_url":null}],
+    "items": [{"content_id":"101","title":"수원 국가유산 야행","category":"EVENT","region":{"administrative_code":"41","name":"경기도"},"address":"경기도 수원시","thumbnail_url":null,"event_period":{"start_date":"2026-08-14","end_date":"2026-08-30"}}],
     "page": 1,
-    "size": 5,
+    "size": 20,
     "total_items": 1,
     "total_pages": 1
   }
@@ -880,7 +887,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**구현 전 확인:** DEC-02/API-DEC-05 확정: `month=YYYY-MM`, 행사에만 기간 중첩 조건을 적용하고 상시 장소는 포함. 검색은 `title` 부분 일치이며 `%`, `_`, 이스케이프 문자는 일반 문자로 처리한다. 검색어 유무와 관계없이 DB 등록 최신순이다.
+검색은 `title` 부분 일치이며 검색어 유무와 관계없이 DB 등록 최신순이다. 지역은 광역 권역 기준이며, 월은 행사 기간 중첩 조건으로 적용한다. 현재 정보 탭은 행사만 제공하고 장소·카테고리 필터는 후속 범위다.
 
 ### API-CON-02 관광 콘텐츠 상세
 
@@ -894,6 +901,7 @@ Body 없음.
 - images: Array; event_detail: EVENT에서만 객체, 그 외 null
 - URL ≤2048자; 비활성·삭제 콘텐츠는 일반 상세에서 제외
 - event_detail.start_date/end_date: YYYY-MM-DD; operating_hours/organizer: String|null
+- 현재 스키마에 별도 값이 없는 organizer_phone은 null, event_place는 공통 address를 반환
 - images[].image_id: ID; image_url: String ≤2048자; sort_order: Integer
 
 **Request Body**
@@ -944,6 +952,7 @@ Body 없음.
 - zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
 - `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
 - `MARKER` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 지도 표시에 필요한 최소 필드로 반환
+- `MARKER` 모드의 `thumbnail_url`은 바텀시트 목록을 먼저 조회하지 않아도 마커 선택 카드에 표시할 대표 이미지 URL이며, 이미지가 없으면 `null`
 - `content_type`은 `classification_code_1=EV`이면 `EVENT`, 나머지는 `PLACE`
 - `is_favorite`은 로그인 회원의 현재 관심 장소 등록 여부
 - `CLUSTER` 모드에서는 `clusters[]`만, `MARKER` 모드에서는 `markers[]`만 제공한다.
@@ -967,6 +976,7 @@ Body 없음.
       "content_type": "PLACE",
       "latitude": 35.7898,
       "longitude": 129.3321,
+      "thumbnail_url": "https://example.com/bulguksa.jpg",
       "is_favorite": true,
       "is_in_guidebook": false
     }]
@@ -1017,6 +1027,49 @@ Body 없음.
   }
 }
 ```
+
+### API-CON-03-2 일자별 신규 행사 목록
+
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/events/new` | 세션 쿠키 필수 |
+
+- date: 선택, `YYYY-MM-DD`; 생략하면 Asia/Seoul 기준 오늘
+- page: Integer ≥1, 기본 1
+- size: Integer 1~50, 기본 20
+- TourAPI의 `source_created_at`이 선택 일자의 `[00:00, 다음 날 00:00)`에 속하는 활성 행사만 반환
+- `source_created_at DESC, id DESC` 고정 정렬
+- 결과가 없으면 `items=[]`, `total_items=0`, `total_pages=0`
+
+**응답 200**
+
+```json
+{
+  "message": "new_event_list_success",
+  "data": {
+    "date": "2026-10-14",
+    "items": [{
+      "content_id": "event-1",
+      "title": "가을 축제",
+      "address": "서울특별시 중구",
+      "thumbnail_url": "https://example.com/event.jpg",
+      "start_date": "2026-10-20",
+      "end_date": "2026-10-21",
+      "source_created_at": "2026-10-14T08:30:00"
+    }],
+    "page": 1,
+    "size": 20,
+    "total_items": 1,
+    "total_pages": 1
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | date 형식, page 또는 size 범위 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외는 응답에서 제외 |
 
 ### API-CON-04 관심 장소 목록
 
@@ -1115,7 +1168,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 `classification_code_1`이 `NA`, `HS`, `VE`, `EX`, `LS`, `EV`인 항목을 `content.id` 오름차순 최대 100개까지 조립한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
+> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview`원문을 연속 Unicode 공백 정규화, `strip()`, 200자 절단, 100번 인덱스 이후 마지막 마침표 종료 규칙으로 변환한 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1307,13 +1360,12 @@ Body 없음.
 | POST | `/guidebooks/{guidebook_id}/regenerations` | 세션 쿠키 필수 |
 
 - Idempotency-Key: 필수 String ≤100자
-- title: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤15자. 재생성 결과에 적용할 가이드북 제목
 - feedback: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤200자. 사용자가 가이드북 상세 화면에서 입력한 자연어 수정 요청
-- 제목만 또는 일정을 직접 수정하는 별도 API는 제공하지 않으며, 제목 변경은 필수 feedback과 함께 이 재생성으로만 반영
+- 재생성은 제목을 수정하지 않고 기존 가이드북 제목을 유지
 - 재생성 진입 버튼은 최초 생성 결과 화면에서만 노출하고 화면 이탈 후에는 제공하지 않음
 - 요청 회원의 활성 보관 관계가 있는 가이드북만 허용
-- 현재 기본 취향 사용; feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
-- 새 작업; 성공 시 같은 guidebook_id의 제목·본문·일정을 갱신하고 version 증가
+- 유효한 기본 취향 존재를 검증하며 feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
+- 새 `REGENERATION` 작업을 만들고 원본 AI 작업 ID로 AI 재생성을 접수함. 성공 시 같은 guidebook_id의 제목은 유지하고 본문·일정을 교체한 뒤 version 증가
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
@@ -1321,7 +1373,6 @@ Body 없음.
 
 ```json
 {
-  "title": "경주 여유 여행",
   "feedback": "걷는 시간을 줄여 주세요."
 }
 ```
@@ -1880,7 +1931,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 서버 환경변수에 설정된 관리자용 쿠폰을 등록한다. 번호는 앞뒤 공백을 제거하고 대소문자를 구분하지 않는다. 쿠폰 원문은 응답과 원장에 포함하지 않으며 관리자가 필요할 때 반복해 사용할 수 있다.
 
-잘못된 쿠폰 입력은 회원별로 첫 실패부터 10분 동안 집계한다. 같은 집계 구간의 5번째 실패부터 10분간 등록을 차단하며, 차단 만료·집계 구간 만료 또는 유효한 쿠폰 등록 성공 시 실패 상태를 초기화한다. 차단 응답의 `Retry-After` 헤더는 남은 대기 시간을 초 단위로 제공한다. 서버 쿠폰 설정 오류, 인증·인가·CSRF와 요청 형식 오류는 쿠폰 코드 실패 횟수에 포함하지 않는다. 실패 상태는 현재 단일 인스턴스의 인메모리 TTL 캐시에 보관하므로 재기동 시 초기화되며, 다중 인스턴스 전환 시 공유 저장소가 필요하다.
+잘못된 쿠폰 입력은 회원별로 첫 실패부터 10분 동안 집계한다. 같은 집계 구간의 5번째 실패부터 10분간 등록을 차단하며, 차단 만료·집계 구간 만료 또는 유효한 쿠폰 등록 성공 시 실패 상태를 초기화한다. 실패 횟수와 차단 상태는 Redis 원자 연산과 TTL로 모든 인스턴스가 공유한다. 차단 응답의 `Retry-After` 헤더는 Redis의 남은 TTL을 초 단위로 올림해 제공한다. 서버 쿠폰 설정 오류, 인증·인가·CSRF와 요청 형식 오류는 쿠폰 코드 실패 횟수에 포함하지 않는다. Redis 명령이 실패하면 제한 우회를 허용하지 않고 쿠폰 등록만 `503 COUPON_UNAVAILABLE`로 중단한다.
 
 **Request Body**
 
@@ -1901,7 +1952,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 |---|---|---|
 | 422 | COUPON_INVALID | 설정된 번호와 일치하지 않음 |
 | 429 | RATE_LIMIT_EXCEEDED | 10분 집계 구간에서 잘못된 쿠폰 입력 5회 도달 또는 차단 중 재요청; `Retry-After` 제공 |
-| 503 | COUPON_UNAVAILABLE | 쿠폰 또는 지급 수량이 서버에 올바르게 설정되지 않음 |
+| 503 | COUPON_UNAVAILABLE | 쿠폰·지급 수량 설정 오류 또는 Redis 제한 상태 확인 불가 |
 
 ### API-PAY-02 생성권 원장 조회
 
@@ -2190,7 +2241,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | 푸시 설정 변경은 MEM-11 회원 설정 부분 수정으로 통합. |
 | API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
-| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목만 직접 수정하는 기능은 제외. 제목 변경은 필수 feedback과 함께 GDE-09 재생성으로만 처리. |
+| API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목·일정을 직접 수정하는 기능은 제외. GDE-09는 자연어 feedback으로 본문·일정만 재생성하며 제목을 유지. |
 | API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 사용자의 일정 직접 편집 기능이 없어 제외. 변경은 GDE-09 자연어 피드백 재생성으로만 처리. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |
 | API-RNK-04 | PUT /guidebook-evaluations/{evaluation_id}/places/{content_id} | 서버 초안 저장 API 미제공. 최종 ratings를 RNK-06 Body로 제출. |

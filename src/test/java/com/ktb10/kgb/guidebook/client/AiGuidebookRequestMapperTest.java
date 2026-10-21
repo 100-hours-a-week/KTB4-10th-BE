@@ -41,6 +41,7 @@ class AiGuidebookRequestMapperTest {
                 "1001",
                 ContentType.PLACE,
                 "불국사",
+                "불국사 개요",
                 "HS",
                 "HS01",
                 "HS010100",

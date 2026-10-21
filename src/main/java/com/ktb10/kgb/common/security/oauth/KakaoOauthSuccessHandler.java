@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.core.Authentication;
@@ -27,6 +28,8 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
     private final KakaoOauthFailureHandler failureHandler;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
     private final SessionCookieManager sessionCookieManager;
+    private final ObjectProvider<RedisAuthorizationRequestRepository>
+            authorizationRequestRepositoryProvider;
     private final String successRedirectUri;
 
     public KakaoOauthSuccessHandler(
@@ -35,12 +38,15 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
             KakaoOauthFailureHandler failureHandler,
             CsrfTokenLifecycle csrfTokenLifecycle,
             SessionCookieManager sessionCookieManager,
+            ObjectProvider<RedisAuthorizationRequestRepository>
+                    authorizationRequestRepositoryProvider,
             @Value("${OAUTH_SUCCESS_REDIRECT_URI:/api/v1/members/me}") String successRedirectUri) {
         this.userMapper = userMapper;
         this.loginService = loginService;
         this.failureHandler = failureHandler;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
         this.sessionCookieManager = sessionCookieManager;
+        this.authorizationRequestRepositoryProvider = authorizationRequestRepositoryProvider;
         this.successRedirectUri = successRedirectUri;
     }
 
@@ -69,9 +75,14 @@ public class KakaoOauthSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletResponse response,
             Authentication authentication) throws IOException {
         OAuth2AuthenticationToken oauthToken = requireKakaoAuthentication(authentication);
-        OauthLoginResult result = loginService.login(userMapper.map(
+        final OauthLoginResult result = loginService.login(userMapper.map(
                 oauthToken.getPrincipal().getAttributes()));
 
+        RedisAuthorizationRequestRepository repository =
+                authorizationRequestRepositoryProvider.getIfAvailable();
+        if (repository != null) {
+            repository.deleteAllForSession(request);
+        }
         if (request.getSession(false) != null) {
             request.getSession(false).invalidate();
         }

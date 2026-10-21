@@ -84,6 +84,15 @@ public class Guidebook {
         return guidebook;
     }
 
+    public void replaceGeneratedContent(String contentHtml, LocalDateTime updatedAt) {
+        if (contentHtml == null || contentHtml.isBlank()) {
+            throw new IllegalArgumentException("가이드북 HTML 본문은 비어 있을 수 없습니다.");
+        }
+        this.contentHtml = contentHtml;
+        this.version = Math.addExact(version, 1);
+        this.updatedAt = Objects.requireNonNull(updatedAt);
+    }
+
     private static void validatePeriod(LocalDate startDate, LocalDate endDate) {
         Objects.requireNonNull(startDate);
         Objects.requireNonNull(endDate);

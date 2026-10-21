@@ -5,6 +5,7 @@ import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookResult;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.ItineraryDay;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.Place;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -34,6 +35,16 @@ public class FakeGuidebookAiClient implements GuidebookAiClient {
     public AiGenerationAcceptedResponse requestGeneration(AiGuidebookRequest request) {
         String jobId = "fake-job-" + UUID.randomUUID();
         jobs.put(jobId, new FakeJob(request));
+        return new AiGenerationAcceptedResponse(jobId, AiGenerationStatus.PENDING);
+    }
+
+    @Override
+    public AiGenerationAcceptedResponse requestRegeneration(
+            String sourceAiJobId,
+            AiGuidebookRegenerationRequest request) {
+        FakeJob sourceJob = findJob(sourceAiJobId);
+        String jobId = "fake-job-" + UUID.randomUUID();
+        jobs.put(jobId, new FakeJob(sourceJob.request()));
         return new AiGenerationAcceptedResponse(jobId, AiGenerationStatus.PENDING);
     }
 

@@ -82,7 +82,8 @@ class TourApiImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot, festivalSnapshot, LocalDate.of(2026, 10, 12));
 
         assertThat(summary.sourceContents()).isEqualTo(1);
         assertThat(summary.importedContents()).isEqualTo(1);
@@ -123,7 +124,8 @@ class TourApiImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot, festivalSnapshot, LocalDate.of(2026, 10, 12));
 
         assertThat(summary.sourceContents()).isEqualTo(2);
         assertThat(summary.importedContents()).isZero();
@@ -166,7 +168,8 @@ class TourApiImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importSnapshots(areaSnapshot, festivalSnapshot);
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot, festivalSnapshot, LocalDate.of(2026, 10, 12));
 
         assertThat(summary.importedContents()).isZero();
         assertThat(summary.importedEvents()).isZero();
@@ -197,14 +200,15 @@ class TourApiImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importSnapshots(areaSnapshot, snapshot(""));
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot, snapshot(""), LocalDate.of(2026, 10, 12));
 
         assertThat(summary.inactiveContents()).isEqualTo(1);
         assertThat(batchSizes).containsExactly(1, 1, 0);
     }
 
     @Test
-    void reactivatesContentThatAppearsAgain() throws Exception {
+    void restoresInactiveContentAsAnExistingContentUpdate() throws Exception {
         mockExistingContentAndEvent(
                 "100",
                 LocalDateTime.of(2026, 1, 2, 12, 0),
@@ -227,11 +231,105 @@ class TourApiImportServiceTest {
                 }
                 """);
 
-        ImportSummary summary = service.importSnapshots(areaSnapshot, snapshot(""));
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot, snapshot(""), LocalDate.of(2026, 10, 12));
 
-        assertThat(summary.reactivatedContents()).isEqualTo(1);
+        assertThat(summary.importedContents()).isEqualTo(1);
         assertThat(summary.inactiveContents()).isZero();
+        assertThat(summary.changeSets()).singleElement().satisfies(change -> {
+            assertThat(change.lifecycleChange()).isEqualTo(ContentLifecycleChange.NONE);
+            assertThat(change.changedFields()).contains(ContentChangedField.STATUS);
+        });
         assertThat(batchSizes).containsExactly(1, 0, 0);
+    }
+
+    @Test
+    void softDeletesEventWhoseEndDateIsBeforeSyncDate() throws Exception {
+        mockExistingContentAndEvent(
+                "100",
+                LocalDateTime.of(2026, 1, 2, 12, 0),
+                LocalDate.of(2026, 10, 7),
+                LocalDate.of(2026, 10, 10),
+                "ACTIVE",
+                false);
+        byte[] areaSnapshot = snapshot("""
+                {
+                  "contentid": "100",
+                  "contenttypeid": "15",
+                  "title": "탄광문화축제",
+                  "addr1": "강원트별자치도 정선구",
+                  "mapx": "128.8",
+                  "mapy": "37.3",
+                  "lDongRegnCd": "51",
+                  "lDongSignguCd": "770",
+                  "lclsSystm1": "EV",
+                  "modifiedtime": "20261007140259"
+                }
+                """);
+        byte[] festivalSnapshot = snapshot("""
+                {
+                  "contentid": "100",
+                  "eventstartdate": "20261007",
+                  "eventenddate": "20261010"
+                }
+                """);
+
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot,
+                festivalSnapshot,
+                LocalDate.of(2026, 10, 21));
+
+        assertThat(summary.importedContents()).isZero();
+        assertThat(summary.inactiveContents()).isEqualTo(1);
+        assertThat(summary.importedEvents()).isZero();
+        assertThat(summary.skippedInvalidEvents()).isZero();
+        assertThat(summary.changeSets()).singleElement().satisfies(change -> {
+            assertThat(change.lifecycleChange())
+                    .isEqualTo(ContentLifecycleChange.INACTIVATED);
+            assertThat(change.changedFields()).containsExactly(ContentChangedField.STATUS);
+        });
+        assertThat(batchSizes).containsExactly(0, 1, 0);
+    }
+
+    @Test
+    void keepsEventActiveThroughItsEndDate() throws Exception {
+        mockExistingContentAndEvent(
+                "100",
+                LocalDateTime.of(2026, 1, 2, 12, 0),
+                LocalDate.of(2026, 10, 20),
+                LocalDate.of(2026, 10, 21),
+                "ACTIVE",
+                false);
+        byte[] areaSnapshot = snapshot("""
+                {
+                  "contentid": "100",
+                  "contenttypeid": "15",
+                  "title": "오늘 종료 행사",
+                  "addr1": "충청북도 청주시",
+                  "mapx": "127.5",
+                  "mapy": "36.6",
+                  "lDongRegnCd": "43",
+                  "lDongSignguCd": "110",
+                  "lclsSystm1": "EV",
+                  "modifiedtime": "20260102120000"
+                }
+                """);
+        byte[] festivalSnapshot = snapshot("""
+                {
+                  "contentid": "100",
+                  "eventstartdate": "20261020",
+                  "eventenddate": "20261021"
+                }
+                """);
+
+        ImportSummary summary = service.importSnapshots(
+                areaSnapshot,
+                festivalSnapshot,
+                LocalDate.of(2026, 10, 21));
+
+        assertThat(summary.inactiveContents()).isZero();
+        assertThat(summary.importedEvents()).isZero();
+        assertThat(batchSizes).containsExactly(0, 0, 0);
     }
 
     @SuppressWarnings("unchecked")

@@ -27,6 +27,17 @@ class GuidebookEntityTest {
     }
 
     @Test
+    void replacesGeneratedContentWithoutChangingTitle() {
+        Guidebook guidebook = guidebook();
+
+        guidebook.replaceGeneratedContent("<article>재생성</article>", NOW.plusMinutes(1));
+
+        assertThat(guidebook.getTitle()).isEqualTo("서울 여행");
+        assertThat(guidebook.getContentHtml()).isEqualTo("<article>재생성</article>");
+        assertThat(guidebook.getVersion()).isEqualTo(2);
+    }
+
+    @Test
     void rejectsItineraryDayOutsideGuidebookPeriod() {
         assertThatThrownBy(() -> ItineraryDay.create(
                         guidebook(),

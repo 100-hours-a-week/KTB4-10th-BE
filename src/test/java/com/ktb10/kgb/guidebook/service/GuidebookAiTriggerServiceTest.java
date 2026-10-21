@@ -12,9 +12,12 @@ import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
@@ -103,6 +106,49 @@ class GuidebookAiTriggerServiceTest {
 
         verify(guidebookAiClient, never())
                 .requestGeneration(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void requestsAiRegenerationFromOriginalAiJob() throws Exception {
+        InitialGenerationRequestPayload source = new InitialGenerationRequestPayload(
+                new GuidebookGenerationRequest(
+                        "경상북도",
+                        "경주시",
+                        LocalDate.of(2026, 10, 12),
+                        LocalDate.of(2026, 10, 14),
+                        Companion.FRIEND,
+                        2),
+                List.of(new PreferenceSnapshot("THEME", "NATURE")));
+        RegenerationRequestPayload payload = new RegenerationRequestPayload(
+                new GuidebookRegenerationRequest("둘째 날은 여유롭게 해 주세요."),
+                source,
+                "ai-original");
+        GenerationJob job = GenerationJob.createRegeneration(
+                member(),
+                50L,
+                objectMapper.writeValueAsString(payload),
+                "regeneration-key",
+                LocalDate.of(2026, 9, 26).atStartOfDay());
+        ReflectionTestUtils.setField(job, "id", 302L);
+        given(generationJobRepository.findByIdForUpdate(302L)).willReturn(Optional.of(job));
+        given(guidebookAiClient.requestRegeneration(
+                org.mockito.ArgumentMatchers.eq("ai-original"),
+                org.mockito.ArgumentMatchers.any()))
+                .willReturn(new AiGenerationAcceptedResponse(
+                        "ai-regenerated",
+                        AiGenerationStatus.PENDING));
+
+        service.trigger(302L);
+
+        var requestCaptor = org.mockito.ArgumentCaptor.forClass(
+                AiGuidebookRegenerationRequest.class);
+        verify(guidebookAiClient).requestRegeneration(
+                org.mockito.ArgumentMatchers.eq("ai-original"),
+                requestCaptor.capture());
+        assertThat(requestCaptor.getValue().requestId()).isEqualTo("302-0");
+        assertThat(requestCaptor.getValue().feedback())
+                .isEqualTo("둘째 날은 여유롭게 해 주세요.");
+        assertThat(job.getAiJobId()).isEqualTo("ai-regenerated");
     }
 
     @Test
