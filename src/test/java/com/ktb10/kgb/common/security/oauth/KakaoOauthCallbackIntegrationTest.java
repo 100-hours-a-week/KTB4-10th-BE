@@ -47,7 +47,7 @@ import org.springframework.web.util.UriComponentsBuilder;
         "SESSION_COOKIE_SECURE=false"
 })
 @AutoConfigureMockMvc
-class KakaoOauthCallbackIntegrationTest {
+class KakaoOauthCallbackIntegrationTest extends RedisIntegrationTestSupport {
 
     private static final AtomicReference<String> TOKEN_REQUEST = new AtomicReference<>();
     private static final AtomicReference<String> USER_AUTHORIZATION = new AtomicReference<>();
