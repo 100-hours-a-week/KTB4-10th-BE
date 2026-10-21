@@ -128,11 +128,13 @@ class FavoriteContentMysqlIntegrationTest {
                 """
                 INSERT INTO tourism_contents (
                     source_provider, source_content_id, title, region_id,
-                    classification_code_1, address, location, thumbnail_url,
+                    classification_code_1, classification_code_2,
+                    address, location, thumbnail_url,
                     status, created_at, updated_at
                 ) VALUES (
                     'TOUR_API', 'content-1', '판교 테스트 장소', ?,
-                    'NA', '경기도 성남시', ST_SRID(POINT(127.1105, 37.3953), 4326),
+                    'NA', 'NA04', '경기도 성남시',
+                    ST_SRID(POINT(127.1105, 37.3953), 4326),
                     'https://example.com/image.jpg', 'ACTIVE', ?, ?
                 )
                 """,

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.ktb10.kgb.content.model.TourismContentCategoryPolicy;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.Content;
 import java.time.LocalDate;
 import java.util.List;
@@ -39,19 +40,13 @@ class AiGuidebookContentQueryTest {
                 sqlCaptor.capture(), any(RowMapper.class), argumentsCaptor.capture());
         assertThat(result).isEmpty();
         assertThat(sqlCaptor.getValue()).contains(
-                "content.classification_code_1 IN (?, ?, ?, ?, ?, ?)",
+                "content.classification_code_1 = 'EV'",
+                "content.classification_code_2 IN (",
                 "ORDER BY content.id",
                 "LIMIT ?");
         assertThat(argumentsCaptor.getValue())
-                .containsExactly(
-                        "충청북도",
-                        "청주시",
-                        "NA",
-                        "HS",
-                        "VE",
-                        "EX",
-                        "LS",
-                        "EV",
-                        100);
+                .startsWith("충청북도", "청주시")
+                .containsSubsequence(TourismContentCategoryPolicy.allowedSourceCodes().toArray())
+                .endsWith(100);
     }
 }

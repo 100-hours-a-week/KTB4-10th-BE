@@ -9,6 +9,7 @@ import com.ktb10.kgb.member.dto.response.MemberResponse;
 import com.ktb10.kgb.member.dto.response.MemberSettingsResponse;
 import com.ktb10.kgb.member.service.MemberService;
 import com.ktb10.kgb.member.service.MemberWithdrawalService;
+import com.ktb10.kgb.member.service.NotificationRealtimePublisher;
 import com.ktb10.kgb.member.service.NotificationStreamService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,6 +36,7 @@ public class MemberController {
     private final MemberService memberService;
     private final MemberWithdrawalService memberWithdrawalService;
     private final NotificationStreamService notificationStreamService;
+    private final NotificationRealtimePublisher notificationRealtimePublisher;
     private final SessionCookieManager sessionCookieManager;
     private final CsrfTokenLifecycle csrfTokenLifecycle;
 
@@ -42,11 +44,13 @@ public class MemberController {
             MemberService memberService,
             MemberWithdrawalService memberWithdrawalService,
             NotificationStreamService notificationStreamService,
+            NotificationRealtimePublisher notificationRealtimePublisher,
             SessionCookieManager sessionCookieManager,
             CsrfTokenLifecycle csrfTokenLifecycle) {
         this.memberService = memberService;
         this.memberWithdrawalService = memberWithdrawalService;
         this.notificationStreamService = notificationStreamService;
+        this.notificationRealtimePublisher = notificationRealtimePublisher;
         this.sessionCookieManager = sessionCookieManager;
         this.csrfTokenLifecycle = csrfTokenLifecycle;
     }
@@ -83,6 +87,7 @@ public class MemberController {
             HttpServletResponse response) {
         memberWithdrawalService.withdraw(member.memberId());
         notificationStreamService.disconnectMember(member.memberId());
+        notificationRealtimePublisher.publishMemberDisconnected(member.memberId());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,

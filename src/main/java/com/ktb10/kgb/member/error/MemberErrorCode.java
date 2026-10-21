@@ -17,6 +17,9 @@ public enum MemberErrorCode implements ErrorCode {
     WEB_PUSH_SUBSCRIPTION_CONFLICT(
             HttpStatus.CONFLICT,
             "다른 회원이 사용 중인 Web Push 구독입니다."),
+    WEB_PUSH_SUBSCRIPTION_LIMIT_EXCEEDED(
+            HttpStatus.CONFLICT,
+            "등록할 수 있는 Web Push 구독 수를 초과했습니다."),
     WEB_PUSH_CONFIGURATION_UNAVAILABLE(
             HttpStatus.SERVICE_UNAVAILABLE,
             "Web Push 설정을 일시적으로 사용할 수 없습니다.");

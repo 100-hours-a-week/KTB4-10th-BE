@@ -2,19 +2,28 @@ package com.ktb10.kgb.guidebook.controller;
 
 import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListResponse;
+import com.ktb10.kgb.guidebook.dto.response.GuidebookRegenerationResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookViewerResponse;
+import com.ktb10.kgb.guidebook.service.GuidebookGenerationService;
 import com.ktb10.kgb.guidebook.service.GuidebookService;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,9 +39,30 @@ public class GuidebookController {
     private static final String VIEWER_SUCCESS_MESSAGE = "viewer_get_success";
 
     private final GuidebookService guidebookService;
+    private final GuidebookGenerationService guidebookGenerationService;
 
-    public GuidebookController(GuidebookService guidebookService) {
+    @PostMapping("/{guidebookId}/regenerations")
+    public ResponseEntity<ApiResponse<GuidebookRegenerationResponse>> regenerate(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable @Positive Long guidebookId,
+            @RequestHeader("Idempotency-Key")
+            @Pattern(regexp = "[\\x20-\\x7E]{1,100}")
+            String idempotencyKey,
+            @Valid @RequestBody GuidebookRegenerationRequest request) {
+        GuidebookRegenerationResponse response = guidebookGenerationService.regenerate(
+                member.memberId(),
+                guidebookId,
+                idempotencyKey,
+                request);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(ApiResponse.success("regeneration_accepted", response));
+    }
+
+    public GuidebookController(
+            GuidebookService guidebookService,
+            GuidebookGenerationService guidebookGenerationService) {
         this.guidebookService = guidebookService;
+        this.guidebookGenerationService = guidebookGenerationService;
     }
 
     @GetMapping

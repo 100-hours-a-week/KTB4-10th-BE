@@ -11,6 +11,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
 import java.time.LocalDate;
@@ -71,6 +72,36 @@ class HttpGuidebookAiClientTest {
 
         assertThat(response.jobId()).isEqualTo("job_12345");
         assertThat(response.status()).isEqualTo(AiGenerationStatus.PENDING);
+        server.verify();
+    }
+
+    @Test
+    void requestsRegenerationFromOriginalAiJob() {
+        server.expect(once(), requestTo(
+                        "http://ai.internal:8000/guidebooks-generations/job_original/regenerate"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {
+                          "request_id": "301-0",
+                          "feedback": "걷는 시간을 줄여 주세요."
+                        }
+                        """))
+                .andRespond(withStatus(HttpStatus.ACCEPTED)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                        {
+                          "message": "regenerate_accepted",
+                          "data": {"job_id": "job_regenerated", "status": "pending"}
+                        }
+                        """));
+
+        var response = client.requestRegeneration(
+                "job_original",
+                new AiGuidebookRegenerationRequest(
+                        "301-0",
+                        "걷는 시간을 줄여 주세요."));
+
+        assertThat(response.jobId()).isEqualTo("job_regenerated");
         server.verify();
     }
 

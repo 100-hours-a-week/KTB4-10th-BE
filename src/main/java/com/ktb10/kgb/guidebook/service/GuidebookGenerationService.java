@@ -12,18 +12,26 @@ import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload.PreferenceSnapshot;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookGenerationResponse;
+import com.ktb10.kgb.guidebook.dto.response.GuidebookRegenerationResponse;
+import com.ktb10.kgb.guidebook.entity.AcquisitionType;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
 import com.ktb10.kgb.guidebook.entity.AdministrativeProvince;
 import com.ktb10.kgb.guidebook.entity.Companion;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
+import com.ktb10.kgb.guidebook.entity.Guidebook;
+import com.ktb10.kgb.guidebook.entity.JobType;
+import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
+import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.MemberStatus;
@@ -57,6 +65,7 @@ public class GuidebookGenerationService {
     private final GenerationJobRepository generationJobRepository;
     private final MemberRepository memberRepository;
     private final MemberPreferenceRepository memberPreferenceRepository;
+    private final MemberGuidebookRepository memberGuidebookRepository;
     private final CreditWalletRepository creditWalletRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
@@ -69,6 +78,7 @@ public class GuidebookGenerationService {
             GenerationJobRepository generationJobRepository,
             MemberRepository memberRepository,
             MemberPreferenceRepository memberPreferenceRepository,
+            MemberGuidebookRepository memberGuidebookRepository,
             CreditWalletRepository creditWalletRepository,
             ApplicationEventPublisher eventPublisher,
             ObjectProvider<GuidebookAiClient> guidebookAiClientProvider,
@@ -79,6 +89,7 @@ public class GuidebookGenerationService {
         this.generationJobRepository = generationJobRepository;
         this.memberRepository = memberRepository;
         this.memberPreferenceRepository = memberPreferenceRepository;
+        this.memberGuidebookRepository = memberGuidebookRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.eventPublisher = eventPublisher;
         this.guidebookAiClientProvider = guidebookAiClientProvider;
@@ -86,6 +97,81 @@ public class GuidebookGenerationService {
         this.aiIntegrationErrorLogger = aiIntegrationErrorLogger;
         this.objectMapper = objectMapper;
         this.clock = clock;
+    }
+
+    @Transactional
+    public GuidebookRegenerationResponse regenerate(
+            Long memberId,
+            Long guidebookId,
+            String idempotencyKey,
+            GuidebookRegenerationRequest request) {
+        Optional<GenerationJob> existingJob =
+                generationJobRepository.findByMemberIdAndIdempotencyKey(
+                        memberId,
+                        idempotencyKey);
+        if (existingJob.isPresent()) {
+            return handleRepeatedRegeneration(existingJob.get(), guidebookId, request);
+        }
+
+        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        if (member.getStatus() != MemberStatus.ACTIVE) {
+            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
+        }
+
+        MemberGuidebook relationship = memberGuidebookRepository
+                .findActiveWithGuidebook(memberId, guidebookId)
+                .orElseThrow(() -> regenerationAccessError(guidebookId));
+        if (relationship.getAcquisitionType() != AcquisitionType.CREATED) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_FORBIDDEN);
+        }
+        final Guidebook guidebook = relationship.getGuidebook();
+
+        if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
+            throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
+        }
+
+        CreditWallet wallet = creditWalletRepository.findByMemberIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(
+                        GuidebookErrorCode.CREDIT_INSUFFICIENT));
+        if (wallet.getCreditBalance() < 1) {
+            throw new BusinessException(GuidebookErrorCode.CREDIT_INSUFFICIENT);
+        }
+
+        List<MemberPreference> memberPreferences = memberPreferenceRepository
+                .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(memberId);
+        if (memberPreferences.isEmpty()) {
+            throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
+        }
+
+        GenerationJob sourceJob = generationJobRepository
+                .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
+                        guidebookId,
+                        GenerationStatus.COMPLETED)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT));
+        InitialGenerationRequestPayload sourceRequest = resolveSourceRequest(sourceJob);
+        InitialGenerationRequestPayload regenerationContext = new InitialGenerationRequestPayload(
+                sourceRequest.request(),
+                memberPreferences.stream()
+                        .map(preference -> new PreferenceSnapshot(
+                                preference.getPreferenceType().name(),
+                                preference.getPreferenceCode().name()))
+                        .toList());
+        RegenerationRequestPayload payload = new RegenerationRequestPayload(
+                request,
+                regenerationContext,
+                sourceJob.getAiJobId());
+
+        LocalDateTime now = LocalDateTime.now(clock);
+        GenerationJob job = GenerationJob.createRegeneration(
+                member,
+                guidebookId,
+                serialize(payload),
+                idempotencyKey,
+                now);
+        GenerationJob savedJob = generationJobRepository.save(job);
+        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(savedJob.getId()));
+        return GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion());
     }
 
     @Transactional
@@ -242,6 +328,39 @@ public class GuidebookGenerationService {
         return GuidebookGenerationResponse.from(existingJob);
     }
 
+    private GuidebookRegenerationResponse handleRepeatedRegeneration(
+            GenerationJob existingJob,
+            Long guidebookId,
+            GuidebookRegenerationRequest request) {
+        if (existingJob.getJobType() != JobType.REGENERATION
+                || !guidebookId.equals(existingJob.getGuidebookId())) {
+            throw new BusinessException(GuidebookErrorCode.IDEMPOTENCY_CONFLICT);
+        }
+        RegenerationRequestPayload existingPayload = deserializeRegeneration(
+                existingJob.getRequestPayload());
+        if (!existingPayload.request().equals(request)) {
+            throw new BusinessException(GuidebookErrorCode.IDEMPOTENCY_CONFLICT);
+        }
+        Guidebook guidebook = memberGuidebookRepository
+                .findActiveWithGuidebook(existingJob.getMember().getId(), guidebookId)
+                .orElseThrow(() -> regenerationAccessError(guidebookId))
+                .getGuidebook();
+        return GuidebookRegenerationResponse.from(existingJob, guidebook.getVersion());
+    }
+
+    private BusinessException regenerationAccessError(Long guidebookId) {
+        return memberGuidebookRepository.existsByGuidebookIdAndDeletedAtIsNull(guidebookId)
+                ? new BusinessException(CommonErrorCode.RESOURCE_FORBIDDEN)
+                : new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    private InitialGenerationRequestPayload resolveSourceRequest(GenerationJob sourceJob) {
+        if (sourceJob.getJobType() == JobType.INITIAL) {
+            return deserialize(sourceJob.getRequestPayload());
+        }
+        return deserializeRegeneration(sourceJob.getRequestPayload()).sourceRequest();
+    }
+
     private void validateTravelCondition(GuidebookGenerationRequest request) {
         validateRegion(request.province(), request.city());
 
@@ -297,7 +416,7 @@ public class GuidebookGenerationService {
         return new InitialGenerationRequestPayload(request, preferenceSnapshots);
     }
 
-    private String serialize(InitialGenerationRequestPayload requestPayload) {
+    private String serialize(Object requestPayload) {
         try {
             return objectMapper.writeValueAsString(requestPayload);
         } catch (JsonProcessingException exception) {
@@ -310,6 +429,14 @@ public class GuidebookGenerationService {
             return objectMapper.readValue(requestPayload, InitialGenerationRequestPayload.class);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("저장된 가이드북 생성 요청을 읽을 수 없습니다.", exception);
+        }
+    }
+
+    private RegenerationRequestPayload deserializeRegeneration(String requestPayload) {
+        try {
+            return objectMapper.readValue(requestPayload, RegenerationRequestPayload.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("저장된 가이드북 재생성 요청을 읽을 수 없습니다.", exception);
         }
     }
 }

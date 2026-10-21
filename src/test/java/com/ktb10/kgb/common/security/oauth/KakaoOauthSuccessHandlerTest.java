@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.HttpHeaders;
@@ -33,12 +34,19 @@ class KakaoOauthSuccessHandlerTest {
         KakaoOauthFailureHandler failureHandler =
                 new KakaoOauthFailureHandler("/api/v1/auth/oauth/error");
         CsrfTokenLifecycle csrfTokenLifecycle = mock(CsrfTokenLifecycle.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<RedisAuthorizationRequestRepository> repositoryProvider =
+                mock(ObjectProvider.class);
+        RedisAuthorizationRequestRepository repository =
+                mock(RedisAuthorizationRequestRepository.class);
+        when(repositoryProvider.getIfAvailable()).thenReturn(repository);
         KakaoOauthSuccessHandler handler = new KakaoOauthSuccessHandler(
                 new KakaoOauthUserMapper(),
                 loginService,
                 failureHandler,
                 csrfTokenLifecycle,
                 new SessionCookieManager(false),
+                repositoryProvider,
                 "/api/v1/members/me");
         var principal = new DefaultOAuth2User(
                 List.of(),
@@ -66,6 +74,7 @@ class KakaoOauthSuccessHandlerTest {
                 .doesNotContain("Secure");
         assertThat(request.getSession(false)).isNull();
         verify(csrfTokenLifecycle).clear(request, response);
+        verify(repository).deleteAllForSession(request);
     }
 
     @Test
@@ -75,12 +84,16 @@ class KakaoOauthSuccessHandlerTest {
                 .thenThrow(new IllegalStateException("database unavailable"));
         KakaoOauthFailureHandler failureHandler =
                 new KakaoOauthFailureHandler("/api/v1/auth/oauth/error");
+        @SuppressWarnings("unchecked")
+        ObjectProvider<RedisAuthorizationRequestRepository> repositoryProvider =
+                mock(ObjectProvider.class);
         KakaoOauthSuccessHandler handler = new KakaoOauthSuccessHandler(
                 new KakaoOauthUserMapper(),
                 loginService,
                 failureHandler,
                 mock(CsrfTokenLifecycle.class),
                 new SessionCookieManager(false),
+                repositoryProvider,
                 "/api/v1/members/me");
         var principal = new DefaultOAuth2User(
                 List.of(),

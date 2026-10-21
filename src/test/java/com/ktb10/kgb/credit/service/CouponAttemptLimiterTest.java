@@ -3,129 +3,98 @@ package com.ktb10.kgb.credit.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.RateLimitExceededException;
+import com.ktb10.kgb.credit.error.CreditErrorCode;
+import com.ktb10.kgb.credit.service.CouponAttemptStore.FailureRecordResult;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.QueryTimeoutException;
 
 class CouponAttemptLimiterTest {
 
     private static final Long MEMBER_ID = 7L;
-    private static final Long OTHER_MEMBER_ID = 8L;
-    private static final Instant START = Instant.parse("2026-10-12T00:00:00Z");
 
-    private MutableClock clock;
+    private CouponAttemptStore attemptStore;
     private SimpleMeterRegistry meterRegistry;
     private CouponAttemptLimiter limiter;
 
     @BeforeEach
     void setUp() {
-        clock = new MutableClock(START);
+        attemptStore = mock(CouponAttemptStore.class);
         meterRegistry = new SimpleMeterRegistry();
-        limiter = new CouponAttemptLimiter(clock, meterRegistry);
+        limiter = new CouponAttemptLimiter(attemptStore, meterRegistry);
     }
 
     @Test
-    void allowsFourFailuresAndBlocksFromFifthFailureForTenMinutes() {
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
+    void allowsRequestWhenMemberIsNotBlocked() {
+        when(attemptStore.remainingBlockMillis(MEMBER_ID)).thenReturn(0L);
 
         assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
-        assertThatThrownBy(() -> limiter.recordFailure(MEMBER_ID))
+    }
+
+    @Test
+    void blocksRequestUsingRedisTtl() {
+        when(attemptStore.remainingBlockMillis(MEMBER_ID)).thenReturn(37_001L);
+
+        assertThatThrownBy(() -> limiter.checkAllowed(MEMBER_ID))
                 .isInstanceOf(RateLimitExceededException.class)
                 .extracting(exception ->
                         ((RateLimitExceededException) exception).retryAfterSeconds())
-                .isEqualTo(600L);
-        assertThatThrownBy(() -> limiter.checkAllowed(MEMBER_ID))
-                .isInstanceOf(RateLimitExceededException.class);
-
-        assertThat(meterRegistry.get("kgb.credit.coupon.invalid_attempts").counter().count())
-                .isEqualTo(5.0);
-        assertThat(meterRegistry.get("kgb.credit.coupon.blocks").counter().count())
-                .isEqualTo(1.0);
+                .isEqualTo(38L);
         assertThat(meterRegistry.get("kgb.credit.coupon.blocked_requests").counter().count())
                 .isEqualTo(1.0);
     }
 
     @Test
-    void resetsFailureCountWhenFixedWindowExpiresBelowThreshold() {
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
-        clock.advance(CouponAttemptLimiter.WINDOW_DURATION);
+    void activatesBlockOnFifthFailure() {
+        when(attemptStore.recordFailure(MEMBER_ID))
+                .thenReturn(FailureRecordResult.activated(600_000L));
 
-        assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
-
-        assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
-    }
-
-    @Test
-    void resetsAllStateAfterBlockExpires() {
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
         assertThatThrownBy(() -> limiter.recordFailure(MEMBER_ID))
-                .isInstanceOf(RateLimitExceededException.class);
-        clock.advance(CouponAttemptLimiter.BLOCK_DURATION);
-
-        assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
-
-        assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
+                .isInstanceOf(RateLimitExceededException.class)
+                .extracting(exception ->
+                        ((RateLimitExceededException) exception).retryAfterSeconds())
+                .isEqualTo(600L);
+        assertThat(meterRegistry.get("kgb.credit.coupon.invalid_attempts").counter().count())
+                .isEqualTo(1.0);
+        assertThat(meterRegistry.get("kgb.credit.coupon.blocks").counter().count())
+                .isEqualTo(1.0);
     }
 
     @Test
-    void successfulCouponResetClearsPreviousFailures() {
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
+    void recordsFailureWithoutBlockingBelowThreshold() {
+        when(attemptStore.recordFailure(MEMBER_ID))
+                .thenReturn(FailureRecordResult.allowed());
 
+        assertThatCode(() -> limiter.recordFailure(MEMBER_ID)).doesNotThrowAnyException();
+        assertThat(meterRegistry.get("kgb.credit.coupon.invalid_attempts").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void resetsSharedAttemptStateAfterSuccessfulCoupon() {
         limiter.reset(MEMBER_ID);
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
 
-        assertThatCode(() -> limiter.checkAllowed(MEMBER_ID)).doesNotThrowAnyException();
+        verify(attemptStore).reset(MEMBER_ID);
     }
 
     @Test
-    void oneMembersFailuresDoNotBlockAnotherMember() {
-        repeatFailure(MEMBER_ID, CouponAttemptLimiter.MAX_FAILURES - 1);
-        assertThatThrownBy(() -> limiter.recordFailure(MEMBER_ID))
-                .isInstanceOf(RateLimitExceededException.class);
+    void failsClosedWhenRedisCommandFails() {
+        doThrow(new QueryTimeoutException("timeout"))
+                .when(attemptStore).reset(MEMBER_ID);
 
-        assertThatCode(() -> limiter.checkAllowed(OTHER_MEMBER_ID)).doesNotThrowAnyException();
-    }
-
-    private void repeatFailure(Long memberId, int count) {
-        for (int attempt = 0; attempt < count; attempt++) {
-            limiter.recordFailure(memberId);
-        }
-    }
-
-    private static final class MutableClock extends Clock {
-
-        private Instant current;
-
-        private MutableClock(Instant current) {
-            this.current = current;
-        }
-
-        void advance(Duration duration) {
-            current = current.plus(duration);
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return ZoneOffset.UTC;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return this;
-        }
-
-        @Override
-        public Instant instant() {
-            return current;
-        }
+        assertThatThrownBy(() -> limiter.reset(MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).errorCode())
+                .isEqualTo(CreditErrorCode.COUPON_UNAVAILABLE);
+        assertThat(meterRegistry.get("kgb.credit.coupon.redis_failures").counter().count())
+                .isEqualTo(1.0);
     }
 }

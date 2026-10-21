@@ -1,6 +1,8 @@
 package com.ktb10.kgb.member.service;
 
 import com.ktb10.kgb.member.event.NotificationCreatedEvent;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -35,6 +37,7 @@ public class NotificationStreamService {
     private final Duration connectionTimeout;
     private final long reconnectTimeMillis;
     private final int maxConnectionsPerMember;
+    private final NotificationRealtimeMetrics metrics;
     private final AtomicLong connectionSequence = new AtomicLong();
     private final ConcurrentMap<Long, ConcurrentMap<String, StreamConnection>> memberConnections =
             new ConcurrentHashMap<>();
@@ -44,7 +47,9 @@ public class NotificationStreamService {
             @Value("${notification.sse.connection-timeout:25m}") Duration connectionTimeout,
             @Value("${notification.sse.reconnect-time-millis:3000}") long reconnectTimeMillis,
             @Value("${notification.sse.max-connections-per-member:5}")
-                    int maxConnectionsPerMember) {
+                    int maxConnectionsPerMember,
+            NotificationRealtimeMetrics metrics,
+            MeterRegistry meterRegistry) {
         if (connectionTimeout.isZero() || connectionTimeout.isNegative()) {
             throw new IllegalArgumentException("SSE 연결 제한 시간은 0보다 커야 합니다.");
         }
@@ -58,6 +63,15 @@ public class NotificationStreamService {
         this.connectionTimeout = connectionTimeout;
         this.reconnectTimeMillis = reconnectTimeMillis;
         this.maxConnectionsPerMember = maxConnectionsPerMember;
+        this.metrics = metrics;
+        Gauge.builder(
+                        "kgb.notification.sse.connections",
+                        memberConnections,
+                        connections -> connections.values().stream()
+                                .mapToInt(Map::size)
+                                .sum())
+                .description("현재 인스턴스가 보유한 SSE 연결 수")
+                .register(meterRegistry);
     }
 
     public SseEmitter subscribe(Long memberId, Long sessionId) {
@@ -99,11 +113,13 @@ public class NotificationStreamService {
     /** 알림을 연결된 SSE 스트림에 전송하고, 하나 이상의 전송 호출이 성공했는지 반환합니다. */
     public boolean publish(NotificationCreatedEvent event) {
         if (!event.realtimeDeliveryEnabled()) {
+            metrics.recordSseDelivery("disabled");
             return false;
         }
         ConcurrentMap<String, StreamConnection> connections =
                 memberConnections.get(event.recipientMemberId());
         if (connections == null) {
+            metrics.recordSseDelivery("no_connection");
             return false;
         }
 
@@ -117,7 +133,9 @@ public class NotificationStreamService {
                         .reconnectTime(reconnectTimeMillis)
                         .data(event.notification()));
                 delivered.set(true);
+                metrics.recordSseDelivery("success");
             } catch (IOException | IllegalStateException exception) {
+                metrics.recordSseDelivery("failure");
                 removeConnection(event.recipientMemberId(), connectionId, emitter);
                 emitter.completeWithError(exception);
                 LOGGER.debug(

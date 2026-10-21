@@ -29,10 +29,11 @@ import org.springframework.web.util.UriComponentsBuilder;
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "KAKAO_REST_API_KEY=test-rest-api-key",
         "KAKAO_CLIENT_SECRET=test-client-secret",
-        "KAKAO_REDIRECT_URI=http://localhost:8080/api/v1/auth/oauth/callback/kakao"
+        "KAKAO_REDIRECT_URI=http://localhost:8080/api/v1/auth/oauth/callback/kakao",
+        "SESSION_COOKIE_SECURE=false"
 })
 @AutoConfigureMockMvc
-class KakaoOAuthStartTest {
+class KakaoOAuthStartTest extends RedisIntegrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

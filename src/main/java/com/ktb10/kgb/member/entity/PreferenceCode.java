@@ -45,25 +45,40 @@ public enum PreferenceCode {
     EVENTS_CONCERT(PreferenceType.DETAIL, "공연", EVENTS, 20),
     EVENTS_FAIR(PreferenceType.DETAIL, "행사", EVENTS, 30),
 
-    RELAXING(PreferenceType.TRAVEL_STYLE, "여유롭게", null, 10),
-    TIME_EFFICIENCY(PreferenceType.TRAVEL_STYLE, "효율적으로", null, 20),
-    WALK_FRIENDLY(PreferenceType.TRAVEL_STYLE, "걷는거 좋아요", null, 30),
-    CAR_TRAVEL(PreferenceType.TRAVEL_STYLE, "차로 이동", null, 40);
+    RELAXING(PreferenceType.TRAVEL_STYLE, "여유롭게", null, 10,
+            PreferenceSelectionGroup.SCHEDULE_PACE),
+    TIME_EFFICIENCY(PreferenceType.TRAVEL_STYLE, "효율적으로", null, 20,
+            PreferenceSelectionGroup.SCHEDULE_PACE),
+    WALK_FRIENDLY(PreferenceType.TRAVEL_STYLE, "걷는거 좋아요", null, 30,
+            PreferenceSelectionGroup.TRANSPORTATION),
+    CAR_TRAVEL(PreferenceType.TRAVEL_STYLE, "차로 이동", null, 40,
+            PreferenceSelectionGroup.TRANSPORTATION);
 
     private final PreferenceType type;
     private final String label;
     private final PreferenceCode parent;
     private final int sortOrder;
+    private final PreferenceSelectionGroup selectionGroup;
 
     PreferenceCode(
             PreferenceType type,
             String label,
             PreferenceCode parent,
             int sortOrder) {
+        this(type, label, parent, sortOrder, null);
+    }
+
+    PreferenceCode(
+            PreferenceType type,
+            String label,
+            PreferenceCode parent,
+            int sortOrder,
+            PreferenceSelectionGroup selectionGroup) {
         this.type = type;
         this.label = label;
         this.parent = parent;
         this.sortOrder = sortOrder;
+        this.selectionGroup = selectionGroup;
     }
 
     public PreferenceType type() {
@@ -84,5 +99,9 @@ public enum PreferenceCode {
 
     public int sortOrder() {
         return sortOrder;
+    }
+
+    public PreferenceSelectionGroup selectionGroup() {
+        return selectionGroup;
     }
 }

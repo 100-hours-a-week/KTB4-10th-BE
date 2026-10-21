@@ -8,4 +8,8 @@ public interface TourApiClient {
     byte[] fetchAreaSnapshot();
 
     byte[] fetchFestivalSnapshot(LocalDate startDate, LocalDate endDate);
+
+    byte[] fetchDetailCommon(String contentId);
+
+    byte[] fetchDetailIntro(String contentId, String contentTypeId);
 }

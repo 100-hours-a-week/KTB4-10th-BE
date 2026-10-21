@@ -1,6 +1,9 @@
 package com.ktb10.kgb.content.service;
 
+import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 
 /** 일일 관광 데이터 배치가 완료된 뒤 변경된 지도 타일을 갱신합니다. */
@@ -8,14 +11,33 @@ import org.springframework.stereotype.Service;
 public class MapContentCacheRefreshService {
 
     private final MapContentCommonCache commonCache;
+    private final MapContentCommonLoader loader;
 
-    public MapContentCacheRefreshService(MapContentCommonCache commonCache) {
+    public MapContentCacheRefreshService(
+            MapContentCommonCache commonCache,
+            MapContentCommonLoader loader) {
         this.commonCache = commonCache;
+        this.loader = loader;
     }
 
-    /** 배치가 수집한 변경 전·후 좌표의 타일만 갱신합니다. */
-    public void refreshAfterBatch(Collection<MapContentCacheLocation> changedLocations) {
-        commonCache.refreshByLocations(changedLocations);
+    /** 배치 변경 좌표와 전날 종료된 행사의 타일만 갱신합니다. */
+    public void refreshAfterBatch(
+            Collection<MapContentCacheLocation> changedLocations,
+            LocalDate syncDate) {
+        commonCache.refreshByTiles(resolveTiles(changedLocations, syncDate));
+    }
+
+    public List<MapContentCacheTile> resolveTiles(
+            Collection<MapContentCacheLocation> changedLocations,
+            LocalDate syncDate) {
+        Collection<MapContentCacheLocation> expiredEventLocations =
+                loader.loadEventLocationsEndingOn(syncDate.minusDays(1));
+        return Stream.concat(
+                        changedLocations.stream(),
+                        expiredEventLocations.stream())
+                .map(MapContentCacheTile::from)
+                .distinct()
+                .toList();
     }
 
     /** 변경 위치 목록을 제공하지 않는 전체 동기화가 끝나면 캐시 전체를 다시 구성합니다. */

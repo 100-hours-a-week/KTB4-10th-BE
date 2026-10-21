@@ -143,6 +143,26 @@ public class GenerationJob {
         return job;
     }
 
+    public static GenerationJob createRegeneration(
+            Member member,
+            Long guidebookId,
+            String requestPayload,
+            String idempotencyKey,
+            LocalDateTime createdAt) {
+        GenerationJob job = new GenerationJob();
+        job.member = Objects.requireNonNull(member);
+        job.guidebookId = Objects.requireNonNull(guidebookId);
+        job.jobType = JobType.REGENERATION;
+        job.status = GenerationStatus.PENDING;
+        job.requestPayload = Objects.requireNonNull(requestPayload);
+        job.attemptCount = (short) 0;
+        job.idempotencyKey = Objects.requireNonNull(idempotencyKey);
+        job.leaseVersion = 0L;
+        job.createdAt = Objects.requireNonNull(createdAt);
+        job.updatedAt = createdAt;
+        return job;
+    }
+
     public void registerAiJob(String aiJobId, LocalDateTime registeredAt) {
         if (status != GenerationStatus.PENDING) {
             return;

@@ -457,7 +457,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 - `generation_jobs.id`는 백엔드가 발급하는 내부 작업 ID이며 프론트는 이 ID로 폴링한다.
 - `generation_jobs.ai_job_id`는 AI 서버가 접수 응답으로 발급하는 외부 작업 ID이며 AI 상태 폴링에만 사용하고 UNIQUE로 제약한다.
 - 최초 생성 중 guidebook_id는 NULL, 성공 시 결과 ID를 연결한다. 재생성은 시작부터 기존 ID를 가진다.
-- request_payload는 날짜·동행·인원·취향의 요청 당시 스냅샷이다.
+- request_payload는 날짜·동행·인원·취향의 요청 당시 스냅샷과 재생성 피드백·원본 AI 작업 ID를 저장한다.
 - idempotency_key UNIQUE는 네트워크 재전송의 중복 작업을 막는다.
 - 진행 중일 때만 회원 ID를 갖는 `active_member_id` 생성 컬럼 UNIQUE는 회원별 진행 작업 하나만 허용한다.
 - attempt_count CHECK는 무한 재시도를 막는다.
@@ -472,7 +472,7 @@ AI 생성 입력, 처리 상태, 재시도, 오류와 결과 연결을 저장한
 - 서비스 가이드북 ID는 AI가 아니라 백엔드가 만든다.
 - title 15자는 화면 기획 제한을 DB에서도 보장한다.
 - 날짜·인원 CHECK가 비정상 AI 결과를 막는다.
-- 재생성은 최초 생성 결과 화면에서만 같은 ID의 내용을 갱신하고 version을 증가시킨다. 공유는 이 흐름이 끝난 뒤 제공한다.
+- 재생성은 최초 생성 결과 화면에서만 같은 ID의 제목은 유지하고 본문·일정을 교체하며 version을 증가시킨다. 공유는 이 흐름이 끝난 뒤 제공한다.
 
 ### member_guidebooks
 

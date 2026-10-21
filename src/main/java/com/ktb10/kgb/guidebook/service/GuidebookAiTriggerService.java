@@ -8,9 +8,12 @@ import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
+import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
+import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -51,10 +54,9 @@ public class GuidebookAiTriggerService {
             return;
         }
 
-        InitialGenerationRequestPayload payload = deserialize(job.getRequestPayload());
-        AiGuidebookRequest request = aiGuidebookRequestMapper.map(
-                payload, job.getId(), job.getAttemptCount());
-        AiGenerationAcceptedResponse response = guidebookAiClient.requestGeneration(request);
+        AiGenerationAcceptedResponse response = job.getJobType() == JobType.INITIAL
+                ? requestInitial(job)
+                : requestRegeneration(job);
         LocalDateTime now = LocalDateTime.now(clock);
         job.registerAiJob(response.jobId(), now);
         if (response.status() == AiGenerationStatus.PROCESSING) {
@@ -62,11 +64,34 @@ public class GuidebookAiTriggerService {
         }
     }
 
-    private InitialGenerationRequestPayload deserialize(String requestPayload) {
+    private AiGenerationAcceptedResponse requestInitial(GenerationJob job) {
+        InitialGenerationRequestPayload payload = deserializeInitial(job.getRequestPayload());
+        AiGuidebookRequest request = aiGuidebookRequestMapper.map(
+                payload, job.getId(), job.getAttemptCount());
+        return guidebookAiClient.requestGeneration(request);
+    }
+
+    private AiGenerationAcceptedResponse requestRegeneration(GenerationJob job) {
+        RegenerationRequestPayload payload = deserializeRegeneration(job.getRequestPayload());
+        AiGuidebookRegenerationRequest request = new AiGuidebookRegenerationRequest(
+                job.getId() + "-" + job.getAttemptCount(),
+                payload.request().feedback());
+        return guidebookAiClient.requestRegeneration(payload.sourceAiJobId(), request);
+    }
+
+    private InitialGenerationRequestPayload deserializeInitial(String requestPayload) {
         try {
             return objectMapper.readValue(requestPayload, InitialGenerationRequestPayload.class);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("저장된 가이드북 생성 요청을 읽을 수 없습니다.", exception);
+        }
+    }
+
+    private RegenerationRequestPayload deserializeRegeneration(String requestPayload) {
+        try {
+            return objectMapper.readValue(requestPayload, RegenerationRequestPayload.class);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("저장된 가이드북 재생성 요청을 읽을 수 없습니다.", exception);
         }
     }
 }

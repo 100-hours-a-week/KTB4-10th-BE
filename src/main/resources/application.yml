@@ -2,6 +2,22 @@ spring:
   application:
     name: kgb
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      username: ${REDIS_USERNAME:}
+      password: ${REDIS_PASSWORD:}
+      connect-timeout: ${REDIS_CONNECT_TIMEOUT:2s}
+      timeout: ${REDIS_COMMAND_TIMEOUT:2s}
+
+  session:
+    timeout: ${OAUTH_HTTP_SESSION_TIMEOUT:15m}
+    redis:
+      namespace: ${REDIS_SESSION_NAMESPACE:kgb:local:oauth:session}
+      flush-mode: on-save
+      save-mode: on-set-attribute
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -13,6 +29,24 @@ spring:
 
   flyway:
     enabled: true
+
+kgb:
+  oauth:
+    redis:
+      namespace: ${OAUTH_REDIS_NAMESPACE:kgb:local:oauth:authorization-request}
+
+map:
+  common-cache-sync-poll-interval-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INTERVAL_MILLIS:30000}
+  common-cache-sync-poll-initial-delay-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INITIAL_DELAY_MILLIS:30000}
+server:
+  servlet:
+    session:
+      cookie:
+        name: JSESSIONID
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
+        path: /
 
 management:
   server:
@@ -37,11 +71,16 @@ management:
         enabled: true
 
 notification:
+  redis:
+    enabled: ${NOTIFICATION_REDIS_ENABLED:false}
+    channel: ${NOTIFICATION_REDIS_CHANNEL:kgb:local:notification:sse}
   sse:
     connection-timeout: ${NOTIFICATION_SSE_CONNECTION_TIMEOUT:25m}
     reconnect-time-millis: ${NOTIFICATION_SSE_RECONNECT_TIME_MILLIS:3000}
     heartbeat-interval-millis: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MILLIS:15000}
     max-connections-per-member: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:5}
+  trip-starting:
+    cron: "${NOTIFICATION_TRIP_STARTING_CRON:0 0 9 * * *}"
 
 webpush:
   vapid:
@@ -76,5 +115,9 @@ tour-api:
     max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
     retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
+    recovery-interval-millis: ${TOUR_API_SYNC_RECOVERY_INTERVAL_MILLIS:300000}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
+  coupon-attempt:
+    redis:
+      namespace: ${COUPON_ATTEMPT_REDIS_NAMESPACE:kgb:local:coupon:attempt}

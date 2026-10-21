@@ -13,6 +13,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,17 +24,21 @@ class TourApiSyncServiceTest {
     private final TourApiClient client = mock(TourApiClient.class);
     private final TourApiSnapshotValidator validator = mock(TourApiSnapshotValidator.class);
     private final TourApiSnapshotStorage storage = mock(TourApiSnapshotStorage.class);
-    private final TourApiImportService importer = mock(TourApiImportService.class);
+    private final TourApiBaseImportTransactionService baseImportTransactionService =
+            mock(TourApiBaseImportTransactionService.class);
+    private final TourApiDetailSyncService detailSyncService = mock(TourApiDetailSyncService.class);
+    private final Clock clock = Clock.fixed(
+            Instant.parse("2026-10-09T00:00:00Z"), ZoneOffset.UTC);
     private TourApiSyncService service;
 
     @BeforeEach
     void setUp() {
-        Clock clock = Clock.fixed(Instant.parse("2026-10-08T15:00:00Z"), ZoneOffset.UTC);
         service = new TourApiSyncService(
                 client,
                 validator,
                 storage,
-                importer,
+                baseImportTransactionService,
+                detailSyncService,
                 TourApiTestFixtures.properties("data/tourism/raw"),
                 clock);
     }
@@ -48,10 +55,48 @@ class TourApiSyncServiceTest {
                 .thenReturn(new ValidatedSnapshot(SnapshotType.AREA, area, 10));
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenReturn(new ValidatedSnapshot(SnapshotType.FESTIVAL, festival, 3));
+        when(baseImportTransactionService.importSnapshots(
+                org.mockito.ArgumentMatchers.any(UUID.class),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 9)),
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(festival),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ImportSummary(
+                        10,
+                        2,
+                        0,
+                        0,
+                        0,
+                        3,
+                        1,
+                        0,
+                        List.of(ContentChangeSet.of(
+                                "late-content",
+                                Set.of(ContentChangedField.TITLE),
+                                ContentLifecycleChange.NEW,
+                                null,
+                                null))));
+        when(detailSyncService.synchronize(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(Set.of("late-content"))))
+                .thenReturn(new TourApiDetailSyncService.DetailSyncSummary(0, 0, 0, List.of()));
 
-        service.synchronize();
+        UUID runId = UUID.randomUUID();
+        service.synchronize(runId, LocalDate.of(2026, 10, 9));
 
-        verify(importer).importSnapshots(area, festival);
+        verify(baseImportTransactionService).importSnapshots(
+                org.mockito.ArgumentMatchers.eq(runId),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 9)),
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(festival),
+                org.mockito.ArgumentMatchers.any());
+        verify(detailSyncService).synchronize(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
+                org.mockito.ArgumentMatchers.eq(area),
+                org.mockito.ArgumentMatchers.eq(Set.of("late-content")));
     }
 
     @Test
@@ -67,12 +112,17 @@ class TourApiSyncServiceTest {
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenThrow(new TourApiException("incomplete", false));
 
-        assertThatThrownBy(service::synchronize).isInstanceOf(TourApiException.class);
+        assertThatThrownBy(() -> service.synchronize(
+                UUID.randomUUID(), LocalDate.of(2026, 10, 9)))
+                .isInstanceOf(TourApiException.class);
         verify(storage, never()).save(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any());
-        verify(importer, never()).importSnapshots(
+        verify(baseImportTransactionService, never()).importSnapshots(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
     }

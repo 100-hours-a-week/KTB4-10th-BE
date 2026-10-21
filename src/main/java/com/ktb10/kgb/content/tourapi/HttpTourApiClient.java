@@ -38,6 +38,27 @@ public class HttpTourApiClient implements TourApiClient {
                 .build(properties.serviceKey()));
     }
 
+    @Override
+    public byte[] fetchDetailCommon(String contentId) {
+        return fetchDetail("detailCommon2", contentId, null);
+    }
+
+    @Override
+    public byte[] fetchDetailIntro(String contentId, String contentTypeId) {
+        return fetchDetail("detailIntro2", contentId, contentTypeId);
+    }
+
+    private byte[] fetchDetail(String operation, String contentId, String contentTypeId) {
+        return fetch(uriBuilder -> {
+            UriBuilder builder = commonParameters(uriBuilder.pathSegment(operation))
+                    .queryParam("contentId", contentId);
+            if (contentTypeId != null) {
+                builder.queryParam("contentTypeId", contentTypeId);
+            }
+            return builder.build(properties.serviceKey());
+        });
+    }
+
     private UriBuilder commonParameters(UriBuilder uriBuilder) {
         return uriBuilder
                 .queryParam("serviceKey", SERVICE_KEY_VARIABLE)

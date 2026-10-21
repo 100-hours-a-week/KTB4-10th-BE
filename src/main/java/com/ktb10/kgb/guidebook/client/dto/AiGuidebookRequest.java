@@ -37,6 +37,7 @@ public record AiGuidebookRequest(
             @JsonProperty("content_type")
             ContentType contentType,
             String title,
+            String overview,
             @JsonProperty("classification_code_1")
             String classificationCode1,
             @JsonProperty("classification_code_2")

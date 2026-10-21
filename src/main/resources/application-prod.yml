@@ -3,11 +3,30 @@ spring:
     activate:
       on-profile: prod
 
+  data:
+    redis:
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:true}
+
+  session:
+    redis:
+      namespace: ${REDIS_SESSION_NAMESPACE:kgb:prod:oauth:session}
+
   datasource:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+notification:
+  redis:
+    enabled: ${NOTIFICATION_REDIS_ENABLED:true}
+    channel: ${NOTIFICATION_REDIS_CHANNEL:kgb:prod:notification:sse}
+
+kgb:
+  oauth:
+    redis:
+      namespace: ${OAUTH_REDIS_NAMESPACE:kgb:prod:oauth:authorization-request}
 
 ai:
   server:
@@ -21,6 +40,11 @@ tour-api:
 map:
   common-cache-enabled: ${MAP_COMMON_CACHE_ENABLED:true}
   common-cache-preload-enabled: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:true}
+
+credit:
+  coupon-attempt:
+    redis:
+      namespace: ${COUPON_ATTEMPT_REDIS_NAMESPACE:kgb:prod:coupon:attempt}
 
 logging:
   structured:

@@ -19,8 +19,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
-@ExtendWith(MockitoExtension.class)
+@ExtendWith({MockitoExtension.class, OutputCaptureExtension.class})
 class MapContentCommonCacheTest {
 
     @Mock
@@ -173,7 +175,7 @@ class MapContentCommonCacheTest {
     }
 
     @Test
-    void refreshesOnlyTilesContainingChangedLocations() {
+    void refreshesOnlyTilesContainingChangedLocations(CapturedOutput output) {
         MapContentCommonData before = commonContent(1L, 37.405, 127.105);
         MapContentCommonData unchanged = commonContent(2L, 35.185, 129.075);
         when(loader.loadAllCacheable()).thenReturn(List.of(before, unchanged));
@@ -196,6 +198,8 @@ class MapContentCommonCacheTest {
         assertThat(commonCache.get(35.181, 129.071, 35.189, 129.079))
                 .containsExactly(unchanged);
         verify(loader, times(2)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        assertThat(output).contains(
+                "requestedLocations=2, affectedTiles=2, fallback=false");
     }
 
     @Test
@@ -214,6 +218,38 @@ class MapContentCommonCacheTest {
         assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109))
                 .containsExactly(after);
         verify(loader, times(1)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    void fallsBackToFullRefreshWhenInitialSnapshotIsNotReady(CapturedOutput output) {
+        MapContentCommonData content = commonContent(1L, 37.405, 127.105);
+        when(loader.loadAllCacheable()).thenReturn(List.of(content));
+
+        commonCache.refreshByLocations(List.of(
+                new MapContentCacheLocation(37.405, 127.105)));
+
+        assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109))
+                .containsExactly(content);
+        verify(loader, times(1)).loadAllCacheable();
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        assertThat(output).contains(
+                "requestedLocations=1, affectedTiles=1, fallback=full");
+    }
+
+    @Test
+    void fallsBackToFullRefreshWithoutLocationsWhenInitialSnapshotIsNotReady(
+            CapturedOutput output) {
+        MapContentCommonData content = commonContent(1L, 37.405, 127.105);
+        when(loader.loadAllCacheable()).thenReturn(List.of(content));
+
+        commonCache.refreshByLocations(List.of());
+
+        assertThat(commonCache.get(37.401, 127.101, 37.409, 127.109))
+                .containsExactly(content);
+        verify(loader, times(1)).loadAllCacheable();
+        verify(loader, times(0)).load(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+        assertThat(output).contains(
+                "requestedLocations=0, affectedTiles=0, fallback=full");
     }
 
     private MapContentCommonData commonContent(

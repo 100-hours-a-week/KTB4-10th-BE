@@ -16,8 +16,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,30 +52,49 @@ public class TourApiImportService {
 
     /** 검증된 areaBasedList2와 searchFestival2 응답을 한 트랜잭션으로 증분 반영합니다. */
     @Transactional
-    public ImportSummary importSnapshots(byte[] areaSnapshot, byte[] festivalSnapshot) {
+    public ImportSummary importSnapshots(
+            byte[] areaSnapshot,
+            byte[] festivalSnapshot,
+            LocalDate syncDate) {
         List<JsonNode> contents = readItems(areaSnapshot, "수집한 areaBasedList2 스냅샷");
-        ContentImportResult contentResult = synchronizeAndImportContents(contents);
         List<JsonNode> events = readItems(festivalSnapshot, "수집한 searchFestival2 스냅샷");
-        EventImportResult eventResult = importEvents(events, contentResult.contentIds());
+        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
+        Set<String> expiredEventIds = resolveExpiredEventIds(
+                events,
+                existingEvents,
+                syncDate);
+        ContentImportResult contentResult = synchronizeAndImportContents(
+                contents,
+                expiredEventIds);
+        EventImportResult eventResult = importEvents(
+                events,
+                contentResult.contentIds(),
+                existingEvents,
+                expiredEventIds);
+        List<ContentChangeSet> changeSets = mergeChangeSets(
+                contentResult.changeSets(),
+                eventResult.changeSets());
         return new ImportSummary(
                 contents.size(),
                 contentResult.imported(),
                 contentResult.missingCoordinates(),
                 contentResult.missingRegionMapping(),
                 contentResult.inactive(),
-                contentResult.reactivated(),
                 events.size(),
                 eventResult.imported(),
-                eventResult.invalid());
+                eventResult.invalid(),
+                changeSets);
     }
 
-    private ContentImportResult synchronizeAndImportContents(List<JsonNode> contents) {
+    private ContentImportResult synchronizeAndImportContents(
+            List<JsonNode> contents,
+            Set<String> expiredEventIds) {
         Map<SourceRegionKey, ServiceRegionKey> regionNames =
                 extractRegionNames(contents);
         Map<AdministrativeProvince, String> provinceCodes =
                 extractProvinceCodes(contents);
         RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
-        return importContents(contents, regionMappings);
+        return importContents(contents, regionMappings, expiredEventIds);
     }
 
     private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
@@ -276,7 +297,8 @@ public class TourApiImportService {
 
     private ContentImportResult importContents(
             List<JsonNode> sourceContents,
-            RegionMappings regionMappings) {
+            RegionMappings regionMappings,
+            Set<String> expiredEventIds) {
         List<ContentRow> rows = new ArrayList<>();
         Set<String> contentIds = new HashSet<>();
         Set<String> sourceContentIds = new HashSet<>();
@@ -285,6 +307,9 @@ public class TourApiImportService {
 
         for (JsonNode source : sourceContents) {
             String sourceContentId = text(source, "contentid");
+            if (sourceContentId != null && expiredEventIds.contains(sourceContentId)) {
+                continue;
+            }
             if (sourceContentId != null) {
                 sourceContentIds.add(sourceContentId);
             }
@@ -316,37 +341,60 @@ public class TourApiImportService {
         List<ContentRow> changedRows = rows.stream()
                 .filter(row -> row.needsUpsert(existingContents.get(row.sourceContentId())))
                 .toList();
-        int reactivated = (int) changedRows.stream()
-                .map(row -> existingContents.get(row.sourceContentId()))
-                .filter(Objects::nonNull)
-                .filter(existing -> !"ACTIVE".equals(existing.status()) || existing.deleted())
-                .count();
+        List<ContentChangeSet> changedContentSets = changedRows.stream()
+                .map(row -> row.changeSet(existingContents.get(row.sourceContentId())))
+                .toList();
         batchUpsertContents(changedRows);
         List<String> missingContentIds = existingContents.values().stream()
                 .filter(existing -> "ACTIVE".equals(existing.status()))
                 .map(ExistingContent::sourceContentId)
                 .filter(existingId -> !sourceContentIds.contains(existingId))
                 .toList();
+        List<ContentChangeSet> inactiveChangeSets = missingContentIds.stream()
+                .map(existingContents::get)
+                .map(ExistingContent::inactivatedChangeSet)
+                .toList();
         batchDeactivateContents(missingContentIds);
+        List<ContentChangeSet> changeSets = new ArrayList<>(changedContentSets);
+        changeSets.addAll(inactiveChangeSets);
         return new ContentImportResult(
                 changedRows.size(),
                 missingCoordinates,
                 missingRegionMapping,
                 missingContentIds.size(),
-                reactivated,
-                contentIds);
+                contentIds,
+                changeSets);
     }
 
     private Map<String, ExistingContent> loadExistingContents() {
         Map<String, ExistingContent> result = new HashMap<>();
         jdbcTemplate.query(
                 """
-                SELECT source_content_id, source_modified_at, status, deleted_at
+                SELECT source_content_id, source_content_type_id, title, region_id,
+                       source_region_code, source_district_code,
+                       classification_code_1, classification_code_2,
+                       classification_code_3, address,
+                       ST_Longitude(location) AS longitude,
+                       ST_Latitude(location) AS latitude,
+                       phone, thumbnail_url, source_modified_at, status, deleted_at
                 FROM tourism_contents
                 WHERE source_provider = ?
                 """,
                 (resultSet, rowNumber) -> new ExistingContent(
                         resultSet.getString("source_content_id"),
+                        resultSet.getString("source_content_type_id"),
+                        resultSet.getString("title"),
+                        resultSet.getLong("region_id"),
+                        resultSet.getString("source_region_code"),
+                        resultSet.getString("source_district_code"),
+                        resultSet.getString("classification_code_1"),
+                        resultSet.getString("classification_code_2"),
+                        resultSet.getString("classification_code_3"),
+                        resultSet.getString("address"),
+                        resultSet.getBigDecimal("longitude"),
+                        resultSet.getBigDecimal("latitude"),
+                        resultSet.getString("phone"),
+                        resultSet.getString("thumbnail_url"),
                         resultSet.getTimestamp("source_modified_at") == null
                                 ? null
                                 : resultSet.getTimestamp("source_modified_at").toLocalDateTime(),
@@ -429,11 +477,16 @@ public class TourApiImportService {
 
     private EventImportResult importEvents(
             List<JsonNode> sourceEvents,
-            Set<String> importedContentIds) {
+            Set<String> importedContentIds,
+            Map<String, ExistingEvent> existingEvents,
+            Set<String> expiredEventIds) {
         List<EventRow> events = new ArrayList<>();
         int invalid = 0;
         for (JsonNode source : sourceEvents) {
             String contentId = text(source, "contentid");
+            if (contentId != null && expiredEventIds.contains(contentId)) {
+                continue;
+            }
             LocalDate startDate = date(source, "eventstartdate");
             LocalDate endDate = date(source, "eventenddate");
             if (!importedContentIds.contains(contentId)
@@ -446,9 +499,11 @@ public class TourApiImportService {
             events.add(new EventRow(contentId, startDate, endDate));
         }
 
-        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
         List<EventRow> changedEvents = events.stream()
                 .filter(event -> !event.matches(existingEvents.get(event.sourceContentId())))
+                .toList();
+        List<ContentChangeSet> eventChangeSets = changedEvents.stream()
+                .map(event -> event.changeSet(existingEvents.get(event.sourceContentId())))
                 .toList();
 
         String sql =
@@ -481,7 +536,34 @@ public class TourApiImportService {
                 return changedEvents.size();
             }
         });
-        return new EventImportResult(changedEvents.size(), invalid);
+        return new EventImportResult(changedEvents.size(), invalid, eventChangeSets);
+    }
+
+    private Set<String> resolveExpiredEventIds(
+            List<JsonNode> sourceEvents,
+            Map<String, ExistingEvent> existingEvents,
+            LocalDate syncDate) {
+        Set<String> expired = existingEvents.values().stream()
+                .filter(event -> event.endDate().isBefore(syncDate))
+                .map(ExistingEvent::sourceContentId)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        for (JsonNode source : sourceEvents) {
+            String contentId = text(source, "contentid");
+            LocalDate startDate = date(source, "eventstartdate");
+            LocalDate endDate = date(source, "eventenddate");
+            if (contentId == null
+                    || startDate == null
+                    || endDate == null
+                    || startDate.isAfter(endDate)) {
+                continue;
+            }
+            if (endDate.isBefore(syncDate)) {
+                expired.add(contentId);
+            } else {
+                expired.remove(contentId);
+            }
+        }
+        return Set.copyOf(expired);
     }
 
     private Map<String, ExistingEvent> loadExistingEvents() {
@@ -489,6 +571,8 @@ public class TourApiImportService {
         jdbcTemplate.query(
                 """
                 SELECT content.source_content_id, event.start_date, event.end_date
+                     , ST_Longitude(content.location) AS longitude
+                     , ST_Latitude(content.location) AS latitude
                 FROM event_details event
                 JOIN tourism_contents content ON content.id = event.content_id
                 WHERE content.source_provider = ?
@@ -496,7 +580,9 @@ public class TourApiImportService {
                 (resultSet, rowNumber) -> new ExistingEvent(
                         resultSet.getString("source_content_id"),
                         resultSet.getDate("start_date").toLocalDate(),
-                        resultSet.getDate("end_date").toLocalDate()),
+                        resultSet.getDate("end_date").toLocalDate(),
+                        resultSet.getBigDecimal("longitude"),
+                        resultSet.getBigDecimal("latitude")),
                 SOURCE_PROVIDER).forEach(event -> result.put(event.sourceContentId(), event));
         return result;
     }
@@ -558,6 +644,19 @@ public class TourApiImportService {
         return value.substring(0, maxLength);
     }
 
+    @SafeVarargs
+    private static List<ContentChangeSet> mergeChangeSets(
+            List<ContentChangeSet>... changeSets) {
+        Map<String, ContentChangeSet> merged = new LinkedHashMap<>();
+        for (List<ContentChangeSet> changes : changeSets) {
+            changes.forEach(change -> merged.merge(
+                    change.sourceContentId(),
+                    change,
+                    ContentChangeSet::merge));
+        }
+        return List.copyOf(merged.values());
+    }
+
     private record SourceRegionKey(String regionCode, String districtCode) {
     }
 
@@ -576,11 +675,14 @@ public class TourApiImportService {
             int missingCoordinates,
             int missingRegionMapping,
             int inactive,
-            int reactivated,
-            Set<String> contentIds) {
+            Set<String> contentIds,
+            List<ContentChangeSet> changeSets) {
     }
 
-    private record EventImportResult(int imported, int invalid) {
+    private record EventImportResult(
+            int imported,
+            int invalid,
+            List<ContentChangeSet> changeSets) {
     }
 
     private record EventRow(
@@ -593,19 +695,71 @@ public class TourApiImportService {
                     && startDate.equals(existing.startDate())
                     && endDate.equals(existing.endDate());
         }
+
+        private ContentChangeSet changeSet(ExistingEvent existing) {
+            EnumSet<ContentChangedField> fields = EnumSet.noneOf(ContentChangedField.class);
+            if (existing == null || !startDate.equals(existing.startDate())) {
+                fields.add(ContentChangedField.START_DATE);
+            }
+            if (existing == null || !endDate.equals(existing.endDate())) {
+                fields.add(ContentChangedField.END_DATE);
+            }
+            return ContentChangeSet.of(
+                    sourceContentId,
+                    fields,
+                    ContentLifecycleChange.NONE,
+                    null,
+                    existing == null ? null : existing.location());
+        }
     }
 
     private record ExistingEvent(
             String sourceContentId,
             LocalDate startDate,
-            LocalDate endDate) {
+            LocalDate endDate,
+            BigDecimal longitude,
+            BigDecimal latitude) {
+
+        private TourApiContentLocation location() {
+            return longitude == null || latitude == null
+                    ? null
+                    : new TourApiContentLocation(latitude.doubleValue(), longitude.doubleValue());
+        }
     }
 
     private record ExistingContent(
             String sourceContentId,
+            String sourceContentTypeId,
+            String title,
+            long regionId,
+            String sourceRegionCode,
+            String sourceDistrictCode,
+            String classificationCode1,
+            String classificationCode2,
+            String classificationCode3,
+            String address,
+            BigDecimal longitude,
+            BigDecimal latitude,
+            String phone,
+            String thumbnailUrl,
             LocalDateTime sourceModifiedAt,
             String status,
             boolean deleted) {
+
+        private TourApiContentLocation location() {
+            return longitude == null || latitude == null
+                    ? null
+                    : new TourApiContentLocation(latitude.doubleValue(), longitude.doubleValue());
+        }
+
+        private ContentChangeSet inactivatedChangeSet() {
+            return ContentChangeSet.of(
+                    sourceContentId,
+                    EnumSet.of(ContentChangedField.STATUS),
+                    ContentLifecycleChange.INACTIVATED,
+                    location(),
+                    null);
+        }
     }
 
     private record ContentRow(
@@ -669,6 +823,91 @@ public class TourApiImportService {
                     || existing.deleted()
                     || sourceModifiedAt == null
                     || !Objects.equals(sourceModifiedAt, existing.sourceModifiedAt());
+        }
+
+        private ContentChangeSet changeSet(ExistingContent existing) {
+            final ContentLifecycleChange lifecycleChange = lifecycleChange(existing);
+            EnumSet<ContentChangedField> fields = EnumSet.noneOf(ContentChangedField.class);
+            if (existing == null || !Objects.equals(title, existing.title())) {
+                fields.add(ContentChangedField.TITLE);
+            }
+            if (existing == null || !Objects.equals(address, existing.address())) {
+                fields.add(ContentChangedField.ADDRESS);
+            }
+            if (existing == null || !Objects.equals(phone, existing.phone())) {
+                fields.add(ContentChangedField.PHONE);
+            }
+            if (existing == null || !Objects.equals(thumbnailUrl, existing.thumbnailUrl())) {
+                fields.add(ContentChangedField.THUMBNAIL_URL);
+            }
+            if (existing == null || regionId != existing.regionId()) {
+                fields.add(ContentChangedField.REGION);
+            }
+            if (existing == null
+                    || !Objects.equals(sourceRegionCode, existing.sourceRegionCode())) {
+                fields.add(ContentChangedField.SOURCE_REGION_CODE);
+            }
+            if (existing == null
+                    || !Objects.equals(sourceDistrictCode, existing.sourceDistrictCode())) {
+                fields.add(ContentChangedField.SOURCE_DISTRICT_CODE);
+            }
+            if (existing == null || locationChanged(existing)) {
+                fields.add(ContentChangedField.LOCATION);
+            }
+            addClassificationChanges(fields, existing);
+            if (lifecycleChange != ContentLifecycleChange.NONE || isInactive(existing)) {
+                fields.add(ContentChangedField.STATUS);
+            }
+            return ContentChangeSet.of(
+                    sourceContentId,
+                    fields,
+                    lifecycleChange,
+                    existing == null ? null : existing.location(),
+                    location());
+        }
+
+        private void addClassificationChanges(
+                Set<ContentChangedField> fields,
+                ExistingContent existing) {
+            if (existing == null
+                    || !Objects.equals(sourceContentTypeId, existing.sourceContentTypeId())) {
+                fields.add(ContentChangedField.SOURCE_CONTENT_TYPE_ID);
+            }
+            if (existing == null
+                    || !Objects.equals(classificationCode1, existing.classificationCode1())) {
+                fields.add(ContentChangedField.CLASSIFICATION_CODE_1);
+            }
+            if (existing == null
+                    || !Objects.equals(classificationCode2, existing.classificationCode2())) {
+                fields.add(ContentChangedField.CLASSIFICATION_CODE_2);
+            }
+            if (existing == null
+                    || !Objects.equals(classificationCode3, existing.classificationCode3())) {
+                fields.add(ContentChangedField.CLASSIFICATION_CODE_3);
+            }
+        }
+
+        private ContentLifecycleChange lifecycleChange(ExistingContent existing) {
+            if (existing == null) {
+                return ContentLifecycleChange.NEW;
+            }
+            return ContentLifecycleChange.NONE;
+        }
+
+        private boolean isInactive(ExistingContent existing) {
+            return existing != null
+                    && (!"ACTIVE".equals(existing.status()) || existing.deleted());
+        }
+
+        private boolean locationChanged(ExistingContent existing) {
+            return existing.longitude() == null
+                    || existing.latitude() == null
+                    || longitude.compareTo(existing.longitude()) != 0
+                    || latitude.compareTo(existing.latitude()) != 0;
+        }
+
+        private TourApiContentLocation location() {
+            return new TourApiContentLocation(latitude.doubleValue(), longitude.doubleValue());
         }
 
         private void setValues(PreparedStatement statement) throws SQLException {

@@ -146,7 +146,7 @@ class MemberLifecycleMysqlIntegrationTest {
         Member activeMember = memberRepository.findById(member.getId()).orElseThrow();
         assertThat(activeMember.getStatus()).isEqualTo(MemberStatus.ACTIVE);
         assertThat(activeMember.isPushEnabled()).isFalse();
-        assertThat(memberPreferenceRepository.count()).isEqualTo(3);
+        assertThat(memberPreferenceRepository.count()).isEqualTo(4);
         assertThat(notificationRepository.existsById(notification.getId())).isFalse();
 
         mockMvc.perform(post("/api/v1/auth/logout")
@@ -173,7 +173,9 @@ class MemberLifecycleMysqlIntegrationTest {
                 + "{\"preference_type\":\"DETAIL\","
                 + "\"preference_code\":\"NATURE_MOUNTAIN\"},"
                 + "{\"preference_type\":\"TRAVEL_STYLE\","
-                + "\"preference_code\":\"RELAXING\"}]}";
+                + "\"preference_code\":\"RELAXING\"},"
+                + "{\"preference_type\":\"TRAVEL_STYLE\","
+                + "\"preference_code\":\"WALK_FRIENDLY\"}]}";
     }
 
     @TestConfiguration
