@@ -144,12 +144,12 @@ OAuth 동의는 우리 서비스의 별도 동의 이력 저장과 동일하지 
 
 - state는 시작한 로그인 응답과 브라우저·공급자를 연결한다.
 - PKCE는 가로챈 인가 코드만으로 교환하지 못하도록 한다. 서버가 verifier를 보관하고, S256 challenge를 인가 요청에 보내며 원문 verifier는 공급자의 토큰 교환 요청에만 보낸다.
-- HttpSession 기반 로그인 시도 저장소는 state별 10분 TTL, 최대 5개, 원자적 일회 소비를 적용한다. 상세는 API-DEC-01 확정 계약이다.
+- Redis 기반 로그인 시도 저장소는 state별 10분 TTL, 브라우저당 최대 5개, GETDEL 원자적 일회 소비를 적용한다. HttpSession의 JSESSIONID는 요청 브라우저 결속에 사용한다. 상세는 API-DEC-01 확정 계약이다.
 - Google은 OIDC 검증, Kakao는 OAuth 사용자 정보의 id를 사용한다. 같은 이메일로 계정을 병합하지 않는다.
 
 **꼬리 질문: Body에 state만 추가하면 끝인가요?** 아니다. 우리 계약에는 프론트 코드 POST가 없다. 공급자가 백엔드 콜백에 보낸 state를 로그인 시작 전에 저장한 값 및 해당 브라우저와 비교한다.
 
-**꼬리 질문: auth_sessions에 verifier를 저장하나요?** 아니다. 로그인 전 임시 HttpSession 저장소와 로그인 후 MySQL 서비스 세션은 별개다. verifier는 원문이 필요하지만 서비스 세션 ID는 SHA-256 해시만 DB에 저장한다. 다중 서버에서는 임시 저장소도 공유해야 한다.
+**꼬리 질문: auth_sessions에 verifier를 저장하나요?** 아니다. 로그인 전 Redis 임시 저장소와 로그인 후 MySQL 서비스 세션은 별개다. verifier는 원문이 필요하지만 서비스 세션 ID는 SHA-256 해시만 DB에 저장한다. Redis key에는 원문 state와 JSESSIONID 대신 각각의 SHA-256 해시를 사용한다.
 
 **꼬리 질문: 세션 방식이면 PKCE가 필요 없나요?** PKCE는 로그인 과정, 서비스 세션은 로그인 후 인증을 담당한다. 서비스 액세스·리프레시 토큰이나 갱신 API를 다시 추가하지 않는다. 쿠키 인증의 상태 변경 API에는 별도 CSRF 검증이 필요하다.
 

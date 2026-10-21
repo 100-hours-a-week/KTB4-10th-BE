@@ -2,10 +2,12 @@ package com.ktb10.kgb.common.security.oauth;
 
 import java.time.Clock;
 import java.time.Duration;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.http.converter.FormHttpMessageConverter;
 import org.springframework.security.oauth2.client.endpoint.OAuth2AccessTokenResponseClient;
@@ -18,7 +20,6 @@ import org.springframework.security.oauth2.client.registration.InMemoryClientReg
 import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest;
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserService;
-import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestCustomizers;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
@@ -82,9 +83,14 @@ public class KakaoOauthConfig {
     }
 
     @Bean
-    public AuthorizationRequestRepository<OAuth2AuthorizationRequest>
-            authorizationRequestRepository(Clock clock) {
-        return new ExpiringAuthorizationRequestRepository(clock);
+    public RedisAuthorizationRequestRepository
+            authorizationRequestRepository(
+                    @Qualifier("oauthAuthorizationRequestRedisTemplate")
+                    RedisTemplate<String, Object> redisTemplate,
+                    Clock clock,
+                    @Value("${kgb.oauth.redis.namespace}")
+                    String namespace) {
+        return new RedisAuthorizationRequestRepository(redisTemplate, clock, namespace);
     }
 
     @Bean

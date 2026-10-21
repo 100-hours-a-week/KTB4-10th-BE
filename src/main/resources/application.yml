@@ -30,6 +30,11 @@ spring:
   flyway:
     enabled: true
 
+kgb:
+  oauth:
+    redis:
+      namespace: ${OAUTH_REDIS_NAMESPACE:kgb:local:oauth:authorization-request}
+
 map:
   common-cache-sync-poll-interval-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INTERVAL_MILLIS:30000}
   common-cache-sync-poll-initial-delay-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INITIAL_DELAY_MILLIS:30000}

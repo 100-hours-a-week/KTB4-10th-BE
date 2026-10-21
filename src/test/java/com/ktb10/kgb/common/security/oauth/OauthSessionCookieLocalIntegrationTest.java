@@ -26,7 +26,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
                 "KAKAO_REDIRECT_URI=http://localhost:8080/api/v1/auth/oauth/callback/kakao",
                 "SESSION_COOKIE_SECURE=false"
         })
-class OauthSessionCookieLocalIntegrationTest {
+class OauthSessionCookieLocalIntegrationTest extends RedisIntegrationTestSupport {
 
     @LocalServerPort
     private int serverPort;

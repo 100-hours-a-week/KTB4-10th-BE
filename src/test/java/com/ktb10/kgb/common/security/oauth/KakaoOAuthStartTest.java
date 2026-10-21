@@ -33,7 +33,7 @@ import org.springframework.web.util.UriComponentsBuilder;
         "SESSION_COOKIE_SECURE=false"
 })
 @AutoConfigureMockMvc
-class KakaoOAuthStartTest {
+class KakaoOAuthStartTest extends RedisIntegrationTestSupport {
 
     @Autowired
     private MockMvc mockMvc;

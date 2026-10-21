@@ -23,6 +23,11 @@ notification:
     enabled: ${NOTIFICATION_REDIS_ENABLED:true}
     channel: ${NOTIFICATION_REDIS_CHANNEL:kgb:prod:notification:sse}
 
+kgb:
+  oauth:
+    redis:
+      namespace: ${OAUTH_REDIS_NAMESPACE:kgb:prod:oauth:authorization-request}
+
 ai:
   server:
     base-url: ${AI_SERVER_BASE_URL}
