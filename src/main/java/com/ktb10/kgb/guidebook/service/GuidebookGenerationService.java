@@ -262,7 +262,7 @@ public class GuidebookGenerationService {
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
                 ? failureResponse(job)
                 : null;
-        return GenerationStatusResponse.from(job, error);
+        return GenerationStatusResponse.from(job, error, initialRequest(job));
     }
 
     @Transactional
@@ -317,6 +317,17 @@ public class GuidebookGenerationService {
             return !isUserCorrectionRequired(payload.path("code").asText());
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             return false;
+        }
+    }
+
+    private GuidebookGenerationRequest initialRequest(GenerationJob job) {
+        if (job.getJobType() != JobType.INITIAL) {
+            return null;
+        }
+        try {
+            return deserialize(job.getRequestPayload()).request();
+        } catch (IllegalStateException ignored) {
+            return null;
         }
     }
 
