@@ -1,43 +1,35 @@
 package com.ktb10.kgb.credit.service;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
+import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.RateLimitExceededException;
+import com.ktb10.kgb.credit.error.CreditErrorCode;
+import com.ktb10.kgb.credit.service.CouponAttemptStore.FailureRecordResult;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
 
-/** 회원별 잘못된 쿠폰 입력을 고정 윈도우로 집계하고 일시 차단합니다. */
+/** 회원별 잘못된 쿠폰 입력을 공유 Redis 고정 윈도우로 제한합니다. */
 @Component
 public class CouponAttemptLimiter {
 
-    static final int MAX_FAILURES = 5;
-    static final Duration WINDOW_DURATION = Duration.ofMinutes(10);
-    static final Duration BLOCK_DURATION = Duration.ofMinutes(10);
-
     private static final Logger LOGGER = LoggerFactory.getLogger(CouponAttemptLimiter.class);
-    private static final long MAXIMUM_TRACKED_MEMBERS = 100_000L;
-    private static final Duration CACHE_EXPIRATION = Duration.ofMinutes(20);
 
-    private final Clock clock;
-    private final Cache<Long, AttemptState> attempts;
+    private final CouponAttemptStore attemptStore;
     private final Counter invalidAttemptCounter;
     private final Counter blockActivatedCounter;
     private final Counter blockedRequestCounter;
+    private final Counter redisFailureCounter;
 
-    public CouponAttemptLimiter(Clock clock, MeterRegistry meterRegistry) {
-        this.clock = Objects.requireNonNull(clock, "시계는 null일 수 없습니다.");
-        this.attempts = Caffeine.newBuilder()
-                .maximumSize(MAXIMUM_TRACKED_MEMBERS)
-                .expireAfterAccess(CACHE_EXPIRATION)
-                .build();
+    public CouponAttemptLimiter(
+            CouponAttemptStore attemptStore,
+            MeterRegistry meterRegistry) {
+        this.attemptStore = Objects.requireNonNull(
+                attemptStore,
+                "쿠폰 입력 제한 저장소는 null일 수 없습니다.");
         this.invalidAttemptCounter = Counter.builder("kgb.credit.coupon.invalid_attempts")
                 .description("잘못된 쿠폰 코드 입력 횟수")
                 .register(meterRegistry);
@@ -47,126 +39,64 @@ public class CouponAttemptLimiter {
         this.blockedRequestCounter = Counter.builder("kgb.credit.coupon.blocked_requests")
                 .description("차단 중 거절된 쿠폰 등록 요청 횟수")
                 .register(meterRegistry);
+        this.redisFailureCounter = Counter.builder("kgb.credit.coupon.redis_failures")
+                .description("쿠폰 입력 제한 Redis 명령 실패 횟수")
+                .register(meterRegistry);
     }
 
     public void checkAllowed(Long memberId) {
         Objects.requireNonNull(memberId, "회원 ID는 null일 수 없습니다.");
-        Instant now = clock.instant();
-        AtomicReference<Instant> blockedUntil = new AtomicReference<>();
-        AtomicReference<Boolean> expiredBlock = new AtomicReference<>(false);
-
-        attempts.asMap().computeIfPresent(memberId, (key, state) -> {
-            if (state.isBlocked(now)) {
-                blockedUntil.set(state.blockedUntil());
-                return state;
+        try {
+            long remainingMillis = attemptStore.remainingBlockMillis(memberId);
+            if (remainingMillis < 1L) {
+                return;
             }
-            if (state.isExpired(now)) {
-                expiredBlock.set(state.blockedUntil() != null);
-                return null;
-            }
-            return state;
-        });
-
-        if (Boolean.TRUE.equals(expiredBlock.get())) {
-            LOGGER.info("쿠폰 등록 차단이 해제되었습니다. memberId={}", memberId);
-        }
-        if (blockedUntil.get() != null) {
             blockedRequestCounter.increment();
-            throw rateLimitExceeded(now, blockedUntil.get());
+            throw rateLimitExceeded(remainingMillis);
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw unavailable(exception);
         }
     }
 
     public void recordFailure(Long memberId) {
         Objects.requireNonNull(memberId, "회원 ID는 null일 수 없습니다.");
-        Instant now = clock.instant();
-        AtomicReference<BlockDecision> decision = new AtomicReference<>(BlockDecision.allowed());
-
-        attempts.asMap().compute(memberId, (key, current) -> {
-            if (current != null && current.isBlocked(now)) {
-                decision.set(BlockDecision.alreadyBlocked(current.blockedUntil()));
-                return current;
+        try {
+            FailureRecordResult result = attemptStore.recordFailure(memberId);
+            invalidAttemptCounter.increment();
+            if (!result.blocked()) {
+                return;
             }
-
-            AttemptState active = current;
-            if (active == null || active.isExpired(now)) {
-                active = AttemptState.start(now.plus(WINDOW_DURATION));
+            if (result.activated()) {
+                blockActivatedCounter.increment();
+                LOGGER.warn("잘못된 쿠폰 입력 제한으로 등록을 차단했습니다.");
+            } else {
+                blockedRequestCounter.increment();
             }
-
-            int nextFailureCount = active.failureCount() + 1;
-            if (nextFailureCount >= MAX_FAILURES) {
-                Instant blockedUntil = now.plus(BLOCK_DURATION);
-                decision.set(BlockDecision.activated(blockedUntil));
-                return active.block(nextFailureCount, blockedUntil);
-            }
-            return active.increment(nextFailureCount);
-        });
-
-        invalidAttemptCounter.increment();
-        if (decision.get().blockedUntil() == null) {
-            return;
+            throw rateLimitExceeded(result.retryAfterMillis());
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw unavailable(exception);
         }
-        if (decision.get().activated()) {
-            blockActivatedCounter.increment();
-            LOGGER.warn(
-                    "잘못된 쿠폰 입력 제한으로 등록을 차단했습니다. memberId={}, blockedUntil={}",
-                    memberId,
-                    decision.get().blockedUntil());
-        } else {
-            blockedRequestCounter.increment();
-        }
-        throw rateLimitExceeded(now, decision.get().blockedUntil());
     }
 
     public void reset(Long memberId) {
         Objects.requireNonNull(memberId, "회원 ID는 null일 수 없습니다.");
-        attempts.invalidate(memberId);
+        try {
+            attemptStore.reset(memberId);
+        } catch (DataAccessException | IllegalStateException exception) {
+            throw unavailable(exception);
+        }
     }
 
-    private RateLimitExceededException rateLimitExceeded(Instant now, Instant blockedUntil) {
-        long millis = Math.max(1L, Duration.between(now, blockedUntil).toMillis());
-        long retryAfterSeconds = Math.max(1L, (millis + 999L) / 1_000L);
+    private BusinessException unavailable(RuntimeException exception) {
+        redisFailureCounter.increment();
+        LOGGER.error(
+                "쿠폰 입력 제한 Redis 명령에 실패했습니다. failureType={}",
+                exception.getClass().getSimpleName());
+        return new BusinessException(CreditErrorCode.COUPON_UNAVAILABLE);
+    }
+
+    private RateLimitExceededException rateLimitExceeded(long remainingMillis) {
+        long retryAfterSeconds = Math.max(1L, (remainingMillis + 999L) / 1_000L);
         return new RateLimitExceededException(retryAfterSeconds);
-    }
-
-    private record AttemptState(
-            int failureCount,
-            Instant windowExpiresAt,
-            Instant blockedUntil) {
-
-        static AttemptState start(Instant windowExpiresAt) {
-            return new AttemptState(0, windowExpiresAt, null);
-        }
-
-        AttemptState increment(int nextFailureCount) {
-            return new AttemptState(nextFailureCount, windowExpiresAt, null);
-        }
-
-        AttemptState block(int nextFailureCount, Instant nextBlockedUntil) {
-            return new AttemptState(nextFailureCount, windowExpiresAt, nextBlockedUntil);
-        }
-
-        boolean isBlocked(Instant now) {
-            return blockedUntil != null && now.isBefore(blockedUntil);
-        }
-
-        boolean isExpired(Instant now) {
-            Instant expiration = blockedUntil == null ? windowExpiresAt : blockedUntil;
-            return !now.isBefore(expiration);
-        }
-    }
-
-    private record BlockDecision(boolean activated, Instant blockedUntil) {
-
-        static BlockDecision allowed() {
-            return new BlockDecision(false, null);
-        }
-
-        static BlockDecision activated(Instant blockedUntil) {
-            return new BlockDecision(true, blockedUntil);
-        }
-
-        static BlockDecision alreadyBlocked(Instant blockedUntil) {
-            return new BlockDecision(false, blockedUntil);
-        }
     }
 }

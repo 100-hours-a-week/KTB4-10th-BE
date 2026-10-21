@@ -113,3 +113,6 @@ tour-api:
     recovery-interval-millis: ${TOUR_API_SYNC_RECOVERY_INTERVAL_MILLIS:300000}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
+  coupon-attempt:
+    redis:
+      namespace: ${COUPON_ATTEMPT_REDIS_NAMESPACE:kgb:local:coupon:attempt}
