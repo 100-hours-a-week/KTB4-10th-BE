@@ -46,7 +46,10 @@ public class TourApiBaseImportTransactionService {
             byte[] areaSnapshot,
             byte[] festivalSnapshot,
             Instant createdAt) {
-        ImportSummary summary = importer.importSnapshots(areaSnapshot, festivalSnapshot);
+        ImportSummary summary = importer.importSnapshots(
+                areaSnapshot,
+                festivalSnapshot,
+                syncDate);
         List<MapContentCacheTile> changedTiles = cacheRefreshService.resolveTiles(
                 cacheLocations(summary.changeSets()), syncDate);
         cacheRefreshRepository.save(runId, changedTiles, createdAt);

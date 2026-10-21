@@ -52,11 +52,25 @@ public class TourApiImportService {
 
     /** 검증된 areaBasedList2와 searchFestival2 응답을 한 트랜잭션으로 증분 반영합니다. */
     @Transactional
-    public ImportSummary importSnapshots(byte[] areaSnapshot, byte[] festivalSnapshot) {
+    public ImportSummary importSnapshots(
+            byte[] areaSnapshot,
+            byte[] festivalSnapshot,
+            LocalDate syncDate) {
         List<JsonNode> contents = readItems(areaSnapshot, "수집한 areaBasedList2 스냅샷");
-        ContentImportResult contentResult = synchronizeAndImportContents(contents);
         List<JsonNode> events = readItems(festivalSnapshot, "수집한 searchFestival2 스냅샷");
-        EventImportResult eventResult = importEvents(events, contentResult.contentIds());
+        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
+        Set<String> expiredEventIds = resolveExpiredEventIds(
+                events,
+                existingEvents,
+                syncDate);
+        ContentImportResult contentResult = synchronizeAndImportContents(
+                contents,
+                expiredEventIds);
+        EventImportResult eventResult = importEvents(
+                events,
+                contentResult.contentIds(),
+                existingEvents,
+                expiredEventIds);
         List<ContentChangeSet> changeSets = mergeChangeSets(
                 contentResult.changeSets(),
                 eventResult.changeSets());
@@ -72,13 +86,15 @@ public class TourApiImportService {
                 changeSets);
     }
 
-    private ContentImportResult synchronizeAndImportContents(List<JsonNode> contents) {
+    private ContentImportResult synchronizeAndImportContents(
+            List<JsonNode> contents,
+            Set<String> expiredEventIds) {
         Map<SourceRegionKey, ServiceRegionKey> regionNames =
                 extractRegionNames(contents);
         Map<AdministrativeProvince, String> provinceCodes =
                 extractProvinceCodes(contents);
         RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
-        return importContents(contents, regionMappings);
+        return importContents(contents, regionMappings, expiredEventIds);
     }
 
     private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
@@ -281,7 +297,8 @@ public class TourApiImportService {
 
     private ContentImportResult importContents(
             List<JsonNode> sourceContents,
-            RegionMappings regionMappings) {
+            RegionMappings regionMappings,
+            Set<String> expiredEventIds) {
         List<ContentRow> rows = new ArrayList<>();
         Set<String> contentIds = new HashSet<>();
         Set<String> sourceContentIds = new HashSet<>();
@@ -290,6 +307,9 @@ public class TourApiImportService {
 
         for (JsonNode source : sourceContents) {
             String sourceContentId = text(source, "contentid");
+            if (sourceContentId != null && expiredEventIds.contains(sourceContentId)) {
+                continue;
+            }
             if (sourceContentId != null) {
                 sourceContentIds.add(sourceContentId);
             }
@@ -457,11 +477,16 @@ public class TourApiImportService {
 
     private EventImportResult importEvents(
             List<JsonNode> sourceEvents,
-            Set<String> importedContentIds) {
+            Set<String> importedContentIds,
+            Map<String, ExistingEvent> existingEvents,
+            Set<String> expiredEventIds) {
         List<EventRow> events = new ArrayList<>();
         int invalid = 0;
         for (JsonNode source : sourceEvents) {
             String contentId = text(source, "contentid");
+            if (contentId != null && expiredEventIds.contains(contentId)) {
+                continue;
+            }
             LocalDate startDate = date(source, "eventstartdate");
             LocalDate endDate = date(source, "eventenddate");
             if (!importedContentIds.contains(contentId)
@@ -474,7 +499,6 @@ public class TourApiImportService {
             events.add(new EventRow(contentId, startDate, endDate));
         }
 
-        Map<String, ExistingEvent> existingEvents = loadExistingEvents();
         List<EventRow> changedEvents = events.stream()
                 .filter(event -> !event.matches(existingEvents.get(event.sourceContentId())))
                 .toList();
@@ -513,6 +537,33 @@ public class TourApiImportService {
             }
         });
         return new EventImportResult(changedEvents.size(), invalid, eventChangeSets);
+    }
+
+    private Set<String> resolveExpiredEventIds(
+            List<JsonNode> sourceEvents,
+            Map<String, ExistingEvent> existingEvents,
+            LocalDate syncDate) {
+        Set<String> expired = existingEvents.values().stream()
+                .filter(event -> event.endDate().isBefore(syncDate))
+                .map(ExistingEvent::sourceContentId)
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        for (JsonNode source : sourceEvents) {
+            String contentId = text(source, "contentid");
+            LocalDate startDate = date(source, "eventstartdate");
+            LocalDate endDate = date(source, "eventenddate");
+            if (contentId == null
+                    || startDate == null
+                    || endDate == null
+                    || startDate.isAfter(endDate)) {
+                continue;
+            }
+            if (endDate.isBefore(syncDate)) {
+                expired.add(contentId);
+            } else {
+                expired.remove(contentId);
+            }
+        }
+        return Set.copyOf(expired);
     }
 
     private Map<String, ExistingEvent> loadExistingEvents() {
