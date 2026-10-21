@@ -18,6 +18,11 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+notification:
+  redis:
+    enabled: ${NOTIFICATION_REDIS_ENABLED:true}
+    channel: ${NOTIFICATION_REDIS_CHANNEL:kgb:prod:notification:sse}
+
 ai:
   server:
     base-url: ${AI_SERVER_BASE_URL}

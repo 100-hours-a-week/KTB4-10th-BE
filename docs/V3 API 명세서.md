@@ -696,6 +696,7 @@ data:{"notification_id":"301","type":"GUIDEBOOK_COMPLETED","title":"가이드북
 - 브라우저 `EventSource`의 자동 재연결을 사용한다. FE·BE가 교차 Origin이면 쿠키 전달을 위해 `withCredentials: true`와 허용된 CORS Origin이 필요하다.
 - 서버는 `Last-Event-ID` 기반 과거 이벤트 재전송을 제공하지 않는다. 연결이 끊겼다가 복구되면 `GET /notifications`를 호출해 DB에 남은 미읽음 알림을 동기화한다.
 - 응답에는 `Cache-Control: no-cache`, `X-Accel-Buffering: no`를 설정한다. 배포 프록시도 SSE 버퍼링과 짧은 응답 타임아웃을 사용하지 않아야 한다.
+- SSE 호출 한 번을 연결 하나로 계산하며, 같은 세션의 여러 탭도 각각 별도 연결이 될 수 있다. 회원별 기본 최대 5개는 인스턴스별 메모리 보호 상한으로 적용하고, 초과 시 해당 인스턴스의 가장 오래된 연결을 종료한다. 다중 인스턴스 전체에서 전역 5개를 보장하는 계약은 아니다.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
