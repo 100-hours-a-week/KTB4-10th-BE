@@ -70,7 +70,7 @@ class TourApiBaseImportTransactionMysqlIntegrationTest {
     void rollsBackContentChangesWhenRefreshPlanCannotBeSaved() {
         UUID runId = UUID.randomUUID();
         refreshRepository.save(runId, List.of(), Instant.parse("2026-10-18T00:00:00Z"));
-        when(importer.importSnapshots(any(), any())).thenAnswer(invocation -> {
+        when(importer.importSnapshots(any(), any(), any())).thenAnswer(invocation -> {
             jdbcTemplate.update("INSERT INTO tour_api_import_transaction_probe (id) VALUES (1)");
             return new ImportSummary(1, 1, 0, 0, 0, 0, 0, 0);
         });
