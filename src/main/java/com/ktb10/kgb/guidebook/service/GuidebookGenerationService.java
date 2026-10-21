@@ -8,6 +8,7 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.client.AiClientException;
+import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
@@ -44,6 +45,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.ObjectProvider;
@@ -253,15 +255,12 @@ public class GuidebookGenerationService {
                         job.getId(),
                         job.getAiJobId(),
                         exception);
-                job.fail("{\"code\":\"AI_STATUS_UNAVAILABLE\"}", LocalDateTime.now(clock));
+                job.fail(serializeStatusLookupFailure(exception), LocalDateTime.now(clock));
             }
         }
 
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
-                ? new GenerationStatusResponse.GenerationError(
-                        "GENERATION_FAILED",
-                        "가이드북 생성에 실패했습니다.",
-                        isRetryable(job))
+                ? failureResponse(job)
                 : null;
         return GenerationStatusResponse.from(job, error);
     }
@@ -309,11 +308,62 @@ public class GuidebookGenerationService {
             if (payload != null && payload.isTextual()) {
                 payload = objectMapper.readTree(payload.asText());
             }
-            return payload == null
-                    || !payload.has("retryable")
-                    || payload.get("retryable").asBoolean();
+            if (payload == null) {
+                return false;
+            }
+            if (payload.has("retryable")) {
+                return payload.get("retryable").asBoolean();
+            }
+            return !isUserCorrectionRequired(payload.path("code").asText());
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             return false;
+        }
+    }
+
+    private GenerationStatusResponse.GenerationError failureResponse(GenerationJob job) {
+        String code = "GENERATION_FAILED";
+        String message = "가이드북 생성에 실패했습니다.";
+        try {
+            JsonNode payload = objectMapper.readTree(job.getErrorPayload());
+            if (payload != null && payload.isTextual()) {
+                payload = objectMapper.readTree(payload.asText());
+            }
+            if (payload != null) {
+                code = payload.path("code").asText(code);
+                message = payload.path("message").asText(message);
+            }
+        } catch (JsonProcessingException | IllegalArgumentException ignored) {
+            return new GenerationStatusResponse.GenerationError(
+                    code, message, isRetryable(job));
+        }
+        return new GenerationStatusResponse.GenerationError(code, message, isRetryable(job));
+    }
+
+    private boolean isUserCorrectionRequired(String code) {
+        return "feedback_not_applicable".equals(code)
+                || "insufficient_candidates".equals(code);
+    }
+
+    private String serializeStatusLookupFailure(AiClientException exception) {
+        String code;
+        String message;
+        if (Integer.valueOf(404).equals(exception.getUpstreamStatus())) {
+            code = "AI_JOB_NOT_FOUND";
+            message = "생성 작업 정보를 찾을 수 없습니다.";
+        } else if (exception.getFailureType() == AiFailureType.UPSTREAM_5XX) {
+            code = "AI_SERVER_ERROR";
+            message = "가이드북 생성 서버에 일시적인 오류가 발생했습니다.";
+        } else {
+            code = "AI_STATUS_UNAVAILABLE";
+            message = "가이드북 생성 상태를 확인하지 못했습니다.";
+        }
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "code", code,
+                    "message", message,
+                    "retryable", exception.getFailureType().isRetryable()));
+        } catch (JsonProcessingException serializationFailure) {
+            throw new IllegalStateException("가이드북 생성 상태 실패 정보를 저장할 수 없습니다.", serializationFailure);
         }
     }
 

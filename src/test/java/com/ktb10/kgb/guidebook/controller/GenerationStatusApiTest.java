@@ -120,9 +120,9 @@ class GenerationStatusApiTest {
     }
 
     @Test
-    void failedJobDoesNotExposeInternalAiPayload() throws Exception {
+    void failedJobExposesAiFailureCodeAndMessage() throws Exception {
         GenerationJob job = saveJob(GenerationStatus.FAILED);
-        ReflectionTestUtils.setField(job, "errorPayload", "{\"message\":\"private-ai-secret\"}");
+        ReflectionTestUtils.setField(job, "errorPayload", "{\"code\":\"generation_timeout\",\"message\":\"일정 생성 시간이 초과되었습니다.\"}");
         generationJobRepository.flush();
         entityManager.clear();
 
@@ -130,11 +130,11 @@ class GenerationStatusApiTest {
                         .cookie(sessionCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("FAILED"))
-                .andExpect(jsonPath("$.data.error.code").value("GENERATION_FAILED"))
-                .andExpect(jsonPath("$.data.error.message").value("가이드북 생성에 실패했습니다."))
+                .andExpect(jsonPath("$.data.error.code").value("generation_timeout"))
+                .andExpect(jsonPath("$.data.error.message").value("일정 생성 시간이 초과되었습니다."))
                 .andExpect(jsonPath("$.data.error.retryable").value(true))
                 .andReturn().getResponse().getContentAsString();
-        assertThat(response).doesNotContain("private-ai-secret", "error_payload", "request_payload");
+        assertThat(response).doesNotContain("error_payload", "request_payload");
     }
 
     @Test
@@ -151,6 +151,20 @@ class GenerationStatusApiTest {
         mockMvc.perform(get("/api/v1/guidebook-generations/{jobId}", job.getId())
                         .cookie(sessionCookie))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.error.retryable").value(false));
+    }
+
+    @Test
+    void returnsNotRetryableForFeedbackThatRequiresUserCorrection() throws Exception {
+        GenerationJob job = saveJob(GenerationStatus.FAILED);
+        ReflectionTestUtils.setField(job, "errorPayload", "{\"code\":\"feedback_not_applicable\",\"message\":\"수정 요청을 적용할 수 없습니다.\"}");
+        generationJobRepository.flush();
+        entityManager.clear();
+
+        mockMvc.perform(get("/api/v1/guidebook-generations/{jobId}", job.getId())
+                        .cookie(sessionCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.error.code").value("feedback_not_applicable"))
                 .andExpect(jsonPath("$.data.error.retryable").value(false));
     }
 
