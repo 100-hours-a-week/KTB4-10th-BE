@@ -44,6 +44,9 @@ public class Guidebook {
     @Column(name = "people_count", nullable = false)
     private Integer peopleCount;
 
+    @Column(name = "thumbnail_url", length = 2048)
+    private String thumbnailUrl;
+
     @Column(name = "content_html", columnDefinition = "TEXT")
     private String contentHtml;
 
@@ -65,6 +68,21 @@ public class Guidebook {
             int peopleCount,
             String contentHtml,
             LocalDateTime now) {
+        return create(
+                title, regionId, startDate, endDate, companion,
+                peopleCount, null, contentHtml, now);
+    }
+
+    public static Guidebook create(
+            String title,
+            Long regionId,
+            LocalDate startDate,
+            LocalDate endDate,
+            Companion companion,
+            int peopleCount,
+            String thumbnailUrl,
+            String contentHtml,
+            LocalDateTime now) {
         validatePeriod(startDate, endDate);
         if (peopleCount < 1) {
             throw new IllegalArgumentException("여행 인원은 1명 이상이어야 합니다.");
@@ -77,6 +95,7 @@ public class Guidebook {
         guidebook.endDate = endDate;
         guidebook.companion = Objects.requireNonNull(companion);
         guidebook.peopleCount = peopleCount;
+        guidebook.thumbnailUrl = thumbnailUrl;
         guidebook.contentHtml = contentHtml;
         guidebook.version = 1;
         guidebook.createdAt = Objects.requireNonNull(now);
@@ -85,9 +104,17 @@ public class Guidebook {
     }
 
     public void replaceGeneratedContent(String contentHtml, LocalDateTime updatedAt) {
+        replaceGeneratedContent(thumbnailUrl, contentHtml, updatedAt);
+    }
+
+    public void replaceGeneratedContent(
+            String thumbnailUrl,
+            String contentHtml,
+            LocalDateTime updatedAt) {
         if (contentHtml == null || contentHtml.isBlank()) {
             throw new IllegalArgumentException("가이드북 HTML 본문은 비어 있을 수 없습니다.");
         }
+        this.thumbnailUrl = thumbnailUrl;
         this.contentHtml = contentHtml;
         this.version = Math.addExact(version, 1);
         this.updatedAt = Objects.requireNonNull(updatedAt);

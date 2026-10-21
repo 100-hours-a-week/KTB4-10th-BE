@@ -36,9 +36,19 @@ public record AiGenerationStatusResponse(
     public record GuidebookResult(
             String title,
             String summary,
+            @JsonProperty("thumbnail_url")
+            String thumbnailUrl,
             @JsonProperty("content_html")
             String contentHtml,
             List<ItineraryDay> itinerary) {
+
+        public GuidebookResult(
+                String title,
+                String summary,
+                String contentHtml,
+                List<ItineraryDay> itinerary) {
+            this(title, summary, null, contentHtml, itinerary);
+        }
 
         public GuidebookResult {
             itinerary = List.copyOf(itinerary);

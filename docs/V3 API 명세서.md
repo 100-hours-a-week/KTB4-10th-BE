@@ -1140,7 +1140,7 @@ Body 없음.
 - `guidebooks.start_date ASC, guidebooks.created_at DESC, member_guidebooks.id DESC` 고정
 - 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 제공하지 않음. 현재 회원 취향을 과거 카드 표시값으로 대체하지 않음
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 대표 이미지로 제공하며, 없으면 `null`
 - 화면에서 계산 가능한 일정 길이는 별도 필드로 제공하지 않음
 - `people_count`, `version`, `updated_at`, `content_html`은 목록 카드에서 사용하지 않으므로 제외
 
@@ -1154,7 +1154,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","thumbnail_url":"https://example.com/guidebook.jpg","companion":"FRIEND"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -1276,7 +1276,7 @@ Body 없음.
 - itinerary는 일차를 `day_number ASC`, 방문 장소를 `sequence ASC`로 제공
 - 생성 완료 화면의 "첫 장소 외 N곳" 문구는 프론트엔드가 각 일차의 첫 항목과 전체 개수로 계산
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 생성 완료 표지로 제공하며, 없으면 `null`
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**
@@ -1294,6 +1294,7 @@ Body 없음.
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
     "people_count": 2,
+    "thumbnail_url": "https://example.com/guidebook.jpg",
     "itinerary": [
       {
         "day_number": 1,
