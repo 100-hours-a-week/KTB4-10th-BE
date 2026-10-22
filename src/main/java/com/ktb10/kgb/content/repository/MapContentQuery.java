@@ -1,6 +1,7 @@
 package com.ktb10.kgb.content.repository;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.EventOverview;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.content.model.TourismContentCategoryPolicy;
 import java.sql.Date;
@@ -32,6 +33,14 @@ public class MapContentQuery {
                     resultSet.getDouble("latitude"),
                     resultSet.getDouble("longitude"),
                     resultSet.getString("thumbnail_url"),
+                    resultSet.getString("description"),
+                    resultSet.getString("phone"),
+                    resultSet.getString("homepage_url"),
+                    eventOverview(
+                            resultSet.getString("operating_hours"),
+                            resultSet.getString("organizer"),
+                            resultSet.getString("organizer_phone"),
+                            resultSet.getString("event_place")),
                     eventPeriod(
                             resultSet.getDate("start_date"),
                             resultSet.getDate("end_date")));
@@ -73,8 +82,15 @@ public class MapContentQuery {
                     ST_Latitude(content.location) AS latitude,
                     ST_Longitude(content.location) AS longitude,
                     content.thumbnail_url,
+                    content.description,
+                    content.phone,
+                    content.homepage_url,
                     event.start_date,
-                    event.end_date
+                    event.end_date,
+                    event.operating_hours,
+                    event.organizer,
+                    event.organizer_phone,
+                    event.event_place
                 FROM tourism_contents content
                 LEFT JOIN event_details event ON event.content_id = content.id
                 WHERE content.status = 'ACTIVE'
@@ -118,8 +134,15 @@ public class MapContentQuery {
                     ST_Latitude(content.location) AS latitude,
                     ST_Longitude(content.location) AS longitude,
                     content.thumbnail_url,
+                    content.description,
+                    content.phone,
+                    content.homepage_url,
                     event.start_date,
-                    event.end_date
+                    event.end_date,
+                    event.operating_hours,
+                    event.organizer,
+                    event.organizer_phone,
+                    event.event_place
                 FROM tourism_contents content
                 LEFT JOIN event_details event ON event.content_id = content.id
                 WHERE content.status = 'ACTIVE'
@@ -151,8 +174,15 @@ public class MapContentQuery {
                     ST_Latitude(content.location) AS latitude,
                     ST_Longitude(content.location) AS longitude,
                     content.thumbnail_url,
+                    content.description,
+                    content.phone,
+                    content.homepage_url,
                     event.start_date,
-                    event.end_date
+                    event.end_date,
+                    event.operating_hours,
+                    event.organizer,
+                    event.organizer_phone,
+                    event.event_place
                 FROM tourism_contents content
                 JOIN event_details event ON event.content_id = content.id
                 WHERE content.status = 'ACTIVE'
@@ -170,5 +200,16 @@ public class MapContentQuery {
             return null;
         }
         return new EventPeriod(startDate.toLocalDate(), endDate.toLocalDate());
+    }
+
+    private static EventOverview eventOverview(
+            String operatingHours,
+            String organizer,
+            String organizerPhone,
+            String eventPlace) {
+        if (operatingHours == null && organizer == null && organizerPhone == null && eventPlace == null) {
+            return null;
+        }
+        return new EventOverview(operatingHours, organizer, organizerPhone, eventPlace);
     }
 }
