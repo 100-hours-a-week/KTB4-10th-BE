@@ -98,6 +98,15 @@ class ContentReadRepositoryMysqlIntegrationTest {
                 BASE_TIME.plusDays(1), BASE_TIME.plusHours(5),
                 "2026-10-01", "2026-10-31");
         insertImages(detailId);
+        Long memberId = insertMember("detail-member");
+        jdbcTemplate.update(
+                """
+                INSERT INTO favorite_contents (member_id, content_id, created_at)
+                VALUES (?, ?, ?)
+                """,
+                memberId,
+                detailId,
+                BASE_TIME);
 
         var firstPage = repository.findEvents(
                 null, null, null, null, PageRequest.of(0, 2));
@@ -105,7 +114,7 @@ class ContentReadRepositoryMysqlIntegrationTest {
                 null, null, null, null, PageRequest.of(1, 2));
         var searchResult = repository.findEvents(
                 "서울", null, null, null, PageRequest.of(0, 10));
-        var detail = service.getEventDetail("event-seoul-1");
+        var detail = service.getEventDetail(memberId, "event-seoul-1");
 
         assertThat(firstPage.getTotalElements()).isEqualTo(4);
         assertThat(firstPage.getContent())
@@ -120,6 +129,7 @@ class ContentReadRepositoryMysqlIntegrationTest {
         assertThat(repository.findEventDetail("event-inactive")).isEmpty();
         assertThat(repository.findEventDetail("event-deleted")).isEmpty();
         assertThat(detail.title()).isEqualTo("서울 야행");
+        assertThat(detail.favorite()).isTrue();
         assertThat(detail.eventDetail().operatingHours()).isEqualTo("18:00~22:00");
         assertThat(detail.images())
                 .extracting(image -> image.imageUrl())
@@ -151,6 +161,23 @@ class ContentReadRepositoryMysqlIntegrationTest {
         assertThat(result.getContent().getFirst().getRegionName()).isEqualTo("서울특별시");
         assertThat(repository.countProvinceByCode("11")).isEqualTo(1L);
         assertThat(repository.countProvinceByCode("unknown")).isZero();
+    }
+
+    private Long insertMember(String oauthSubject) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO members (
+                    oauth_provider, oauth_subject, nickname, language_code,
+                    status, push_enabled, created_at, updated_at
+                ) VALUES ('KAKAO', ?, '테스트회원', 'ko', 'ACTIVE', TRUE, ?, ?)
+                """,
+                oauthSubject,
+                BASE_TIME,
+                BASE_TIME);
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM members WHERE oauth_subject = ?",
+                Long.class,
+                oauthSubject);
     }
 
     private Long insertEvent(

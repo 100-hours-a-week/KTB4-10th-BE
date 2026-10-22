@@ -97,6 +97,86 @@ class FavoriteContentMysqlIntegrationTest {
         assertThat(otherResult.isFavorite(contentId)).isFalse();
     }
 
+    @Test
+    void queriesActiveFavoritesWithStableCompositeCursor() {
+        Long eventId = insertAdditionalContent(
+                "event-1", "서울 야행", "EV", "ACTIVE", null);
+        Long newerPlaceId = insertAdditionalContent(
+                "place-2", "남산 공원", "NA", "ACTIVE", null);
+        Long inactiveId = insertAdditionalContent(
+                "inactive-1", "비활성 장소", "NA", "INACTIVE", NOW);
+        Long deletedId = insertAdditionalContent(
+                "deleted-1", "삭제 장소", "NA", "ACTIVE", NOW);
+        jdbcTemplate.update(
+                """
+                INSERT INTO event_details (content_id, start_date, end_date, updated_at)
+                VALUES (?, '2026-10-24', '2026-10-25', ?)
+                """,
+                eventId,
+                NOW);
+
+        favoriteContentQuery.save(memberId, contentId, NOW);
+        favoriteContentQuery.save(memberId, eventId, NOW);
+        favoriteContentQuery.save(memberId, newerPlaceId, NOW);
+        favoriteContentQuery.save(memberId, inactiveId, NOW);
+        favoriteContentQuery.save(memberId, deletedId, NOW);
+
+        var firstPage = favoriteContentQuery.findPage(memberId, 2);
+
+        assertThat(firstPage)
+                .extracting(FavoriteContentQuery.FavoriteContentListRow::contentId)
+                .containsExactly("place-2", "event-1");
+        assertThat(firstPage.get(1).contentType().name()).isEqualTo("EVENT");
+        assertThat(firstPage.get(1).eventStartDate())
+                .isEqualTo(java.time.LocalDate.of(2026, 10, 24));
+
+        var cursorRow = firstPage.getLast();
+        var secondPage = favoriteContentQuery.findPageAfter(
+                memberId,
+                cursorRow.favoriteCreatedAt(),
+                cursorRow.favoriteId(),
+                2);
+
+        assertThat(secondPage)
+                .extracting(FavoriteContentQuery.FavoriteContentListRow::contentId)
+                .containsExactly("content-1");
+    }
+
+    @Test
+    void keysetPageDoesNotDuplicateNewerFavoriteAddedAfterFirstPage() {
+        Long olderId = insertAdditionalContent("older", "오래된 장소", "NA", "ACTIVE", null);
+        Long newerId = insertAdditionalContent("newer", "새 장소", "NA", "ACTIVE", null);
+        favoriteContentQuery.save(memberId, olderId, NOW.minusMinutes(1));
+        favoriteContentQuery.save(memberId, contentId, NOW);
+
+        var firstPage = favoriteContentQuery.findPage(memberId, 1);
+        var cursor = firstPage.getFirst();
+        favoriteContentQuery.save(memberId, newerId, NOW.plusMinutes(1));
+
+        var secondPage = favoriteContentQuery.findPageAfter(
+                memberId, cursor.favoriteCreatedAt(), cursor.favoriteId(), 2);
+
+        assertThat(secondPage)
+                .extracting(FavoriteContentQuery.FavoriteContentListRow::contentId)
+                .containsExactly("older");
+    }
+
+    @Test
+    void saveAndDeleteResolveContentByProviderAndSourceContentId() {
+        Long otherProviderContentId = insertAdditionalContent(
+                "content-1", "다른 공급자 장소", "NA", "ACTIVE", null, "OTHER_PROVIDER");
+
+        assertThat(favoriteContentQuery.findActiveContentId("content-1"))
+                .contains(contentId);
+
+        favoriteContentQuery.save(memberId, contentId, NOW);
+        favoriteContentQuery.save(memberId, otherProviderContentId, NOW);
+        favoriteContentQuery.delete(memberId, "content-1");
+
+        assertThat(favoriteCount(memberId, contentId)).isZero();
+        assertThat(favoriteCount(memberId, otherProviderContentId)).isOne();
+    }
+
     private Long insertMember(String oauthSubject) {
         jdbcTemplate.update(
                 """
@@ -142,6 +222,64 @@ class FavoriteContentMysqlIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT id FROM tourism_contents WHERE source_content_id = 'content-1'",
                 Long.class);
+    }
+
+    private Long insertAdditionalContent(
+            String sourceContentId,
+            String title,
+            String classificationCode1,
+            String status,
+            LocalDateTime deletedAt) {
+        return insertAdditionalContent(
+                sourceContentId,
+                title,
+                classificationCode1,
+                status,
+                deletedAt,
+                "TOUR_API");
+    }
+
+    private Long insertAdditionalContent(
+            String sourceContentId,
+            String title,
+            String classificationCode1,
+            String status,
+            LocalDateTime deletedAt,
+            String sourceProvider) {
+        Long regionId = jdbcTemplate.queryForObject(
+                "SELECT id FROM regions WHERE administrative_code = '41'",
+                Long.class);
+        jdbcTemplate.update(
+                """
+                INSERT INTO tourism_contents (
+                    source_provider, source_content_id, title, region_id,
+                    classification_code_1, classification_code_2,
+                    address, location, thumbnail_url,
+                    status, deleted_at, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, ?, ?, 'NA04', '서울특별시',
+                    ST_SRID(POINT(127.1105, 37.3953), 4326),
+                    'https://example.com/image.jpg', ?, ?, ?, ?
+                )
+                """,
+                sourceProvider,
+                sourceContentId,
+                title,
+                regionId,
+                classificationCode1,
+                status,
+                deletedAt,
+                NOW,
+                NOW);
+        return jdbcTemplate.queryForObject(
+                """
+                SELECT id
+                FROM tourism_contents
+                WHERE source_provider = ? AND source_content_id = ?
+                """,
+                Long.class,
+                sourceProvider,
+                sourceContentId);
     }
 
     private int favoriteCount(Long targetMemberId, Long targetContentId) {

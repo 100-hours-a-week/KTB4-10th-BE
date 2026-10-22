@@ -1,6 +1,7 @@
 package com.ktb10.kgb.content.controller;
 
 import com.ktb10.kgb.common.response.ApiResponse;
+import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.content.dto.ContentDetailResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.service.ContentReadService;
@@ -9,6 +10,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,10 +47,11 @@ public class ContentReadController {
 
     @GetMapping("/{contentId}")
     public ResponseEntity<ApiResponse<ContentDetailResponse>> getContent(
+            @AuthenticationPrincipal AuthenticatedMember member,
             @PathVariable String contentId) {
         return ResponseEntity.ok(ApiResponse.success(
                 "content_get_success",
-                contentReadService.getEventDetail(contentId)));
+                contentReadService.getEventDetail(member.memberId(), contentId)));
     }
 
     public enum ContentCategory {
