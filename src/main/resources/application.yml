@@ -79,6 +79,7 @@ notification:
     reconnect-time-millis: ${NOTIFICATION_SSE_RECONNECT_TIME_MILLIS:3000}
     heartbeat-interval-millis: ${NOTIFICATION_SSE_HEARTBEAT_INTERVAL_MILLIS:15000}
     max-connections-per-member: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:5}
+    observability-log-interval-millis: ${NOTIFICATION_SSE_OBSERVABILITY_LOG_INTERVAL_MILLIS:300000}
   trip-starting:
     cron: "${NOTIFICATION_TRIP_STARTING_CRON:0 0 9 * * *}"
 
@@ -111,11 +112,17 @@ tour-api:
     festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}
   scheduler:
     enabled: ${TOUR_API_SCHEDULER_ENABLED:false}
-    cron: ${TOUR_API_SCHEDULER_CRON:0 0 0 * * *}
+    cron: ${TOUR_API_SCHEDULER_CRON:0 1 0 * * *}
     max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
     retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
     recovery-interval-millis: ${TOUR_API_SYNC_RECOVERY_INTERVAL_MILLIS:300000}
+  detail-backfill:
+    enabled: ${TOUR_API_DETAIL_BACKFILL_ENABLED:false}
+    batch-size: ${TOUR_API_DETAIL_BACKFILL_BATCH_SIZE:100}
+    max-batches: ${TOUR_API_DETAIL_BACKFILL_MAX_BATCHES:1}
+    start-after-id: ${TOUR_API_DETAIL_BACKFILL_START_AFTER_ID:0}
+    request-delay: ${TOUR_API_DETAIL_BACKFILL_REQUEST_DELAY:100ms}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
   coupon-attempt:

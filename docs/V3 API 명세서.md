@@ -30,7 +30,7 @@
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
-- GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. FAILED의 error에는 수동 재시도 가능 여부인 retryable을 제공한다.
+- GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성 작업은 조건 수정 화면 복원을 위해 최초 요청 조건(initial_request)을 함께 제공한다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
@@ -1140,7 +1140,7 @@ Body 없음.
 - `guidebooks.start_date ASC, guidebooks.created_at DESC, member_guidebooks.id DESC` 고정
 - 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 제공하지 않음. 현재 회원 취향을 과거 카드 표시값으로 대체하지 않음
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 대표 이미지로 제공하며, 없으면 `null`
 - 화면에서 계산 가능한 일정 길이는 별도 필드로 제공하지 않음
 - `people_count`, `version`, `updated_at`, `content_html`은 목록 카드에서 사용하지 않으므로 제외
 
@@ -1154,7 +1154,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","thumbnail_url":"https://example.com/guidebook.jpg","companion":"FRIEND"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -1168,7 +1168,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview`원문을 연속 Unicode 공백 정규화, `strip()`, 200자 절단, 100번 인덱스 이후 마지막 마침표 종료 규칙으로 변환한 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
+> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview` 원문을 연속 Unicode 공백 정규화와 `strip()`만 적용한 전체 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1227,7 +1227,7 @@ Body 없음.
 
 ### API-GDE-03 생성 상태 조회
 
-> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 `REQUIRES_NEW` 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
+> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 `REQUIRES_NEW` 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. AI 상태 조회 전송 실패는 작업을 `FAILED`로 전환하고 `AI_JOB_NOT_FOUND`·`AI_SERVER_ERROR`·`AI_STATUS_UNAVAILABLE` 중 하나의 공개 오류로 반환한다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1235,9 +1235,11 @@ Body 없음.
 
 - Path job_id: 필수 양의 정수
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
+- job_type: INITIAL|REGENERATION
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
+- initial_request: 최초 생성(INITIAL) 작업의 원본 요청 조건. 재생성(REGENERATION) 작업은 null이다.
 - 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
-- error: FAILED이면 `{code:"GENERATION_FAILED",message:"가이드북 생성에 실패했습니다.",retryable:true|false}`, 그 외 상태는 null. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다. 내부 AI error_payload와 원문은 반환하지 않는다.
+- error: FAILED이면 `{code:"<실패 코드>",message:"<실패 메시지>",retryable:true|false}`, 그 외 상태는 null. AI 작업 실패는 저장된 code·message를 반환하며, AI 상태 조회 전송 실패는 `AI_JOB_NOT_FOUND`·`AI_SERVER_ERROR`·`AI_STATUS_UNAVAILABLE` 중 하나를 반환한다. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다.
 
 **Request Body**
 
@@ -1250,9 +1252,18 @@ Body 없음.
   "message": "generation_job_get_success",
   "data": {
     "job_id": 301,
+    "job_type": "INITIAL",
     "status": "COMPLETED",
     "guidebook_id": 101,
     "attempt_count": 1,
+    "initial_request": {
+      "province": "경상북도",
+      "city": "경주시",
+      "start_date": "2026-10-12",
+      "end_date": "2026-10-14",
+      "companion": "FRIEND",
+      "people_count": 2
+    },
     "error": null
   }
 }
@@ -1276,7 +1287,7 @@ Body 없음.
 - itinerary는 일차를 `day_number ASC`, 방문 장소를 `sequence ASC`로 제공
 - 생성 완료 화면의 "첫 장소 외 N곳" 문구는 프론트엔드가 각 일차의 첫 항목과 전체 개수로 계산
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 생성 완료 표지로 제공하며, 없으면 `null`
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**
@@ -1294,6 +1305,7 @@ Body 없음.
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
     "people_count": 2,
+    "thumbnail_url": "https://example.com/guidebook.jpg",
     "itinerary": [
       {
         "day_number": 1,

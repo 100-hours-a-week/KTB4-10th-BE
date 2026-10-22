@@ -250,7 +250,8 @@ class GuidebookGenerationServiceTest {
         var response = service.getGenerationJobStatus(MEMBER_ID, 301L);
 
         assertThat(response.status()).isEqualTo(GenerationStatus.FAILED);
-        assertThat(response.error().code()).isEqualTo("GENERATION_FAILED");
+        assertThat(response.error().code()).isEqualTo("AI_STATUS_UNAVAILABLE");
+        assertThat(response.error().message()).isEqualTo("가이드북 생성 상태를 확인하지 못했습니다.");
         assertThat(job.getErrorPayload()).contains("AI_STATUS_UNAVAILABLE");
         verify(guidebookResultService, never()).apply(any(), any());
         verify(aiIntegrationErrorLogger).logFailure(
