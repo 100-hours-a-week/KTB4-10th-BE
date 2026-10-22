@@ -96,6 +96,8 @@ class GuidebookListApiTest {
                 .andExpect(jsonPath("$.data.items.length()").value(2))
                 .andExpect(jsonPath("$.data.items[0].guidebook_id").value(sooner.getId()))
                 .andExpect(jsonPath("$.data.items[0].title").value("다가오는 여행"))
+                .andExpect(jsonPath("$.data.items[0].thumbnail_url")
+                        .value("https://example.com/guidebook.jpg"))
                 .andExpect(jsonPath("$.data.items[0].region").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.items[0].content_html").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.items[0].people_count").doesNotHaveJsonPath())
@@ -236,6 +238,7 @@ class GuidebookListApiTest {
                 startDate.plusDays(2),
                 Companion.FRIEND,
                 2,
+                "https://example.com/guidebook.jpg",
                 "<article>여행 안내</article>",
                 createdAt));
     }

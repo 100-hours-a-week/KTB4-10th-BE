@@ -237,6 +237,7 @@ class GuidebookResultServiceTest {
         GuidebookResult regenerated = new GuidebookResult(
                 "AI가 바꾼 제목",
                 "재생성 요약",
+                "https://example.com/regenerated.jpg",
                 "<article>재생성</article>",
                 result().itinerary());
         resultService.apply(
@@ -245,6 +246,8 @@ class GuidebookResultServiceTest {
 
         assertThat(guidebook.getTitle()).isEqualTo("기존 경주 여행");
         assertThat(guidebook.getContentHtml()).isEqualTo("<article>재생성</article>");
+        assertThat(guidebook.getThumbnailUrl())
+                .isEqualTo("https://example.com/regenerated.jpg");
         assertThat(guidebook.getVersion()).isEqualTo(2);
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.COMPLETED);
         assertThat(wallet.getCreditBalance()).isEqualTo(1);
@@ -313,6 +316,7 @@ class GuidebookResultServiceTest {
         return new GuidebookResult(
                 "경주 여행",
                 "경주 여행 요약",
+                "https://example.com/guidebook.jpg",
                 "<article><h1>경주 여행</h1></article>",
                 List.of(new ItineraryDay(
                         1,

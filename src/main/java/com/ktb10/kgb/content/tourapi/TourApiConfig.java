@@ -11,7 +11,11 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 /** TourAPI 수집용 HTTP Client와 선택적인 S3 Client를 구성합니다. */
 @Configuration
-@EnableConfigurationProperties({TourApiProperties.class, TourApiSchedulerProperties.class})
+@EnableConfigurationProperties({
+    TourApiProperties.class,
+    TourApiSchedulerProperties.class,
+    TourApiDetailBackfillProperties.class
+})
 public class TourApiConfig {
 
     @Bean

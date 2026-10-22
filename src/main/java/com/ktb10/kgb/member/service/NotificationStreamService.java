@@ -79,23 +79,33 @@ public class NotificationStreamService {
         Objects.requireNonNull(sessionId, "세션 ID는 null일 수 없습니다.");
         String connectionId = UUID.randomUUID().toString();
         SseEmitter emitter = emitterFactory.create(connectionTimeout.toMillis());
-        AtomicReference<SseEmitter> evictedEmitter = new AtomicReference<>();
+        AtomicReference<EvictedConnection> evictedConnection = new AtomicReference<>();
         memberConnections.compute(memberId, (ignored, existingConnections) -> {
             ConcurrentMap<String, StreamConnection> connections = existingConnections == null
                     ? new ConcurrentHashMap<>()
                     : existingConnections;
-            evictedEmitter.set(addConnection(
+            evictedConnection.set(addConnection(
                     connections,
                     connectionId,
                     new StreamConnection(
                             sessionId,
                             emitter,
-                            connectionSequence.incrementAndGet())));
+                            connectionSequence.incrementAndGet(),
+                            System.nanoTime())));
             return connections;
         });
         registerCleanupCallbacks(memberId, connectionId, emitter);
-        if (evictedEmitter.get() != null) {
-            evictedEmitter.get().complete();
+        metrics.recordSseConnectionOpened();
+        LOGGER.debug(
+                "SSE 연결을 등록했습니다. connectionId={}, activeConnections={}",
+                connectionId,
+                activeConnectionCount());
+        if (evictedConnection.get() != null) {
+            observeConnectionClosed(
+                    evictedConnection.get().connectionId(),
+                    evictedConnection.get().connection(),
+                    SseConnectionCloseReason.EVICTED);
+            evictedConnection.get().connection().emitter().complete();
         }
 
         try {
@@ -104,7 +114,11 @@ public class NotificationStreamService {
                     .reconnectTime(reconnectTimeMillis)
                     .data(Map.of("connection_id", connectionId)));
         } catch (IOException | IllegalStateException exception) {
-            removeConnection(memberId, connectionId, emitter);
+            removeConnection(
+                    memberId,
+                    connectionId,
+                    emitter,
+                    SseConnectionCloseReason.INITIAL_SEND_FAILURE);
             emitter.completeWithError(exception);
         }
         return emitter;
@@ -136,12 +150,12 @@ public class NotificationStreamService {
                 metrics.recordSseDelivery("success");
             } catch (IOException | IllegalStateException exception) {
                 metrics.recordSseDelivery("failure");
-                removeConnection(event.recipientMemberId(), connectionId, emitter);
-                emitter.completeWithError(exception);
-                LOGGER.debug(
-                        "SSE 알림 전송 실패로 연결을 제거했습니다. memberId={}, connectionId={}",
+                removeConnection(
                         event.recipientMemberId(),
-                        connectionId);
+                        connectionId,
+                        emitter,
+                        SseConnectionCloseReason.NOTIFICATION_SEND_FAILURE);
+                emitter.completeWithError(exception);
             }
         });
         return delivered.get();
@@ -150,24 +164,36 @@ public class NotificationStreamService {
     public void disconnectMember(Long memberId) {
         ConcurrentMap<String, StreamConnection> connections = memberConnections.remove(memberId);
         if (connections != null) {
-            connections.values().stream()
-                    .map(StreamConnection::emitter)
-                    .forEach(SseEmitter::complete);
+            connections.forEach((connectionId, connection) -> {
+                observeConnectionClosed(
+                        connectionId,
+                        connection,
+                        SseConnectionCloseReason.MEMBER_DISCONNECT);
+                connection.emitter().complete();
+            });
         }
     }
 
     public void disconnectSession(Long memberId, Long sessionId) {
-        List<SseEmitter> disconnectedEmitters = new ArrayList<>();
+        List<RemovedConnection> disconnectedConnections = new ArrayList<>();
         memberConnections.computeIfPresent(memberId, (ignored, connections) -> {
             connections.forEach((connectionId, connection) -> {
                 if (connection.sessionId().equals(sessionId)
                         && connections.remove(connectionId, connection)) {
-                    disconnectedEmitters.add(connection.emitter());
+                    disconnectedConnections.add(new RemovedConnection(
+                            connectionId,
+                            connection));
                 }
             });
             return connections.isEmpty() ? null : connections;
         });
-        disconnectedEmitters.forEach(SseEmitter::complete);
+        disconnectedConnections.forEach(removedConnection -> {
+            observeConnectionClosed(
+                    removedConnection.connectionId(),
+                    removedConnection.connection(),
+                    SseConnectionCloseReason.SESSION_DISCONNECT);
+            removedConnection.connection().emitter().complete();
+        });
     }
 
     @Scheduled(fixedDelayString = "${notification.sse.heartbeat-interval-millis:15000}")
@@ -178,30 +204,65 @@ public class NotificationStreamService {
                     try {
                         emitter.send(SseEmitter.event().comment(HEARTBEAT_COMMENT));
                     } catch (IOException | IllegalStateException exception) {
-                        removeConnection(memberId, connectionId, emitter);
+                        removeConnection(
+                                memberId,
+                                connectionId,
+                                emitter,
+                                SseConnectionCloseReason.HEARTBEAT_FAILURE);
                         emitter.completeWithError(exception);
                     }
                 }));
+    }
+
+    @Scheduled(fixedDelayString =
+            "${notification.sse.observability-log-interval-millis:300000}")
+    public void logConnectionSummary() {
+        LOGGER.info(
+                "SSE 연결 현황입니다. activeConnections={}, activeMembers={}",
+                activeConnectionCount(),
+                activeMemberCount());
     }
 
     private void registerCleanupCallbacks(
             Long memberId,
             String connectionId,
             SseEmitter emitter) {
-        emitter.onCompletion(() -> removeConnection(memberId, connectionId, emitter));
-        emitter.onTimeout(() -> removeConnection(memberId, connectionId, emitter));
-        emitter.onError(ignored -> removeConnection(memberId, connectionId, emitter));
+        emitter.onCompletion(() -> removeConnection(
+                memberId,
+                connectionId,
+                emitter,
+                SseConnectionCloseReason.COMPLETION));
+        emitter.onTimeout(() -> removeConnection(
+                memberId,
+                connectionId,
+                emitter,
+                SseConnectionCloseReason.TIMEOUT));
+        emitter.onError(ignored -> removeConnection(
+                memberId,
+                connectionId,
+                emitter,
+                SseConnectionCloseReason.ERROR));
     }
 
     private void removeConnection(
             Long memberId,
             String connectionId,
-            SseEmitter emitter) {
+            SseEmitter emitter,
+            SseConnectionCloseReason reason) {
+        AtomicReference<StreamConnection> removedConnection = new AtomicReference<>();
         memberConnections.computeIfPresent(memberId, (ignored, connections) -> {
-            connections.computeIfPresent(connectionId, (ignoredConnectionId, connection) ->
-                    connection.emitter() == emitter ? null : connection);
+            connections.computeIfPresent(connectionId, (ignoredConnectionId, connection) -> {
+                if (connection.emitter() == emitter) {
+                    removedConnection.set(connection);
+                    return null;
+                }
+                return connection;
+            });
             return connections.isEmpty() ? null : connections;
         });
+        if (removedConnection.get() != null) {
+            observeConnectionClosed(connectionId, removedConnection.get(), reason);
+        }
     }
 
     int connectionCount(Long memberId) {
@@ -219,21 +280,58 @@ public class NotificationStreamService {
                 .count();
     }
 
-    private SseEmitter addConnection(
+    int activeConnectionCount() {
+        return memberConnections.values().stream()
+                .mapToInt(Map::size)
+                .sum();
+    }
+
+    int activeMemberCount() {
+        return memberConnections.size();
+    }
+
+    private EvictedConnection addConnection(
             ConcurrentMap<String, StreamConnection> connections,
             String connectionId,
             StreamConnection connection) {
-        StreamConnection evictedConnection = null;
+        Map.Entry<String, StreamConnection> oldestEntry = null;
         if (connections.size() >= maxConnectionsPerMember) {
-            Map.Entry<String, StreamConnection> oldestEntry = connections.entrySet().stream()
+            oldestEntry = connections.entrySet().stream()
                     .min(Comparator.comparingLong(entry -> entry.getValue().sequence()))
                     .orElseThrow();
-            evictedConnection = connections.remove(oldestEntry.getKey());
+            connections.remove(oldestEntry.getKey());
         }
         connections.put(connectionId, connection);
-        return evictedConnection == null ? null : evictedConnection.emitter();
+        return oldestEntry == null
+                ? null
+                : new EvictedConnection(oldestEntry.getKey(), oldestEntry.getValue());
     }
 
-    private record StreamConnection(Long sessionId, SseEmitter emitter, long sequence) {
+    private void observeConnectionClosed(
+            String connectionId,
+            StreamConnection connection,
+            SseConnectionCloseReason reason) {
+        long lifetimeNanos = System.nanoTime() - connection.openedAtNanos();
+        metrics.recordSseConnectionClosed(reason, lifetimeNanos);
+        LOGGER.debug(
+                "SSE 연결을 제거했습니다. connectionId={}, reason={},"
+                        + " lifetimeMillis={}, activeConnections={}",
+                connectionId,
+                reason,
+                Duration.ofNanos(Math.max(0L, lifetimeNanos)).toMillis(),
+                activeConnectionCount());
+    }
+
+    private record StreamConnection(
+            Long sessionId,
+            SseEmitter emitter,
+            long sequence,
+            long openedAtNanos) {
+    }
+
+    private record EvictedConnection(String connectionId, StreamConnection connection) {
+    }
+
+    private record RemovedConnection(String connectionId, StreamConnection connection) {
     }
 }

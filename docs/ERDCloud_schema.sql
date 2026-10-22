@@ -221,6 +221,7 @@ CREATE TABLE guidebooks (
     end_date DATE NOT NULL,
     companion VARCHAR(20) NOT NULL,
     people_count INT NOT NULL,
+    thumbnail_url VARCHAR(2048) NULL,
     content_html TEXT NULL,
     version INT NOT NULL DEFAULT 1,
     created_at DATETIME(6) NOT NULL,

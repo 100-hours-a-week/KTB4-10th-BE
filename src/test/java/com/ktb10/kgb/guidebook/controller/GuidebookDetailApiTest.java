@@ -109,6 +109,8 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.data.start_date").value("2026-10-12"))
                 .andExpect(jsonPath("$.data.end_date").value("2026-10-14"))
                 .andExpect(jsonPath("$.data.people_count").value(2))
+                .andExpect(jsonPath("$.data.thumbnail_url")
+                        .value("https://example.com/guidebook.jpg"))
                 .andExpect(jsonPath("$.data.companion").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.version").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.updated_at").doesNotHaveJsonPath())
@@ -293,6 +295,7 @@ class GuidebookDetailApiTest {
                 LocalDate.of(2026, 10, 14),
                 Companion.FRIEND,
                 2,
+                "https://example.com/guidebook.jpg",
                 contentHtml,
                 NOW));
     }
