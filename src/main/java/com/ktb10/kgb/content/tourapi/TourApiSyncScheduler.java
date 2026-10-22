@@ -30,7 +30,7 @@ public class TourApiSyncScheduler {
     }
 
     @Scheduled(
-            cron = "${tour-api.scheduler.cron:0 0 0 * * *}",
+            cron = "${tour-api.scheduler.cron:0 1 0 * * *}",
             zone = "Asia/Seoul")
     public void runScheduled() {
         runToday();
