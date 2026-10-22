@@ -21,6 +21,7 @@ public record ContentDetailResponse(
         String phone,
         @JsonProperty("homepage_url") String homepageUrl,
         List<ContentImageResponse> images,
+        @JsonProperty("is_favorite") boolean favorite,
         @JsonProperty("event_detail") ContentEventDetailResponse eventDetail) {
 
     public ContentDetailResponse {
@@ -29,7 +30,8 @@ public record ContentDetailResponse(
 
     public static ContentDetailResponse from(
             ContentDetailProjection data,
-            List<ContentImageProjection> images) {
+            List<ContentImageProjection> images,
+            boolean favorite) {
         return new ContentDetailResponse(
                 data.getContentId(),
                 data.getTitle(),
@@ -43,6 +45,7 @@ public record ContentDetailResponse(
                 data.getPhone(),
                 data.getHomepageUrl(),
                 images.stream().map(ContentImageResponse::from).toList(),
+                favorite,
                 new ContentEventDetailResponse(
                         data.getStartDate(),
                         data.getEndDate(),

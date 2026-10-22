@@ -7,6 +7,7 @@ import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
 import com.ktb10.kgb.content.repository.ContentReadRepository;
 import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import com.ktb10.kgb.content.repository.FavoriteContentQuery;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
 import org.springframework.data.domain.PageRequest;
@@ -19,9 +20,13 @@ import org.springframework.util.StringUtils;
 public class ContentReadService {
 
     private final ContentReadRepository contentReadRepository;
+    private final FavoriteContentQuery favoriteContentQuery;
 
-    public ContentReadService(ContentReadRepository contentReadRepository) {
+    public ContentReadService(
+            ContentReadRepository contentReadRepository,
+            FavoriteContentQuery favoriteContentQuery) {
         this.contentReadRepository = contentReadRepository;
+        this.favoriteContentQuery = favoriteContentQuery;
     }
 
     @Transactional(readOnly = true)
@@ -71,9 +76,12 @@ public class ContentReadService {
     }
 
     @Transactional(readOnly = true)
-    public ContentDetailResponse getEventDetail(String contentId) {
+    public ContentDetailResponse getEventDetail(Long memberId, String contentId) {
         ContentDetailProjection detail = contentReadRepository.findEventDetail(contentId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        return ContentDetailResponse.from(detail, contentReadRepository.findImages(detail.getId()));
+        return ContentDetailResponse.from(
+                detail,
+                contentReadRepository.findImages(detail.getId()),
+                favoriteContentQuery.exists(memberId, detail.getId()));
     }
 }

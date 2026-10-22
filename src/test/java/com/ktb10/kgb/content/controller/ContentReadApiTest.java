@@ -12,6 +12,7 @@ import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentEventPeriodResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentRegionResponse;
+import com.ktb10.kgb.content.dto.ContentDetailResponse;
 import com.ktb10.kgb.content.service.ContentReadService;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import java.time.LocalDate;
@@ -75,6 +76,40 @@ class ContentReadApiTest {
                 .andExpect(status().isOk());
 
         verify(contentReadService).getEvents("야행", "11", "2026-10", 1, 20);
+    }
+
+    @Test
+    void returnsMemberFavoriteStateInEventDetail() throws Exception {
+        when(contentReadService.getEventDetail(1L, "event-1"))
+                .thenReturn(new ContentDetailResponse(
+                        "event-1",
+                        "서울 야행",
+                        "EVENT",
+                        new ContentRegionResponse("11", "서울특별시"),
+                        37.5,
+                        127.0,
+                        null,
+                        "행사 소개",
+                        "서울특별시 종로구",
+                        null,
+                        null,
+                        List.of(),
+                        true,
+                        new ContentDetailResponse.ContentEventDetailResponse(
+                                LocalDate.of(2026, 10, 24),
+                                LocalDate.of(2026, 10, 25),
+                                null,
+                                null,
+                                null,
+                                "서울특별시 종로구")));
+
+        mockMvc.perform(get("/api/v1/contents/event-1")
+                        .with(authentication(authenticatedMember())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.content_id").value("event-1"))
+                .andExpect(jsonPath("$.data.is_favorite").value(true));
+
+        verify(contentReadService).getEventDetail(1L, "event-1");
     }
 
     @Test
