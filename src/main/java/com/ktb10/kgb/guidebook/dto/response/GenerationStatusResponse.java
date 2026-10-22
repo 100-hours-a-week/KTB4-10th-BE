@@ -1,12 +1,17 @@
 package com.ktb10.kgb.guidebook.dto.response;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
+import com.ktb10.kgb.guidebook.entity.JobType;
 
 public record GenerationStatusResponse(
         @JsonProperty("job_id")
         Long jobId,
+
+        @JsonProperty("job_type")
+        JobType jobType,
 
         GenerationStatus status,
 
@@ -16,16 +21,22 @@ public record GenerationStatusResponse(
         @JsonProperty("attempt_count")
         int attemptCount,
 
+        @JsonProperty("initial_request")
+        GuidebookGenerationRequest initialRequest,
+
         GenerationError error) {
 
     public static GenerationStatusResponse from(
             GenerationJob job,
-            GenerationError error) {
+            GenerationError error,
+            GuidebookGenerationRequest initialRequest) {
         return new GenerationStatusResponse(
                 job.getId(),
+                job.getJobType(),
                 job.getStatus(),
                 job.getGuidebookId(),
                 job.getAttemptCount().intValue(),
+                initialRequest,
                 error);
     }
 
