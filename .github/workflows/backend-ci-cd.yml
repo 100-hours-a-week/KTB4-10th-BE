@@ -115,8 +115,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/ktb4-10-be:${{ steps.image.outputs.tag }}
 
 
- 
-  # 3. Backend EC2 배포
+  # 3. Backend ECS 배포
   # ==================================================
   deploy:
     name: CD
@@ -126,77 +125,47 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      ECS_CLUSTER: kgb-prod-cluster
+      ECS_SERVICE: kgb-prod-backend
+      ECS_TASK_FAMILY: kgb-prod-backend
+      ECS_CONTAINER: backend
+      IMAGE: ghcr.io/${{ github.repository_owner }}/ktb4-10-be:${{ needs.build-image.outputs.image_tag }}
+
     steps:
 
       # GitHub OIDC를 통해 AWS IAM Role Assume
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ vars.AWS_ECS_DEPLOY_ROLE_ARN }}
           aws-region: ap-northeast-2
 
-
-      
-      # SSM을 통해 Backend EC2에 배포 명령 전달
-      # ==================================================
-      - name: Send Deploy Command
-        id: deploy
-
-        env:
-          # build-image Job에서 생성한 Image Tag
-          IMAGE_TAG: ${{ needs.build-image.outputs.image_tag }}
-
-          # GHCR Repository Owner
-          GHCR_OWNER: ${{ github.repository_owner }}
-
-          # Private GHCR Pull 인증
-          GHCR_USERNAME: ${{ vars.GHCR_USERNAME }}
-          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-
+      # 최신 Task Definition 다운로드
+      - name: Download Task Definition
         run: |
-          COMMAND_ID=$(aws ssm send-command \
-            --instance-ids "i-0ecb626c01830b39b" \
-            --document-name "AWS-RunShellScript" \
-            --parameters "commands=[
-              \"set -e\",
-              \"cd /opt/kgb\",
-              \"echo '${GHCR_TOKEN}' | docker login ghcr.io -u '${GHCR_USERNAME}' --password-stdin\",
-              \"GHCR_OWNER=${GHCR_OWNER} IMAGE_TAG=${IMAGE_TAG} docker compose pull backend\",
-              \"GHCR_OWNER=${GHCR_OWNER} IMAGE_TAG=${IMAGE_TAG} docker compose up -d backend\",
-              \"docker compose ps backend\",
-              \"for i in \$(seq 1 12); do if curl -fsS http://localhost:8081/actuator/health; then exit 0; fi; sleep 5; done; exit 1\"
-            ]" \
-            --query "Command.CommandId" \
-            --output text)
+          aws ecs describe-task-definition \
+            --task-definition "${ECS_TASK_FAMILY}" \
+            --query taskDefinition > task-definition.json
 
-          echo "command_id=${COMMAND_ID}" >> "$GITHUB_OUTPUT"
+          echo "Base: $(jq -r '.taskDefinitionArn' task-definition.json)"
 
+      # 이미지 교체
+      - name: Render Task Definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.ECS_CONTAINER }}
+          image: ${{ env.IMAGE }}
 
-      
-      # SSM 명령 완료 대기
-      # ==================================================
-      - name: Wait for Deploy Command
-        run: |
-          aws ssm wait command-executed \
-            --command-id "${{ steps.deploy.outputs.command_id }}" \
-            --instance-id "i-0ecb626c01830b39b"
-
-
-      # 배포 결과 확인
-      # ==================================================
-      - name: Check Deploy Result
-        run: |
-          STATUS=$(aws ssm get-command-invocation \
-            --command-id "${{ steps.deploy.outputs.command_id }}" \
-            --instance-id "i-0ecb626c01830b39b" \
-            --query "Status" \
-            --output text)
-
-          echo "Deploy status: ${STATUS}"
-
-          if [ "${STATUS}" != "Success" ]; then
-            echo "Backend deployment failed."
-            exit 1
-          fi
-
-          echo "Backend deployment succeeded."
+      # 새 리비전 등록 후 서비스 업데이트, 안정화까지 대기
+      # 실패 시 ECS Circuit Breaker가 이전 리비전으로 자동 롤백
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true
+          wait-for-minutes: 20
