@@ -1005,6 +1005,9 @@ Body 없음.
 - `next_cursor`는 같은 bounds에서만 사용할 수 있는 불투명 커서다.
 - 사용자가 실제 목록 끝에 도달했을 때만 다음 커서를 요청한다.
 - 공통 콘텐츠는 마지막 정상 타일 스냅샷에서만 읽고 현재 10개에 대해서만 개인화 정보를 조회한다.
+- `overview`, `phone`, `homepage_url`은 장소와 행사 모두 `String|null`이다.
+- `event_detail`은 행사 상세 필드가 존재하는 EVENT에서 객체이며 PLACE에서는 `null`이다.
+- `event_detail.operating_hours`, `organizer`, `organizer_phone`, `event_place`는 각각 `String|null`이다.
 
 ```json
 {
@@ -1018,7 +1021,11 @@ Body 없음.
       "latitude": 35.7898,
       "longitude": 129.3321,
       "thumbnail_url": null,
+      "overview": "신라 시대 사찰과 문화유산을 둘러볼 수 있습니다.",
+      "phone": "054-000-0000",
+      "homepage_url": "https://place.example.com",
       "event_period": null,
+      "event_detail": null,
       "is_favorite": true,
       "is_in_guidebook": false
     }],
