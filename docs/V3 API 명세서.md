@@ -34,7 +34,7 @@
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
-- 공통 cursor: 가이드북은 여행 시작일 ASC·가이드북 생성일 DESC·보관 관계 id DESC, 관심 장소는 created_at·content_id, 원장은 created_at·id의 DESC 키를 사용한다. size 기본20·1~100, 마지막 반환 행 기반 size+1 조회. 다음이 없으면 next_cursor=null/has_more=false.
+- 공통 cursor: 가이드북은 여행 시작일 ASC·가이드북 생성일 DESC·보관 관계 id DESC, 관심 장소와 원장은 created_at·id의 DESC 키를 사용한다. size 기본20·1~100이며 관심 장소는 1~20으로 제한한다. 마지막 반환 행 기반 size+1 조회를 사용하고 다음이 없으면 next_cursor=null/has_more=false다.
 - 커서는 base64url payload+HMAC-SHA256 서명, 최대2048자·24시간. 버전/endpoint/세션 회원/정렬/필터/마지막 키/첫 상한 키/발급시각을 결속한다. 잘못됨·타인·만료는 400. DATETIME(6) 정밀도 유지, 키 행 삭제 후에도 값 비교로 진행한다. 데이터 변경 사이 완전한 snapshot은 보장하지 않는다.
 - 상세 session·cursor·TX·탈퇴 규약과 아직 미정인 AI 계약은 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)을 따른다. CSRF 전달 계약은 API-MEM-16을 따른다.
 
@@ -71,7 +71,7 @@
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
 | API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 예 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
-| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 아니요 | V1 화면 범위에서 제외 |
+| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | V2 회원별 관심 장소 커서 조회 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 예 | Query cursor,size |
@@ -903,6 +903,7 @@ Body 없음.
 - event_detail.start_date/end_date: YYYY-MM-DD; operating_hours/organizer: String|null
 - 현재 스키마에 별도 값이 없는 organizer_phone은 null, event_place는 공통 address를 반환
 - images[].image_id: ID; image_url: String ≤2048자; sort_order: Integer
+- is_favorite: 로그인 회원의 현재 관심 장소 등록 여부
 
 **Request Body**
 
@@ -926,7 +927,8 @@ Body 없음.
     "phone": null,
     "homepage_url": null,
     "images": [{"image_id":"201","image_url":"https://example.com/image.jpg","sort_order":0}],
-    "event_detail": null
+    "event_detail": null,
+    "is_favorite": true
   }
 }
 ```
@@ -1080,7 +1082,47 @@ Body 없음.
 
 ### API-CON-04 관심 장소 목록
 
-V1에서는 정보 탭과 별도 관심 장소 목록 화면을 제외하므로 구현하지 않는다. 관심 장소는 지도 핀에서 등록·해제하고 `API-CON-03`의 `is_favorite`으로 표시한다.
+| Method | URL | 인증 |
+|---|---|---|
+| GET | `/members/me/favorites` | 세션 쿠키 필수 |
+
+- Query `size`: 선택 Integer, 기본 20, 1~20
+- Query `cursor`: 선택 String, 첫 페이지에서는 생략
+- 활성·미삭제 콘텐츠만 `favorite_contents.created_at DESC, id DESC` 순서로 조회한다.
+- 커서는 마지막 관심 등록의 시각과 PK를 포함한 불투명 값이다. 형식이 올바르면 해당 기준값으로 바로 다음 페이지를 조회하며, 기준 행이 삭제된 뒤에도 계속 사용할 수 있다.
+- `content_type`: `EVENT` 또는 `PLACE`
+- `event_period`: 행사면 `{start_date,end_date}`, 장소면 `null`; 개별 날짜는 원본 데이터에 따라 `null`일 수 있다.
+- 주소와 대표 이미지는 원본 데이터가 없으면 `null`이다.
+
+**응답 200**
+
+```json
+{
+  "message": "favorite_list_success",
+  "data": {
+    "items": [{
+      "content_id": "101",
+      "title": "서울 야행",
+      "content_type": "EVENT",
+      "address": "서울특별시 중구",
+      "thumbnail_url": null,
+      "event_period": {
+        "start_date": "2026-10-24",
+        "end_date": "2026-10-25"
+      },
+      "is_favorite": true
+    }],
+    "next_cursor": null,
+    "has_more": false
+  }
+}
+```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | size 범위 또는 커서 형식 오류 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-CON-05 관심 장소 등록
 
@@ -1088,7 +1130,7 @@ V1에서는 정보 탭과 별도 관심 장소 목록 화면을 제외하므로 
 |---|---|---|
 | PUT | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
-- Path content_id: 필수 ID 문자열
+- Path content_id: 필수 TourAPI 콘텐츠 ID 문자열
 - Body 없음. 활성 콘텐츠만 신규 등록; 중복 요청도 200
 
 **Request Body**
@@ -1119,7 +1161,7 @@ V1에서는 정보 탭과 별도 관심 장소 목록 화면을 제외하므로 
 |---|---|---|
 | DELETE | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
-- Path content_id: 필수 ID 문자열
+- Path content_id: 필수 TourAPI 콘텐츠 ID 문자열
 - Body 없음. 이미 해제된 경우도 204
 
 **Request Body**

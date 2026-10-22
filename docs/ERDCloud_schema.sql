@@ -210,7 +210,8 @@ CREATE TABLE favorite_contents (
     PRIMARY KEY (id),
     CONSTRAINT uq_favorite_contents_member_content UNIQUE (member_id, content_id),
     CONSTRAINT fk_favorite_contents_member FOREIGN KEY (member_id) REFERENCES members (id),
-    CONSTRAINT fk_favorite_contents_content FOREIGN KEY (content_id) REFERENCES tourism_contents (id)
+    CONSTRAINT fk_favorite_contents_content FOREIGN KEY (content_id) REFERENCES tourism_contents (id),
+    INDEX ix_favorite_contents_member_created (member_id, created_at DESC, id DESC)
 ) COMMENT = '회원과 관심 관광 콘텐츠의 N:M 관계';
 
 CREATE TABLE guidebooks (
