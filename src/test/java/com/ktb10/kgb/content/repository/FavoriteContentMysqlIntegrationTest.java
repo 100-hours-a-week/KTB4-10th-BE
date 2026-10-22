@@ -131,9 +131,6 @@ class FavoriteContentMysqlIntegrationTest {
                 .isEqualTo(java.time.LocalDate.of(2026, 10, 24));
 
         var cursorRow = firstPage.getLast();
-        assertThat(favoriteContentQuery.cursorExists(
-                memberId, cursorRow.favoriteCreatedAt(), cursorRow.favoriteId())).isTrue();
-
         var secondPage = favoriteContentQuery.findPageAfter(
                 memberId,
                 cursorRow.favoriteCreatedAt(),
@@ -162,6 +159,22 @@ class FavoriteContentMysqlIntegrationTest {
         assertThat(secondPage)
                 .extracting(FavoriteContentQuery.FavoriteContentListRow::contentId)
                 .containsExactly("older");
+    }
+
+    @Test
+    void saveAndDeleteResolveContentByProviderAndSourceContentId() {
+        Long otherProviderContentId = insertAdditionalContent(
+                "content-1", "다른 공급자 장소", "NA", "ACTIVE", null, "OTHER_PROVIDER");
+
+        assertThat(favoriteContentQuery.findActiveContentId("content-1"))
+                .contains(contentId);
+
+        favoriteContentQuery.save(memberId, contentId, NOW);
+        favoriteContentQuery.save(memberId, otherProviderContentId, NOW);
+        favoriteContentQuery.delete(memberId, "content-1");
+
+        assertThat(favoriteCount(memberId, contentId)).isZero();
+        assertThat(favoriteCount(memberId, otherProviderContentId)).isOne();
     }
 
     private Long insertMember(String oauthSubject) {
@@ -217,6 +230,22 @@ class FavoriteContentMysqlIntegrationTest {
             String classificationCode1,
             String status,
             LocalDateTime deletedAt) {
+        return insertAdditionalContent(
+                sourceContentId,
+                title,
+                classificationCode1,
+                status,
+                deletedAt,
+                "TOUR_API");
+    }
+
+    private Long insertAdditionalContent(
+            String sourceContentId,
+            String title,
+            String classificationCode1,
+            String status,
+            LocalDateTime deletedAt,
+            String sourceProvider) {
         Long regionId = jdbcTemplate.queryForObject(
                 "SELECT id FROM regions WHERE administrative_code = '41'",
                 Long.class);
@@ -228,11 +257,12 @@ class FavoriteContentMysqlIntegrationTest {
                     address, location, thumbnail_url,
                     status, deleted_at, created_at, updated_at
                 ) VALUES (
-                    'TOUR_API', ?, ?, ?, ?, 'NA04', '서울특별시',
+                    ?, ?, ?, ?, ?, 'NA04', '서울특별시',
                     ST_SRID(POINT(127.1105, 37.3953), 4326),
                     'https://example.com/image.jpg', ?, ?, ?, ?
                 )
                 """,
+                sourceProvider,
                 sourceContentId,
                 title,
                 regionId,
@@ -242,8 +272,13 @@ class FavoriteContentMysqlIntegrationTest {
                 NOW,
                 NOW);
         return jdbcTemplate.queryForObject(
-                "SELECT id FROM tourism_contents WHERE source_content_id = ?",
+                """
+                SELECT id
+                FROM tourism_contents
+                WHERE source_provider = ? AND source_content_id = ?
+                """,
                 Long.class,
+                sourceProvider,
                 sourceContentId);
     }
 

@@ -88,7 +88,6 @@ class FavoriteContentServiceTest {
         assertThat(firstPage.hasMore()).isTrue();
         assertThat(firstPage.nextCursor()).isNotBlank();
 
-        when(favoriteContentQuery.cursorExists(1L, createdAt, 2L)).thenReturn(true);
         when(favoriteContentQuery.findPageAfter(1L, createdAt, 2L, 3))
                 .thenReturn(List.of(oldest));
 
@@ -121,19 +120,20 @@ class FavoriteContentServiceTest {
     }
 
     @Test
-    void rejectsCursorThatDoesNotBelongToMember() {
+    void usesStructurallyValidCursorWithoutRequiringItsRowToStillExist() {
         LocalDateTime createdAt = LocalDateTime.of(2026, 9, 28, 4, 0);
         FavoriteContentListRow cursorRow = favorite(3L, createdAt, "event-1", ContentType.EVENT);
         when(favoriteContentQuery.findPage(1L, 2)).thenReturn(List.of(
                 cursorRow,
                 favorite(2L, createdAt.minusSeconds(1), "place-1", ContentType.PLACE)));
         String cursor = service.getFavorites(1L, null, 1).nextCursor();
-        when(favoriteContentQuery.cursorExists(2L, createdAt, 3L)).thenReturn(false);
+        when(favoriteContentQuery.findPageAfter(2L, createdAt, 3L, 21))
+                .thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.getFavorites(2L, cursor, 20))
-                .isInstanceOfSatisfying(BusinessException.class, exception ->
-                        assertThat(exception.errorCode())
-                                .isEqualTo(CommonErrorCode.COMMON_VALIDATION_ERROR));
+        var response = service.getFavorites(2L, cursor, 20);
+
+        assertThat(response.items()).isEmpty();
+        assertThat(response.hasMore()).isFalse();
     }
 
     private FavoriteContentListRow favorite(

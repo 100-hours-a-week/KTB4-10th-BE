@@ -1082,7 +1082,7 @@ Body 없음.
 - Query `size`: 선택 Integer, 기본 20, 1~20
 - Query `cursor`: 선택 String, 첫 페이지에서는 생략
 - 활성·미삭제 콘텐츠만 `favorite_contents.created_at DESC, id DESC` 순서로 조회한다.
-- 커서는 마지막 관심 등록의 시각과 PK를 포함한 불투명 값이며 다른 회원의 커서나 존재하지 않는 커서는 400으로 거절한다.
+- 커서는 마지막 관심 등록의 시각과 PK를 포함한 불투명 값이다. 형식이 올바르면 해당 기준값으로 바로 다음 페이지를 조회하며, 기준 행이 삭제된 뒤에도 계속 사용할 수 있다.
 - `content_type`: `EVENT` 또는 `PLACE`
 - `event_period`: 행사면 `{start_date,end_date}`, 장소면 `null`; 개별 날짜는 원본 데이터에 따라 `null`일 수 있다.
 - 주소와 대표 이미지는 원본 데이터가 없으면 `null`이다.
@@ -1113,7 +1113,7 @@ Body 없음.
 
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
-| 400 | COMMON_VALIDATION_ERROR | size 범위, 커서 형식·소유 관계 오류 |
+| 400 | COMMON_VALIDATION_ERROR | size 범위 또는 커서 형식 오류 |
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
@@ -1123,7 +1123,7 @@ Body 없음.
 |---|---|---|
 | PUT | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
-- Path content_id: 필수 ID 문자열
+- Path content_id: 필수 TourAPI 콘텐츠 ID 문자열
 - Body 없음. 활성 콘텐츠만 신규 등록; 중복 요청도 200
 
 **Request Body**
@@ -1154,7 +1154,7 @@ Body 없음.
 |---|---|---|
 | DELETE | `/members/me/favorites/{content_id}` | 세션 쿠키 필수 |
 
-- Path content_id: 필수 ID 문자열
+- Path content_id: 필수 TourAPI 콘텐츠 ID 문자열
 - Body 없음. 이미 해제된 경우도 204
 
 **Request Body**

@@ -54,10 +54,6 @@ public class FavoriteContentService {
             favorites = favoriteContentQuery.findPage(memberId, size + 1);
         } else {
             FavoriteCursor decodedCursor = decodeCursor(cursor);
-            if (!favoriteContentQuery.cursorExists(
-                    memberId, decodedCursor.createdAt(), decodedCursor.favoriteId())) {
-                throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
-            }
             favorites = favoriteContentQuery.findPageAfter(
                     memberId,
                     decodedCursor.createdAt(),

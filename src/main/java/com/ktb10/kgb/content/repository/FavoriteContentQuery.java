@@ -14,6 +14,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class FavoriteContentQuery {
 
+    private static final String TOUR_API_PROVIDER = "TOUR_API";
+
     private static final RowMapper<FavoriteContentListRow> LIST_ROW_MAPPER =
             (resultSet, rowNumber) -> new FavoriteContentListRow(
                     resultSet.getLong("favorite_id"),
@@ -39,13 +41,15 @@ public class FavoriteContentQuery {
                 """
                 SELECT id
                 FROM tourism_contents
-                WHERE source_content_id = ?
+                WHERE source_provider = ?
+                  AND source_content_id = ?
                   AND status = 'ACTIVE'
                   AND deleted_at IS NULL
                 """,
                 resultSet -> resultSet.next()
                         ? Optional.of(resultSet.getLong("id"))
                         : Optional.empty(),
+                TOUR_API_PROVIDER,
                 sourceContentId);
     }
 
@@ -65,9 +69,12 @@ public class FavoriteContentQuery {
                 FROM favorite_contents favorite
                 JOIN tourism_contents content ON content.id = favorite.content_id
                 WHERE favorite.member_id = ?
+                  AND content.source_provider = ?
                   AND content.source_content_id = ?
                 """,
-                memberId, sourceContentId);
+                memberId,
+                TOUR_API_PROVIDER,
+                sourceContentId);
     }
 
     public List<FavoriteContentListRow> findPage(Long memberId, int limit) {
@@ -131,22 +138,6 @@ public class FavoriteContentQuery {
                 createdAt,
                 favoriteId,
                 limit);
-    }
-
-    public boolean cursorExists(Long memberId, LocalDateTime createdAt, Long favoriteId) {
-        Integer count = jdbcTemplate.queryForObject(
-                """
-                SELECT COUNT(*)
-                FROM favorite_contents
-                WHERE member_id = ?
-                  AND created_at = ?
-                  AND id = ?
-                """,
-                Integer.class,
-                memberId,
-                createdAt,
-                favoriteId);
-        return count != null && count > 0;
     }
 
     public boolean exists(Long memberId, Long contentId) {
