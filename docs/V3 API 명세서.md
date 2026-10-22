@@ -1140,7 +1140,7 @@ Body 없음.
 - `guidebooks.start_date ASC, guidebooks.created_at DESC, member_guidebooks.id DESC` 고정
 - 로그인 회원의 `member_guidebooks.deleted_at IS NULL` 관계가 있는 항목만 조회
 - preference_tags는 제공하지 않음. 현재 회원 취향을 과거 카드 표시값으로 대체하지 않음
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 대표 이미지로 제공하며, 없으면 `null`
 - 화면에서 계산 가능한 일정 길이는 별도 필드로 제공하지 않음
 - `people_count`, `version`, `updated_at`, `content_html`은 목록 카드에서 사용하지 않으므로 제외
 
@@ -1154,7 +1154,7 @@ Body 없음.
 {
   "message": "guidebook_list_success",
   "data": {
-    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","companion":"FRIEND"}],
+    "items": [{"guidebook_id":101,"title":"경주 역사 여행","start_date":"2026-10-12","end_date":"2026-10-14","thumbnail_url":"https://example.com/guidebook.jpg","companion":"FRIEND"}],
     "next_cursor": null,
     "has_more": false
   }
@@ -1168,7 +1168,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview`원문을 연속 Unicode 공백 정규화, `strip()`, 200자 절단, 100번 인덱스 이후 마지막 마침표 종료 규칙으로 변환한 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
+> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview` 원문을 연속 Unicode 공백 정규화와 `strip()`만 적용한 전체 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1287,7 +1287,7 @@ Body 없음.
 - itinerary는 일차를 `day_number ASC`, 방문 장소를 `sequence ASC`로 제공
 - 생성 완료 화면의 "첫 장소 외 N곳" 문구는 프론트엔드가 각 일차의 첫 항목과 전체 개수로 계산
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
-- 가이드북 표지 저장 계약이 확정되기 전에는 thumbnail_url을 제공하지 않고 클라이언트 기본 이미지를 사용
+- AI 완료 결과의 `thumbnail_url`을 생성 완료 표지로 제공하며, 없으면 `null`
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
 
 **Request Body**
@@ -1305,6 +1305,7 @@ Body 없음.
     "start_date": "2026-10-12",
     "end_date": "2026-10-14",
     "people_count": 2,
+    "thumbnail_url": "https://example.com/guidebook.jpg",
     "itinerary": [
       {
         "day_number": 1,

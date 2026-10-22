@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
@@ -17,9 +18,11 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -141,6 +144,60 @@ class NotificationStreamServiceTest {
 
         assertThat(streamService.connectionCount(1L)).isZero();
         verify(firstEmitter).completeWithError(any(IllegalStateException.class));
+        assertThat(connectionEventCount("closed", "heartbeat_failure")).isEqualTo(1.0);
+    }
+
+    @Test
+    void completionCallbackRemovesConnectionOnlyOnce() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        ArgumentCaptor<Runnable> completionCallback = ArgumentCaptor.forClass(Runnable.class);
+
+        streamService.subscribe(1L, 11L);
+        verify(firstEmitter).onCompletion(completionCallback.capture());
+
+        completionCallback.getValue().run();
+        completionCallback.getValue().run();
+
+        assertThat(streamService.connectionCount(1L)).isZero();
+        assertThat(connectionEventCount("opened", "none")).isEqualTo(1.0);
+        assertThat(connectionEventCount("closed", "completion")).isEqualTo(1.0);
+        assertThat(meterRegistry.get("kgb.notification.sse.connection.duration")
+                .tag("reason", "completion")
+                .timer()
+                .count()).isEqualTo(1L);
+    }
+
+    @Test
+    void timeoutCallbackRemovesConnection() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        ArgumentCaptor<Runnable> timeoutCallback = ArgumentCaptor.forClass(Runnable.class);
+
+        streamService.subscribe(1L, 11L);
+        verify(firstEmitter).onTimeout(timeoutCallback.capture());
+
+        timeoutCallback.getValue().run();
+
+        assertThat(streamService.connectionCount(1L)).isZero();
+        assertThat(connectionEventCount("closed", "timeout")).isEqualTo(1.0);
+    }
+
+    @Test
+    void errorCallbackRemovesConnection() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Consumer<Throwable>> errorCallback = ArgumentCaptor.forClass(
+                Consumer.class);
+
+        streamService.subscribe(1L, 11L);
+        verify(firstEmitter).onError(errorCallback.capture());
+
+        errorCallback.getValue().accept(new IOException("연결 종료"));
+
+        assertThat(streamService.connectionCount(1L)).isZero();
+        assertThat(connectionEventCount("closed", "error")).isEqualTo(1.0);
     }
 
     @Test
@@ -155,6 +212,7 @@ class NotificationStreamServiceTest {
         assertThat(streamService.connectionCount(1L)).isZero();
         verify(firstEmitter).complete();
         verify(secondEmitter).complete();
+        assertThat(connectionEventCount("closed", "member_disconnect")).isEqualTo(2.0);
     }
 
     @Test
@@ -177,6 +235,7 @@ class NotificationStreamServiceTest {
         verify(firstEmitter).complete();
         verify(secondEmitter, never()).complete();
         verify(otherMemberEmitter, never()).complete();
+        assertThat(connectionEventCount("closed", "evicted")).isEqualTo(1.0);
     }
 
     @Test
@@ -195,6 +254,53 @@ class NotificationStreamServiceTest {
         verify(firstEmitter).complete();
         verify(secondEmitter).complete();
         verify(otherMemberEmitter, never()).complete();
+        assertThat(connectionEventCount("closed", "session_disconnect")).isEqualTo(2.0);
+    }
+
+    @Test
+    void reportsActiveConnectionsAndMembersForInstance() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
+
+        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, 12L);
+        streamService.subscribe(2L, 22L);
+
+        assertThat(streamService.activeConnectionCount()).isEqualTo(3);
+        assertThat(streamService.activeMemberCount()).isEqualTo(2);
+        assertThat(meterRegistry.get("kgb.notification.sse.connections")
+                .gauge()
+                .value()).isEqualTo(3.0);
+    }
+
+    @Test
+    void repeatedConnectionsReturnGaugeToBaselineAfterCompletion() throws Exception {
+        for (int index = 0; index < 20; index++) {
+            SseEmitter emitter = mock(SseEmitter.class);
+            given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                    .willReturn(emitter);
+            ArgumentCaptor<Runnable> completionCallback = ArgumentCaptor.forClass(
+                    Runnable.class);
+
+            streamService.subscribe(1L, 11L);
+            verify(emitter).onCompletion(completionCallback.capture());
+            completionCallback.getValue().run();
+        }
+
+        assertThat(streamService.activeConnectionCount()).isZero();
+        assertThat(streamService.activeMemberCount()).isZero();
+        assertThat(meterRegistry.get("kgb.notification.sse.connections")
+                .gauge()
+                .value()).isZero();
+        assertThat(connectionEventCount("opened", "none")).isEqualTo(20.0);
+        assertThat(connectionEventCount("closed", "completion")).isEqualTo(20.0);
+    }
+
+    private double connectionEventCount(String event, String reason) {
+        return meterRegistry.get("kgb.notification.sse.connection.events")
+                .tags("event", event, "reason", reason)
+                .counter()
+                .count();
     }
 
     private NotificationCreatedEvent notificationEvent(Long memberId, String notificationId) {

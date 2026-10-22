@@ -20,6 +20,9 @@ public record GuidebookDetailResponse(
         @JsonProperty("people_count")
         Integer peopleCount,
 
+        @JsonProperty("thumbnail_url")
+        String thumbnailUrl,
+
         List<ItineraryDayResponse> itinerary) {
 
     public static GuidebookDetailResponse from(
@@ -31,6 +34,7 @@ public record GuidebookDetailResponse(
                 guidebook.getStartDate(),
                 guidebook.getEndDate(),
                 guidebook.getPeopleCount(),
+                guidebook.getThumbnailUrl(),
                 List.copyOf(itinerary));
     }
 }

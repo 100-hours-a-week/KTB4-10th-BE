@@ -60,8 +60,8 @@ class AiGuidebookContentQueryMysqlIntegrationTest {
     }
 
     @Test
-    void returnsOnlyAllowedCategoriesAndFormatsOverviewUsingMysqlValues() {
-        String overview = "  첫 문장입니다.\n\t" + "가".repeat(105) + ". 이후 문장은 제외됩니다"
+    void returnsOnlyAllowedCategoriesAndNormalizesOverviewUsingMysqlValues() {
+        String overview = "  첫 문장입니다.\n\t" + "가".repeat(105) + ". 이후 문장도 포함됩니다"
                 + "나".repeat(100);
         insertContent("nature-park", "NA", "NA04", overview);
         insertContent("urban-park", "VE", "VE03", null);
@@ -76,7 +76,8 @@ class AiGuidebookContentQueryMysqlIntegrationTest {
                 .extracting(Content::contentId)
                 .containsExactly("nature-park", "urban-park", "event");
         assertThat(result.get(0).overview())
-                .isEqualTo("첫 문장입니다. " + "가".repeat(105) + ".");
+                .isEqualTo("첫 문장입니다. " + "가".repeat(105)
+                        + ". 이후 문장도 포함됩니다" + "나".repeat(100));
         assertThat(result.get(1).overview()).isEmpty();
     }
 

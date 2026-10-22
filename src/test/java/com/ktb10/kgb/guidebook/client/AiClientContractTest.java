@@ -99,6 +99,7 @@ class AiClientContractTest {
                     "result": {
                       "title": "경주 역사 여행",
                       "summary": "여행 요약",
+                      "thumbnail_url": "https://example.com/guidebook.jpg",
                       "content_html": "<article><h1>경주 역사 여행</h1></article>",
                       "itinerary": [{
                         "day": 1,
@@ -126,9 +127,37 @@ class AiClientContractTest {
         assertThat(response.result().contentHtml())
                 .isEqualTo("<article><h1>경주 역사 여행</h1></article>");
         assertThat(response.result().summary()).isEqualTo("여행 요약");
+        assertThat(response.result().thumbnailUrl())
+                .isEqualTo("https://example.com/guidebook.jpg");
         assertThat(response.result().itinerary().get(0).daySummary())
                 .isEqualTo("첫날 일정 요약");
         assertThat(response.result().itinerary().get(0).date())
                 .isEqualTo(LocalDate.of(2026, 10, 12));
+    }
+
+    @Test
+    void deserializesCompletedStatusWithoutOptionalThumbnailUrl() throws Exception {
+        String json = """
+                {
+                  "message": "guidebook_completed",
+                  "data": {
+                    "job_id": "job_12345",
+                    "status": "completed",
+                    "result": {
+                      "title": "경주 역사 여행",
+                      "summary": "여행 요약",
+                      "content_html": "<article><h1>경주 역사 여행</h1></article>",
+                      "itinerary": []
+                    },
+                    "error": null
+                  }
+                }
+                """;
+
+        AiGenerationStatusResponse response = objectMapper.readValue(
+                json,
+                AiGenerationStatusEnvelope.class).data();
+
+        assertThat(response.result().thumbnailUrl()).isNull();
     }
 }
