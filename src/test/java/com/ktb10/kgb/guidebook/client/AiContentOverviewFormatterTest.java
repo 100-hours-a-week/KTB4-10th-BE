@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 class AiContentOverviewFormatterTest {
 
     @Test
-    void normalizesUnicodeWhitespaceAndStripsOnlyBeforeTruncation() {
+    void normalizesUnicodeWhitespaceAndStripsOverview() {
         String overview = "  첨성대\n\t는\u00A0신라  시대의 유적입니다.  ";
 
         assertThat(AiContentOverviewFormatter.format(overview))
@@ -15,20 +15,11 @@ class AiContentOverviewFormatterTest {
     }
 
     @Test
-    void keepsTextThroughLastPeriodWhenPeriodIndexIsAtLeastOneHundred() {
-        String overview = "가".repeat(100) + "." + "나".repeat(150);
+    void preservesOverviewWithoutLengthLimit() {
+        String overview = "가".repeat(300) + "." + "나".repeat(300);
 
         assertThat(AiContentOverviewFormatter.format(overview))
-                .isEqualTo("가".repeat(100) + ".");
-    }
-
-    @Test
-    void keepsTwoHundredCharactersWhenLastPeriodIsBeforeIndexOneHundred() {
-        String overview = "가".repeat(99) + "." + "나".repeat(150);
-
-        assertThat(AiContentOverviewFormatter.format(overview))
-                .hasSize(200)
-                .isEqualTo(overview.substring(0, 200));
+                .isEqualTo(overview);
     }
 
     @Test
