@@ -152,6 +152,7 @@ public class GuidebookResultService {
                 request.endDate(),
                 request.companion(),
                 request.peopleCount(),
+                result.thumbnailUrl(),
                 result.contentHtml(),
                 now));
 
@@ -174,7 +175,7 @@ public class GuidebookResultService {
         Map<String, TourismContentSnapshot> selectedContents = loadSelectedContents(
                 result, request);
         replaceItinerary(guidebook);
-        guidebook.replaceGeneratedContent(result.contentHtml(), now);
+        guidebook.replaceGeneratedContent(result.thumbnailUrl(), result.contentHtml(), now);
         saveItinerary(guidebook, result, selectedContents, now);
         complete(job, guidebook, now);
     }

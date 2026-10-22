@@ -17,6 +17,9 @@ public record GuidebookListItemResponse(
         @JsonProperty("end_date")
         LocalDate endDate,
 
+        @JsonProperty("thumbnail_url")
+        String thumbnailUrl,
+
         Companion companion) {
 
     public static GuidebookListItemResponse from(Guidebook guidebook) {
@@ -25,6 +28,7 @@ public record GuidebookListItemResponse(
                 guidebook.getTitle(),
                 guidebook.getStartDate(),
                 guidebook.getEndDate(),
+                guidebook.getThumbnailUrl(),
                 guidebook.getCompanion());
     }
 }

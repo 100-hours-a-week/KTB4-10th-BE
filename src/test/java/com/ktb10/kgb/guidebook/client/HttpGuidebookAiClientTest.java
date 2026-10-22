@@ -119,6 +119,7 @@ class HttpGuidebookAiClientTest {
                             "result": {
                               "title": "경주 역사 여행",
                               "summary": "여행 요약",
+                              "thumbnail_url": "https://example.com/guidebook.jpg",
                               "content_html": "<article>가이드북</article>",
                               "itinerary": [{
                                 "day": 1,
@@ -143,6 +144,8 @@ class HttpGuidebookAiClientTest {
         assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
         assertThat(response.result().contentHtml())
                 .isEqualTo("<article>가이드북</article>");
+        assertThat(response.result().thumbnailUrl())
+                .isEqualTo("https://example.com/guidebook.jpg");
         assertThat(response.result().itinerary().get(0).daySummary())
                 .isEqualTo("첫날 일정");
         server.verify();
