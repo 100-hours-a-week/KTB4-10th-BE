@@ -38,6 +38,22 @@ class GuidebookEntityTest {
     }
 
     @Test
+    void rejectsThumbnailUrlOverDatabaseColumnLength() {
+        assertThatThrownBy(() -> Guidebook.create(
+                        "서울 여행",
+                        1L,
+                        LocalDate.of(2026, 10, 1),
+                        LocalDate.of(2026, 10, 3),
+                        Companion.FRIEND,
+                        2,
+                        "a".repeat(2049),
+                        "<p>여행</p>",
+                        NOW))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("대표 이미지 URL");
+    }
+
+    @Test
     void rejectsItineraryDayOutsideGuidebookPeriod() {
         assertThatThrownBy(() -> ItineraryDay.create(
                         guidebook(),

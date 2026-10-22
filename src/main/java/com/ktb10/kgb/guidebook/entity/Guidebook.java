@@ -21,6 +21,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Guidebook {
 
+    private static final int MAX_THUMBNAIL_URL_LENGTH = 2048;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -95,6 +97,7 @@ public class Guidebook {
         guidebook.endDate = endDate;
         guidebook.companion = Objects.requireNonNull(companion);
         guidebook.peopleCount = peopleCount;
+        validateThumbnailUrl(thumbnailUrl);
         guidebook.thumbnailUrl = thumbnailUrl;
         guidebook.contentHtml = contentHtml;
         guidebook.version = 1;
@@ -114,6 +117,7 @@ public class Guidebook {
         if (contentHtml == null || contentHtml.isBlank()) {
             throw new IllegalArgumentException("가이드북 HTML 본문은 비어 있을 수 없습니다.");
         }
+        validateThumbnailUrl(thumbnailUrl);
         this.thumbnailUrl = thumbnailUrl;
         this.contentHtml = contentHtml;
         this.version = Math.addExact(version, 1);
@@ -125,6 +129,12 @@ public class Guidebook {
         Objects.requireNonNull(endDate);
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("여행 시작일은 종료일보다 늦을 수 없습니다.");
+        }
+    }
+
+    private static void validateThumbnailUrl(String thumbnailUrl) {
+        if (thumbnailUrl != null && thumbnailUrl.length() > MAX_THUMBNAIL_URL_LENGTH) {
+            throw new IllegalArgumentException("가이드북 대표 이미지 URL은 2048자 이하여야 합니다.");
         }
     }
 
