@@ -111,7 +111,7 @@ tour-api:
     festival-lookahead-years: ${TOUR_API_FESTIVAL_LOOKAHEAD_YEARS:2}
   scheduler:
     enabled: ${TOUR_API_SCHEDULER_ENABLED:false}
-    cron: ${TOUR_API_SCHEDULER_CRON:0 0 0 * * *}
+    cron: ${TOUR_API_SCHEDULER_CRON:0 1 0 * * *}
     max-attempts: ${TOUR_API_SYNC_MAX_ATTEMPTS:3}
     retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
