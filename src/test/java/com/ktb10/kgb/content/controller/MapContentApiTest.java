@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.EventOverview;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.member.entity.MemberStatus;
@@ -230,6 +231,72 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.items.length()").value(10))
                 .andExpect(jsonPath("$.data.next_cursor").isString())
                 .andExpect(jsonPath("$.data.has_more").value(true));
+    }
+
+    @Test
+    void exposesPlaceAndEventOverviewFieldsInBottomSheetContents() throws Exception {
+        when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(
+                        new MapContentCommonData(
+                                301L,
+                                "place-overview",
+                                "서울숲",
+                                ContentType.PLACE,
+                                "서울특별시 성동구",
+                                37.5444,
+                                127.0374,
+                                null,
+                                "도심 공원 소개",
+                                "02-111-2222",
+                                "https://place.example.com",
+                                null,
+                                null),
+                        new MapContentCommonData(
+                                302L,
+                                "event-overview",
+                                "서울 축제",
+                                ContentType.EVENT,
+                                "서울특별시 중구",
+                                37.5665,
+                                126.978,
+                                null,
+                                "지역 축제 소개",
+                                "02-333-4444",
+                                "https://event.example.com",
+                                new EventOverview(
+                                        "10:00~20:00",
+                                        "서울시",
+                                        "02-555-6666",
+                                        "서울광장"),
+                                new EventPeriod(
+                                        LocalDate.of(2026, 10, 22),
+                                        LocalDate.of(2026, 10, 24)))));
+
+        mockMvc.perform(get("/api/v1/map/contents")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "37.0")
+                        .param("west", "126.0")
+                        .param("north", "38.0")
+                        .param("east", "128.0"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].content_id").value("place-overview"))
+                .andExpect(jsonPath("$.data.items[0].overview").value("도심 공원 소개"))
+                .andExpect(jsonPath("$.data.items[0].phone").value("02-111-2222"))
+                .andExpect(jsonPath("$.data.items[0].homepage_url")
+                        .value("https://place.example.com"))
+                .andExpect(jsonPath("$.data.items[0].event_detail").value((Object) null))
+                .andExpect(jsonPath("$.data.items[1].content_id").value("event-overview"))
+                .andExpect(jsonPath("$.data.items[1].overview").value("지역 축제 소개"))
+                .andExpect(jsonPath("$.data.items[1].phone").value("02-333-4444"))
+                .andExpect(jsonPath("$.data.items[1].homepage_url")
+                        .value("https://event.example.com"))
+                .andExpect(jsonPath("$.data.items[1].event_detail.operating_hours")
+                        .value("10:00~20:00"))
+                .andExpect(jsonPath("$.data.items[1].event_detail.organizer").value("서울시"))
+                .andExpect(jsonPath("$.data.items[1].event_detail.organizer_phone")
+                        .value("02-555-6666"))
+                .andExpect(jsonPath("$.data.items[1].event_detail.event_place")
+                        .value("서울광장"));
     }
 
     private UsernamePasswordAuthenticationToken authenticatedMember() {

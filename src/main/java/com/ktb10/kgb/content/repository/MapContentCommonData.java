@@ -2,6 +2,7 @@ package com.ktb10.kgb.content.repository;
 
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.EventOverview;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.EventPeriod;
 import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
 
@@ -15,7 +16,25 @@ public record MapContentCommonData(
         double latitude,
         double longitude,
         String thumbnailUrl,
+        String overview,
+        String phone,
+        String homepageUrl,
+        EventOverview eventDetail,
         EventPeriod eventPeriod) {
+
+    public MapContentCommonData(
+            Long id,
+            String contentId,
+            String title,
+            ContentType contentType,
+            String address,
+            double latitude,
+            double longitude,
+            String thumbnailUrl,
+            EventPeriod eventPeriod) {
+        this(id, contentId, title, contentType, address, latitude, longitude, thumbnailUrl,
+                null, null, null, null, eventPeriod);
+    }
 
     public MapContentItemResponse toResponse(boolean favorite, boolean inGuidebook) {
         return new MapContentItemResponse(
@@ -26,7 +45,11 @@ public record MapContentCommonData(
                 latitude,
                 longitude,
                 thumbnailUrl,
+                overview,
+                phone,
+                homepageUrl,
                 eventPeriod,
+                eventDetail,
                 favorite,
                 inGuidebook);
     }

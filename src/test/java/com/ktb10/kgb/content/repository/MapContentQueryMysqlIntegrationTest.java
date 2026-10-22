@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +69,66 @@ class MapContentQueryMysqlIntegrationTest {
         assertThat(query.findWithinBounds(37.50, 126.90, 37.70, 127.10))
                 .extracting(MapContentCommonData::contentId)
                 .containsExactly("nature-park", "urban-park", "active-event");
+    }
+
+    @Test
+    void mapsPlaceWithoutEventDetailsAndMapsEventOverviewFields() {
+        insertContent("place-overview", "NA", "NA04", 126.98, 37.56);
+        jdbcTemplate.update("""
+                UPDATE tourism_contents
+                SET description = ?, phone = ?, homepage_url = ?
+                WHERE source_content_id = ?
+                """, "공원 소개", "02-111-2222", "https://place.example.com", "place-overview");
+
+        insertContent("event-overview", "EV", null, 127.02, 37.60);
+        Long eventContentId = jdbcTemplate.queryForObject(
+                "SELECT id FROM tourism_contents WHERE source_content_id = ?",
+                Long.class,
+                "event-overview");
+        jdbcTemplate.update("""
+                UPDATE tourism_contents
+                SET description = ?, phone = ?, homepage_url = ?
+                WHERE id = ?
+                """, "축제 소개", "02-333-4444", "https://event.example.com", eventContentId);
+        jdbcTemplate.update("""
+                INSERT INTO event_details (
+                    content_id, start_date, end_date, operating_hours,
+                    organizer, organizer_phone, event_place, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                eventContentId,
+                LocalDate.now().minusDays(1),
+                LocalDate.now().plusDays(1),
+                "10:00~20:00",
+                "서울시",
+                "02-555-6666",
+                "서울광장",
+                LocalDateTime.now());
+
+        List<MapContentCommonData> contents = query.findWithinBounds(
+                37.50, 126.90, 37.70, 127.10);
+
+        MapContentCommonData place = contents.stream()
+                .filter(content -> content.contentId().equals("place-overview"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(place.overview()).isEqualTo("공원 소개");
+        assertThat(place.phone()).isEqualTo("02-111-2222");
+        assertThat(place.homepageUrl()).isEqualTo("https://place.example.com");
+        assertThat(place.eventDetail()).isNull();
+
+        MapContentCommonData event = contents.stream()
+                .filter(content -> content.contentId().equals("event-overview"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(event.overview()).isEqualTo("축제 소개");
+        assertThat(event.phone()).isEqualTo("02-333-4444");
+        assertThat(event.homepageUrl()).isEqualTo("https://event.example.com");
+        assertThat(event.eventDetail()).isNotNull();
+        assertThat(event.eventDetail().operatingHours()).isEqualTo("10:00~20:00");
+        assertThat(event.eventDetail().organizer()).isEqualTo("서울시");
+        assertThat(event.eventDetail().organizerPhone()).isEqualTo("02-555-6666");
+        assertThat(event.eventDetail().eventPlace()).isEqualTo("서울광장");
     }
 
     private void insertPlace(String sourceContentId, String code, double longitude, double latitude) {
