@@ -117,6 +117,12 @@ tour-api:
     retry-backoff: ${TOUR_API_SYNC_RETRY_BACKOFF:5s}
     stale-run-timeout: ${TOUR_API_SYNC_STALE_RUN_TIMEOUT:2h}
     recovery-interval-millis: ${TOUR_API_SYNC_RECOVERY_INTERVAL_MILLIS:300000}
+  detail-backfill:
+    enabled: ${TOUR_API_DETAIL_BACKFILL_ENABLED:false}
+    batch-size: ${TOUR_API_DETAIL_BACKFILL_BATCH_SIZE:100}
+    max-batches: ${TOUR_API_DETAIL_BACKFILL_MAX_BATCHES:1}
+    start-after-id: ${TOUR_API_DETAIL_BACKFILL_START_AFTER_ID:0}
+    request-delay: ${TOUR_API_DETAIL_BACKFILL_REQUEST_DELAY:100ms}
 credit:
   monthly-free-reconciliation-cron: "${CREDIT_MONTHLY_FREE_RECONCILIATION_CRON:0 0 0 1 * *}"
   coupon-attempt:

@@ -62,7 +62,7 @@ public class TourApiDetailSyncService {
         List<ContentChangeSet> changeSets = new ArrayList<>();
         for (TourApiDetailTarget target : targets) {
             try {
-                ContentChangeSet changeSet = synchronizeWithRetry(runId, target);
+                ContentChangeSet changeSet = synchronizeTarget(runId, target);
                 if (!changeSet.changedFields().isEmpty()) {
                     changeSets.add(changeSet);
                 }
@@ -136,7 +136,7 @@ public class TourApiDetailSyncService {
         return result;
     }
 
-    private ContentChangeSet synchronizeWithRetry(String runId, TourApiDetailTarget target) {
+    ContentChangeSet synchronizeTarget(String runId, TourApiDetailTarget target) {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             try {
