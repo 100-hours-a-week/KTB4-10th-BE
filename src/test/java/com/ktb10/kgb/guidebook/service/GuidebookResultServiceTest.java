@@ -231,9 +231,6 @@ class GuidebookResultServiceTest {
                         List.of(601L)))
                 .willReturn(List.of());
         given(itineraryDayRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
-        given(creditWalletRepository.findByMemberIdForUpdate(1L))
-                .willReturn(Optional.of(wallet));
-
         GuidebookResult regenerated = new GuidebookResult(
                 "AI가 바꾼 제목",
                 "재생성 요약",
@@ -250,9 +247,11 @@ class GuidebookResultServiceTest {
                 .isEqualTo("https://example.com/regenerated.jpg");
         assertThat(guidebook.getVersion()).isEqualTo(2);
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.COMPLETED);
-        assertThat(wallet.getCreditBalance()).isEqualTo(1);
+        assertThat(wallet.getCreditBalance()).isEqualTo(2);
         verify(itineraryDayRepository).deleteAll(List.of(oldDay));
         verify(memberGuidebookRepository, never()).save(any());
+        verify(creditWalletRepository, never()).findByMemberIdForUpdate(any());
+        verify(creditTransactionRepository, never()).save(any());
     }
 
     @Test

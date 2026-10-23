@@ -224,7 +224,9 @@ public class GuidebookResultService {
     }
 
     private void complete(GenerationJob job, Guidebook guidebook, LocalDateTime now) {
-        consumeCredit(job, now);
+        if (job.getJobType() == JobType.INITIAL) {
+            consumeCredit(job, now);
+        }
         job.complete(guidebook.getId(), now);
         eventPublisher.publishEvent(new GuidebookCompletedEvent(
                 job.getMember().getId(),
