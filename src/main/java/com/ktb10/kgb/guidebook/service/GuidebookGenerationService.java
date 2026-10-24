@@ -108,18 +108,18 @@ public class GuidebookGenerationService {
             Long guidebookId,
             String idempotencyKey,
             GuidebookRegenerationRequest request) {
+        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        if (member.getStatus() != MemberStatus.ACTIVE) {
+            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
+        }
+
         Optional<GenerationJob> existingJob =
                 generationJobRepository.findByMemberIdAndIdempotencyKey(
                         memberId,
                         idempotencyKey);
         if (existingJob.isPresent()) {
             return handleRepeatedRegeneration(existingJob.get(), guidebookId, request);
-        }
-
-        Member member = memberRepository.findActiveByIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
-        if (member.getStatus() != MemberStatus.ACTIVE) {
-            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
         }
 
         MemberGuidebook relationship = memberGuidebookRepository
