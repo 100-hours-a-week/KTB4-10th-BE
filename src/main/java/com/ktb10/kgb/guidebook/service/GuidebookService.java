@@ -8,14 +8,19 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookDetailResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListItemResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookListResponse;
+import com.ktb10.kgb.guidebook.dto.response.GuidebookRegenerationAvailabilityResponse;
 import com.ktb10.kgb.guidebook.dto.response.GuidebookViewerResponse;
 import com.ktb10.kgb.guidebook.dto.response.ItineraryDayResponse;
 import com.ktb10.kgb.guidebook.dto.response.ItineraryItemResponse;
+import com.ktb10.kgb.guidebook.entity.AcquisitionType;
+import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryDay;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
+import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
+import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
@@ -39,6 +44,7 @@ public class GuidebookService {
     private static final String CURSOR_SEPARATOR = "|";
 
     private final MemberGuidebookRepository memberGuidebookRepository;
+    private final GenerationJobRepository generationJobRepository;
     private final ItineraryDayRepository itineraryDayRepository;
     private final ItineraryItemRepository itineraryItemRepository;
     private final ObjectMapper objectMapper;
@@ -46,11 +52,13 @@ public class GuidebookService {
 
     public GuidebookService(
             MemberGuidebookRepository memberGuidebookRepository,
+            GenerationJobRepository generationJobRepository,
             ItineraryDayRepository itineraryDayRepository,
             ItineraryItemRepository itineraryItemRepository,
             ObjectMapper objectMapper,
             Clock clock) {
         this.memberGuidebookRepository = memberGuidebookRepository;
+        this.generationJobRepository = generationJobRepository;
         this.itineraryDayRepository = itineraryDayRepository;
         this.itineraryItemRepository = itineraryItemRepository;
         this.objectMapper = objectMapper;
@@ -88,10 +96,10 @@ public class GuidebookService {
 
     @Transactional(readOnly = true)
     public GuidebookDetailResponse getGuidebookDetail(Long memberId, Long guidebookId) {
-        Guidebook guidebook = memberGuidebookRepository
+        MemberGuidebook relationship = memberGuidebookRepository
                 .findActiveWithGuidebook(memberId, guidebookId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
-                .getGuidebook();
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Guidebook guidebook = relationship.getGuidebook();
 
         List<ItineraryDay> days = itineraryDayRepository
                 .findAllByGuidebookIdOrderByDayNumberAsc(guidebookId);
@@ -107,7 +115,10 @@ public class GuidebookService {
                 .map(day -> toItineraryDay(
                         day, itemsByDayId.getOrDefault(day.getId(), List.of())))
                 .toList();
-        return GuidebookDetailResponse.from(guidebook, itinerary);
+        return GuidebookDetailResponse.from(
+                guidebook,
+                regenerationAvailability(relationship),
+                itinerary);
     }
 
     @Transactional(readOnly = true)
@@ -128,6 +139,27 @@ public class GuidebookService {
         memberGuidebookRepository.findActiveWithGuidebook(memberId, guidebookId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND))
                 .softDelete(LocalDateTime.now(clock));
+    }
+
+    private GuidebookRegenerationAvailabilityResponse regenerationAvailability(
+            MemberGuidebook relationship) {
+        if (relationship.getAcquisitionType() != AcquisitionType.CREATED) {
+            return GuidebookRegenerationAvailabilityResponse.from(
+                    GuidebookRegenerationPolicy.RegenerationAvailability.unavailable());
+        }
+        Guidebook guidebook = relationship.getGuidebook();
+        return generationJobRepository
+                .findFirstByGuidebookIdAndJobTypeAndStatusOrderByCompletedAtAscIdAsc(
+                        guidebook.getId(),
+                        JobType.INITIAL,
+                        GenerationStatus.COMPLETED)
+                .map(job -> GuidebookRegenerationAvailabilityResponse.from(
+                        GuidebookRegenerationPolicy.evaluate(
+                                guidebook.getVersion(),
+                                job.getCompletedAt(),
+                                LocalDateTime.now(clock))))
+                .orElseGet(() -> GuidebookRegenerationAvailabilityResponse.from(
+                        GuidebookRegenerationPolicy.RegenerationAvailability.unavailable()));
     }
 
     private ItineraryDayResponse toItineraryDay(

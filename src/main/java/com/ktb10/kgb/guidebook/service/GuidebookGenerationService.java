@@ -33,6 +33,7 @@ import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
+import com.ktb10.kgb.guidebook.service.GuidebookRegenerationPolicy.RegenerationAvailability;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.MemberStatus;
@@ -107,18 +108,18 @@ public class GuidebookGenerationService {
             Long guidebookId,
             String idempotencyKey,
             GuidebookRegenerationRequest request) {
+        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
+        if (member.getStatus() != MemberStatus.ACTIVE) {
+            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
+        }
+
         Optional<GenerationJob> existingJob =
                 generationJobRepository.findByMemberIdAndIdempotencyKey(
                         memberId,
                         idempotencyKey);
         if (existingJob.isPresent()) {
             return handleRepeatedRegeneration(existingJob.get(), guidebookId, request);
-        }
-
-        Member member = memberRepository.findActiveByIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
-        if (member.getStatus() != MemberStatus.ACTIVE) {
-            throw new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED);
         }
 
         MemberGuidebook relationship = memberGuidebookRepository
@@ -129,15 +130,21 @@ public class GuidebookGenerationService {
         }
         final Guidebook guidebook = relationship.getGuidebook();
 
+        GenerationJob initialJob = generationJobRepository
+                .findFirstByGuidebookIdAndJobTypeAndStatusOrderByCompletedAtAscIdAsc(
+                        guidebookId,
+                        JobType.INITIAL,
+                        GenerationStatus.COMPLETED)
+                .orElseThrow(() -> new BusinessException(
+                        CommonErrorCode.RESOURCE_STATE_CONFLICT));
+        RegenerationAvailability availability = GuidebookRegenerationPolicy.evaluate(
+                guidebook.getVersion(),
+                initialJob.getCompletedAt(),
+                LocalDateTime.now(clock));
+        validateRegenerationAvailability(availability);
+
         if (generationJobRepository.existsByMemberIdAndStatusIn(memberId, ACTIVE_STATUSES)) {
             throw new BusinessException(GuidebookErrorCode.GENERATION_IN_PROGRESS);
-        }
-
-        CreditWallet wallet = creditWalletRepository.findByMemberIdForUpdate(memberId)
-                .orElseThrow(() -> new BusinessException(
-                        GuidebookErrorCode.CREDIT_INSUFFICIENT));
-        if (wallet.getCreditBalance() < 1) {
-            throw new BusinessException(GuidebookErrorCode.CREDIT_INSUFFICIENT);
         }
 
         List<MemberPreference> memberPreferences = memberPreferenceRepository
@@ -413,6 +420,15 @@ public class GuidebookGenerationService {
         return memberGuidebookRepository.existsByGuidebookIdAndDeletedAtIsNull(guidebookId)
                 ? new BusinessException(CommonErrorCode.RESOURCE_FORBIDDEN)
                 : new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    private void validateRegenerationAvailability(RegenerationAvailability availability) {
+        if (availability.remainingCount() == 0) {
+            throw new BusinessException(GuidebookErrorCode.REGENERATION_LIMIT_EXCEEDED);
+        }
+        if (!availability.available()) {
+            throw new BusinessException(GuidebookErrorCode.REGENERATION_WINDOW_EXPIRED);
+        }
     }
 
     private InitialGenerationRequestPayload resolveSourceRequest(GenerationJob sourceJob) {

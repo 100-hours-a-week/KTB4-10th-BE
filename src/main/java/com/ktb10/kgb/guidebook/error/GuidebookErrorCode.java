@@ -20,6 +20,12 @@ public enum GuidebookErrorCode implements ErrorCode {
     GUIDEBOOK_NOT_READY(
             HttpStatus.CONFLICT,
             "가이드북 본문이 아직 준비되지 않았습니다."),
+    REGENERATION_LIMIT_EXCEEDED(
+            HttpStatus.CONFLICT,
+            "가이드북 재생성 가능 횟수를 모두 사용했습니다."),
+    REGENERATION_WINDOW_EXPIRED(
+            HttpStatus.CONFLICT,
+            "가이드북 재생성 가능 시간이 만료되었습니다."),
     CREDIT_INSUFFICIENT(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "가이드북 생성권이 부족합니다."),

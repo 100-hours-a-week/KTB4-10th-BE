@@ -25,6 +25,7 @@ import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.AcquisitionType;
+import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
 import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
@@ -141,11 +142,15 @@ class GuidebookGenerationServiceTest {
                         guidebook,
                         AcquisitionType.CREATED,
                         LocalDateTime.now(CLOCK))));
+        given(generationJobRepository
+                .findFirstByGuidebookIdAndJobTypeAndStatusOrderByCompletedAtAscIdAsc(
+                        50L,
+                        JobType.INITIAL,
+                        GenerationStatus.COMPLETED))
+                .willReturn(Optional.of(sourceJob));
         given(generationJobRepository.existsByMemberIdAndStatusIn(
                 any(Long.class), org.mockito.ArgumentMatchers.<Collection<GenerationStatus>>any()))
                 .willReturn(false);
-        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
-                .willReturn(Optional.of(walletWithBalance(member, 1)));
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
@@ -170,6 +175,75 @@ class GuidebookGenerationServiceTest {
         assertThat(response.guidebookId()).isEqualTo(50L);
         assertThat(response.currentVersion()).isEqualTo(1);
         verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        verify(creditWalletRepository, never()).findByMemberIdForUpdate(any());
+    }
+
+    @Test
+    void rejectsRegenerationAtExactWindowExpiration() throws Exception {
+        Member member = member();
+        Guidebook guidebook = guidebook(1);
+        GenerationJob initialJob = completedInitialJob(
+                member,
+                guidebook.getId(),
+                LocalDateTime.now(CLOCK).minusMinutes(10));
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, "expired-key")).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(memberGuidebookRepository.findActiveWithGuidebook(MEMBER_ID, 50L))
+                .willReturn(Optional.of(MemberGuidebook.create(
+                        member, guidebook, AcquisitionType.CREATED, LocalDateTime.now(CLOCK))));
+        given(generationJobRepository
+                .findFirstByGuidebookIdAndJobTypeAndStatusOrderByCompletedAtAscIdAsc(
+                        50L,
+                        JobType.INITIAL,
+                        GenerationStatus.COMPLETED))
+                .willReturn(Optional.of(initialJob));
+
+        assertThatThrownBy(() -> service.regenerate(
+                MEMBER_ID,
+                50L,
+                "expired-key",
+                new GuidebookRegenerationRequest("일정을 바꿔 주세요.")))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.REGENERATION_WINDOW_EXPIRED));
+
+        verify(generationJobRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void rejectsRegenerationAfterThreeSuccessfulRegenerations() throws Exception {
+        Member member = member();
+        Guidebook guidebook = guidebook(4);
+        GenerationJob initialJob = completedInitialJob(
+                member,
+                guidebook.getId(),
+                LocalDateTime.now(CLOCK).minusMinutes(1));
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(
+                MEMBER_ID, "limit-key")).willReturn(Optional.empty());
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(memberGuidebookRepository.findActiveWithGuidebook(MEMBER_ID, 50L))
+                .willReturn(Optional.of(MemberGuidebook.create(
+                        member, guidebook, AcquisitionType.CREATED, LocalDateTime.now(CLOCK))));
+        given(generationJobRepository
+                .findFirstByGuidebookIdAndJobTypeAndStatusOrderByCompletedAtAscIdAsc(
+                        50L,
+                        JobType.INITIAL,
+                        GenerationStatus.COMPLETED))
+                .willReturn(Optional.of(initialJob));
+
+        assertThatThrownBy(() -> service.regenerate(
+                MEMBER_ID,
+                50L,
+                "limit-key",
+                new GuidebookRegenerationRequest("일정을 바꿔 주세요.")))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(GuidebookErrorCode.REGENERATION_LIMIT_EXCEEDED));
+
+        verify(generationJobRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
@@ -575,6 +649,36 @@ class GuidebookGenerationServiceTest {
         CreditWallet wallet = CreditWallet.open(member, LocalDateTime.now(CLOCK));
         wallet.grant(balance, LocalDateTime.now(CLOCK));
         return wallet;
+    }
+
+    private Guidebook guidebook(int version) {
+        Guidebook guidebook = Guidebook.create(
+                "경주 여행",
+                1L,
+                LocalDate.of(2026, 10, 12),
+                LocalDate.of(2026, 10, 14),
+                Companion.FRIEND,
+                2,
+                "<article>기존</article>",
+                LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(guidebook, "id", 50L);
+        ReflectionTestUtils.setField(guidebook, "version", version);
+        return guidebook;
+    }
+
+    private GenerationJob completedInitialJob(
+            Member member,
+            Long guidebookId,
+            LocalDateTime completedAt) throws Exception {
+        GenerationJob job = GenerationJob.createInitial(
+                member,
+                requestPayload(validRequest()),
+                "initial-key-" + completedAt,
+                completedAt.minusMinutes(1));
+        ReflectionTestUtils.setField(job, "id", 300L);
+        job.registerAiJob("ai-original", completedAt.minusSeconds(1));
+        job.complete(guidebookId, completedAt);
+        return job;
     }
 
     private GenerationJob failedJob(String errorPayload) {

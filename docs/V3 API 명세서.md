@@ -1338,6 +1338,7 @@ Body 없음.
 - HTML 본문은 API-GDE-15 뷰어에서만 제공
 - AI 완료 결과의 `thumbnail_url`을 생성 완료 표지로 제공하며, 없으면 `null`
 - 활성 `member_guidebooks` 관계가 없으면 404. preference_tags 미제공
+- `regeneration`: 최초 생성 완료 시각과 현재 version으로 계산한 재생성 상태. 공유로 가져온 가이드북이나 최초 완료 이력을 확인할 수 없는 기존 데이터는 `remaining_count=0`, `expires_at=null`, `available=false`
 
 **Request Body**
 
@@ -1355,6 +1356,11 @@ Body 없음.
     "end_date": "2026-10-14",
     "people_count": 2,
     "thumbnail_url": "https://example.com/guidebook.jpg",
+    "regeneration": {
+      "remaining_count": 3,
+      "expires_at": "2026-10-23T09:10:00Z",
+      "available": true
+    },
     "itinerary": [
       {
         "day_number": 1,
@@ -1423,11 +1429,14 @@ Body 없음.
 - Idempotency-Key: 필수 String ≤100자
 - feedback: 필수 String, 앞뒤 공백 제거 후 빈 값 불가, ≤200자. 사용자가 가이드북 상세 화면에서 입력한 자연어 수정 요청
 - 재생성은 제목을 수정하지 않고 기존 가이드북 제목을 유지
-- 재생성 진입 버튼은 최초 생성 결과 화면에서만 노출하고 화면 이탈 후에는 제공하지 않음
+- 최초 `INITIAL` 작업 완료 후 10분 이내(`now < expires_at`)이며 성공한 재생성이 3회 미만일 때만 허용
+- 최초 버전 1의 남은 횟수는 3회이며 재생성 성공으로 version이 증가할 때만 1회씩 감소. 실패한 재생성은 감소하지 않음
+- 재생성 성공 후에도 최초 생성 완료 기준 만료 시각은 연장하지 않음
+- 재생성은 최초 생성에 사용한 생성권과 별개이며 생성권 잔액을 확인하거나 차감하지 않음
 - 요청 회원의 활성 보관 관계가 있는 가이드북만 허용
 - 유효한 기본 취향 존재를 검증하며 feedback은 해당 가이드북만 반영하고 회원 기본 취향을 변경하지 않음
 - 새 `REGENERATION` 작업을 만들고 원본 AI 작업 ID로 AI 재생성을 접수함. 성공 시 같은 guidebook_id의 제목은 유지하고 본문·일정을 교체한 뒤 version 증가
-- ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
+- ACTIVE 회원·유효 기본 취향·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
 **Request Body**
@@ -1459,7 +1468,8 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 409 | IDEMPOTENCY_CONFLICT | 같은 회원이 같은 키를 다른 요청에 재사용 |
 | 409 | GENERATION_IN_PROGRESS | 이미 진행 중인 생성 작업 존재 |
-| 422 | CREDIT_INSUFFICIENT | 생성권 잔액 1개 미만 |
+| 409 | REGENERATION_LIMIT_EXCEEDED | 성공한 재생성 3회 소진 |
+| 409 | REGENERATION_WINDOW_EXPIRED | 최초 생성 완료 후 10분 경과. 정확히 만료 시각도 포함 |
 | 422 | GUIDEBOOK_INVALID_PERIOD | 종료일 역전 또는 양끝 포함 7일 초과 |
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |

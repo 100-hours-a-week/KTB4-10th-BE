@@ -8,11 +8,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.guidebook.entity.AcquisitionType;
 import com.ktb10.kgb.guidebook.entity.Companion;
+import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.ItineraryDay;
 import com.ktb10.kgb.guidebook.entity.ItineraryItem;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.repository.GuidebookRepository;
+import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
@@ -62,6 +64,8 @@ class GuidebookDetailApiTest {
     @Autowired
     private GuidebookRepository guidebookRepository;
     @Autowired
+    private GenerationJobRepository generationJobRepository;
+    @Autowired
     private MemberGuidebookRepository memberGuidebookRepository;
     @Autowired
     private ItineraryDayRepository itineraryDayRepository;
@@ -88,6 +92,7 @@ class GuidebookDetailApiTest {
         Guidebook guidebook = saveGuidebook();
         memberGuidebookRepository.saveAndFlush(MemberGuidebook.create(
                 member, guidebook, AcquisitionType.CREATED, NOW));
+        saveCompletedInitialJob(guidebook);
         ItineraryDay firstDay = itineraryDayRepository.save(ItineraryDay.create(
                 guidebook, 1, LocalDate.of(2026, 10, 12)));
         itineraryItemRepository.save(ItineraryItem.create(
@@ -111,6 +116,9 @@ class GuidebookDetailApiTest {
                 .andExpect(jsonPath("$.data.people_count").value(2))
                 .andExpect(jsonPath("$.data.thumbnail_url")
                         .value("https://example.com/guidebook.jpg"))
+                .andExpect(jsonPath("$.data.regeneration.remaining_count").value(3))
+                .andExpect(jsonPath("$.data.regeneration.expires_at").isString())
+                .andExpect(jsonPath("$.data.regeneration.available").value(true))
                 .andExpect(jsonPath("$.data.companion").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.version").doesNotHaveJsonPath())
                 .andExpect(jsonPath("$.data.updated_at").doesNotHaveJsonPath())
@@ -298,5 +306,17 @@ class GuidebookDetailApiTest {
                 "https://example.com/guidebook.jpg",
                 contentHtml,
                 NOW));
+    }
+
+    private void saveCompletedInitialJob(Guidebook guidebook) {
+        LocalDateTime completedAt = LocalDateTime.now(clock).minusMinutes(1);
+        GenerationJob job = GenerationJob.createInitial(
+                member,
+                "{}",
+                "detail-initial-" + guidebook.getId(),
+                completedAt.minusMinutes(1));
+        job.registerAiJob("detail-ai-" + guidebook.getId(), completedAt.minusSeconds(1));
+        job.complete(guidebook.getId(), completedAt);
+        generationJobRepository.saveAndFlush(job);
     }
 }

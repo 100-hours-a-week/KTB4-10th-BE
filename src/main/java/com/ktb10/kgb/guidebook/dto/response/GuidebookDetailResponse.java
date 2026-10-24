@@ -23,10 +23,13 @@ public record GuidebookDetailResponse(
         @JsonProperty("thumbnail_url")
         String thumbnailUrl,
 
+        GuidebookRegenerationAvailabilityResponse regeneration,
+
         List<ItineraryDayResponse> itinerary) {
 
     public static GuidebookDetailResponse from(
             Guidebook guidebook,
+            GuidebookRegenerationAvailabilityResponse regeneration,
             List<ItineraryDayResponse> itinerary) {
         return new GuidebookDetailResponse(
                 guidebook.getId(),
@@ -35,6 +38,7 @@ public record GuidebookDetailResponse(
                 guidebook.getEndDate(),
                 guidebook.getPeopleCount(),
                 guidebook.getThumbnailUrl(),
+                regeneration,
                 List.copyOf(itinerary));
     }
 }
