@@ -70,12 +70,12 @@ docker compose \
 - health: `http://localhost:8081/actuator/health`
 - Prometheus metrics: `http://localhost:8081/actuator/prometheus`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
-- Prometheus: `http://localhost:9091`
+- Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100/ready`
 
 Grafana에는 `KGB Local Load Test` 대시보드가 자동으로 생성됩니다.
 
-기존 개발용 컨테이너와 충돌하지 않도록 부하테스트 MySQL은 호스트 3308, Redis는 호스트 6380을 기본값으로 사용합니다. 로컬에 별도 Prometheus가 실행 중이어도 충돌하지 않도록 부하테스트 Prometheus는 호스트 9091을 사용합니다. Compose 내부 서비스는 MySQL 3306, Redis 6379, Prometheus 9090으로 통신합니다.
+기존 개발용 컨테이너와 충돌하지 않도록 부하테스트 MySQL은 호스트 3308, Redis는 호스트 6380을 기본값으로 사용합니다. Prometheus는 기존 로컬 관측 환경과 동일하게 호스트 9090을 사용하며, 다른 프로세스가 9090을 사용 중이면 `PROMETHEUS_PORT`로 변경할 수 있습니다. Compose 내부 서비스는 MySQL 3306, Redis 6379, Prometheus 9090으로 통신합니다.
 
 ## 4. 관광 데이터 적재 확인
 
