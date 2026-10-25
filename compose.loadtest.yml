@@ -10,7 +10,7 @@ services:
       MYSQL_ROOT_PASSWORD: kgb-local-root-password
       TZ: Asia/Seoul
     ports:
-      - "3306:3306"
+      - "${LOADTEST_MYSQL_PORT:-3308}:3306"
     volumes:
       - loadtest-mysql-data:/var/lib/mysql
     healthcheck:
@@ -19,6 +19,19 @@ services:
       timeout: 5s
       retries: 30
       start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    cpus: ${REDIS_CPUS:-1}
+    mem_limit: ${REDIS_MEMORY:-512m}
+    command: ["redis-server", "--appendonly", "no"]
+    ports:
+      - "${LOADTEST_REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   backend:
     build:
@@ -34,6 +47,14 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/kgb_local?useSSL=false&allowPublicKeyRetrieval=true
       DB_USERNAME: kgb
       DB_PASSWORD: kgb-local-password
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_SSL_ENABLED: "false"
+      REDIS_SESSION_NAMESPACE: kgb:loadtest:oauth:session
+      OAUTH_REDIS_NAMESPACE: kgb:loadtest:oauth:authorization-request
+      COUPON_ATTEMPT_REDIS_NAMESPACE: kgb:loadtest:coupon:attempt
+      NOTIFICATION_REDIS_ENABLED: "true"
+      NOTIFICATION_REDIS_CHANNEL: kgb:loadtest:notification:sse
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: ${HIKARI_MAXIMUM_POOL_SIZE:-10}
       SPRING_FLYWAY_VALIDATE_ON_MIGRATE: ${SPRING_FLYWAY_VALIDATE_ON_MIGRATE:-true}
       MANAGEMENT_SERVER_PORT: 8081
@@ -43,10 +64,10 @@ services:
       LOAD_TEST_AUTHENTICATION_BYPASS_ENABLED: ${LOAD_TEST_AUTHENTICATION_BYPASS_ENABLED:-false}
       MAP_COMMON_CACHE_ENABLED: ${MAP_COMMON_CACHE_ENABLED:-true}
       MAP_COMMON_CACHE_PRELOAD_ENABLED: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:-false}
-      TOUR_API_SERVICE_KEY: ${TOUR_API_SERVICE_KEY}
-      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY}
-      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET}
-      KAKAO_ADMIN_KEY: ${KAKAO_ADMIN_KEY}
+      TOUR_API_SERVICE_KEY: ${TOUR_API_SERVICE_KEY:-loadtest-tour-api-key}
+      KAKAO_REST_API_KEY: ${KAKAO_REST_API_KEY:-loadtest-kakao-client-id}
+      KAKAO_CLIENT_SECRET: ${KAKAO_CLIENT_SECRET:-loadtest-kakao-client-secret}
+      KAKAO_ADMIN_KEY: ${KAKAO_ADMIN_KEY:-loadtest-kakao-admin-key}
       KAKAO_REDIRECT_URI: http://localhost:8080/api/v1/auth/oauth/callback/kakao
       SESSION_COOKIE_SECURE: "false"
     ports:
@@ -54,6 +75,8 @@ services:
       - "${BACKEND_MANAGEMENT_PORT:-8081}:8081"
     depends_on:
       mysql:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     labels:
       observability.logs: "true"
@@ -71,7 +94,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-remote-write-receiver
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9091}:9090"
     volumes:
       - ./docker/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - loadtest-prometheus-data:/prometheus
@@ -278,6 +301,27 @@ services:
         }
         exec /scripts/run-with-summary.sh \
           "$$K6_RESULT_NAME" "/scripts/$$K6_SCRIPT"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  sse-load:
+    image: curlimages/curl:8.12.1
+    profiles: ["loadtest"]
+    environment:
+      BASE_URL: http://backend:8080
+      MANAGEMENT_URL: http://backend:8081
+      SESSION_PREFIX: ${LOAD_TEST_SESSION_PREFIX:-k6-local-session-}
+      LOAD_TEST_USER_COUNT: ${LOAD_TEST_USER_COUNT:-500}
+      SSE_SESSION_MODE: ${SSE_SESSION_MODE:-distinct}
+      SSE_CONNECTION_COUNT: ${SSE_CONNECTION_COUNT:-100}
+      SSE_HOLD_SECONDS: ${SSE_HOLD_SECONDS:-120}
+      SSE_STARTUP_WAIT_SECONDS: ${SSE_STARTUP_WAIT_SECONDS:-5}
+      SSE_RECOVERY_WAIT_SECONDS: ${SSE_RECOVERY_WAIT_SECONDS:-35}
+      SSE_MAX_CONNECTIONS_PER_MEMBER: ${NOTIFICATION_SSE_MAX_CONNECTIONS_PER_MEMBER:-5}
+    volumes:
+      - ./scripts/load-test:/scripts:ro
+    entrypoint: ["/bin/sh", "/scripts/scenarios/sse-connections.sh"]
     depends_on:
       backend:
         condition: service_healthy

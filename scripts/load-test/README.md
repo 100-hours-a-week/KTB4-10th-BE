@@ -9,6 +9,7 @@
 ```text
 compose.loadtest.yml
 ├─ mysql            로컬 테스트 DB
+├─ redis            세션·쿠폰 제한·SSE Pub/Sub용 로컬 Redis
 ├─ backend          local,loadtest 프로필 백엔드
 ├─ prometheus       애플리케이션·k6 지표 저장
 ├─ grafana          공통 대시보드
@@ -18,13 +19,14 @@ compose.loadtest.yml
 scripts/load-test/
 ├─ README.md
 ├─ run-with-summary.sh
+├─ run-sse.sh       SSE 시나리오 간단 실행기
 ├─ general-api.js
 ├─ map-contents.js
 ├─ map-zoom-15.js
 ├─ map-zoom-15-nationwide-random.js
 ├─ map-zoom-15-nationwide-tourism.js
 ├─ guidebook-generation.js
-└─ scenarios/       새 시나리오를 추가하는 위치
+└─ scenarios/       새 시나리오와 SSE 연결 실행기를 두는 위치
 ```
 
 부하테스트 결과 JSON, MySQL 데이터, 실제 API 키는 Git에 저장하지 않습니다.
@@ -32,17 +34,17 @@ scripts/load-test/
 ## 2. 사전 준비
 
 - Docker Desktop
-- TourAPI 서비스 키
-- 카카오 REST API 키, Client Secret, Admin Key
 - TourAPI 스케줄러가 포함된 백엔드 코드
 
-환경변수 예시를 복사하고 실제 로컬 개발 키를 입력합니다.
+환경변수 예시를 복사합니다.
 
 ```bash
 cp .env.loadtest.example .env.loadtest
 ```
 
 `.env.loadtest`는 Git에 포함되지 않습니다. 개발 DB나 운영 DB 접속 정보를 입력하지 않습니다. Compose 내부 백엔드는 Compose가 생성한 로컬 MySQL만 사용합니다.
+
+SSE와 일반 fixture API 부하테스트에는 실제 카카오 계정이나 API 키가 필요하지 않습니다. 빈 설정이어도 Compose가 로컬 전용 placeholder를 전달해 애플리케이션을 기동합니다. 실제 TourAPI 관광 데이터를 수집하는 지도 시나리오에서만 로컬 개발용 `TOUR_API_SERVICE_KEY`를 입력하며 운영 Secret은 사용하지 않습니다.
 
 ## 3. 로컬 스택 실행
 
@@ -68,10 +70,12 @@ docker compose \
 - health: `http://localhost:8081/actuator/health`
 - Prometheus metrics: `http://localhost:8081/actuator/prometheus`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
-- Prometheus: `http://localhost:9090`
+- Prometheus: `http://localhost:9091`
 - Loki: `http://localhost:3100/ready`
 
 Grafana에는 `KGB Local Load Test` 대시보드가 자동으로 생성됩니다.
+
+기존 개발용 컨테이너와 충돌하지 않도록 부하테스트 MySQL은 호스트 3308, Redis는 호스트 6380을 기본값으로 사용합니다. 로컬에 별도 Prometheus가 실행 중이어도 충돌하지 않도록 부하테스트 Prometheus는 호스트 9091을 사용합니다. Compose 내부 서비스는 MySQL 3306, Redis 6379, Prometheus 9090으로 통신합니다.
 
 ## 4. 관광 데이터 적재 확인
 
@@ -204,6 +208,38 @@ K6_GENERATION_VUS=2 docker compose \
 
 로컬 `FakeGuidebookAiClient`를 사용하므로 실제 AI 서버 성능이 아니라 생성 접수, polling과 결과 저장 흐름을 측정합니다.
 
+### SSE 연결 수명과 과다 연결
+
+SSE는 응답을 장시간 유지하므로 일반적인 짧은 HTTP 요청용 k6 시나리오와 분리했습니다. `run-sse.sh`가 실제 `GET /api/v1/notifications/stream` 연결을 여러 개 열고, 지정한 시간 뒤 클라이언트 프로세스를 종료해 탭 종료나 네트워크 단절 상황을 재현합니다.
+
+먼저 서로 다른 fixture 회원 10명으로 짧게 확인합니다.
+
+```bash
+./scripts/load-test/run-sse.sh distinct 10 30
+```
+
+이후 연결 수를 단계적으로 올립니다.
+
+```bash
+./scripts/load-test/run-sse.sh distinct 50 120
+./scripts/load-test/run-sse.sh distinct 100 120
+./scripts/load-test/run-sse.sh distinct 300 120
+```
+
+같은 회원이 탭을 반복해서 연 상황과 회원당 최대 5개 제한은 다음처럼 확인합니다.
+
+```bash
+./scripts/load-test/run-sse.sh same 10 60
+```
+
+- 첫 번째 인자는 `distinct` 또는 `same`이다.
+- 두 번째 인자는 연결 수이며 `distinct`에서는 `LOAD_TEST_USER_COUNT`를 넘을 수 없다.
+- 세 번째 인자는 연결 유지 시간(초)이다.
+- 스크립트 종료 시 SSE 클라이언트만 강제 종료한다. BE 서버나 Redis를 종료하는 명령이 아니다.
+- 클라이언트 종료 후 기본 35초 동안 heartbeat 정리와 Prometheus 수집을 기다린 뒤 연결 Gauge를 출력한다.
+
+부하 중에는 `http://localhost:3000`의 `KGB Local Load Test` 대시보드에서 SSE 패널을 확인한다. 종료 뒤 `SSE — 현재 연결 수`가 테스트 전 기준선으로 돌아와야 한다. Heap은 한 번 증가할 수 있으므로 동일 시나리오를 최소 세 번 반복하고 GC 이후 기준선이 계속 상승하는지를 본다.
+
 ## 7. Smoke test
 
 본 테스트 전에 VU 1명으로 연결, 인증, 결과 저장을 확인합니다.
@@ -261,6 +297,25 @@ docker compose \
 - JVM Heap과 애플리케이션 CPU
 - MySQL CPU
 - 캐시 hit ratio, size와 eviction
+- SSE 현재 연결 수, 초당 open·close와 종료 사유
+- SSE 평균·최대 연결 수명
+- JVM GC pause와 live thread
+
+SSE 메모리 누수는 단순히 Heap이 증가했다는 이유로 판단하지 않습니다. 부하 클라이언트를 모두 종료한 뒤 다음을 함께 확인합니다.
+
+1. `kgb_notification_sse_connections`가 테스트 전 값으로 복귀한다.
+2. opened와 closed 증가량의 차이가 현재 active 연결과 대체로 일치한다.
+3. 동일 부하를 세 번 이상 반복해도 자연 GC 이후 Heap 기준선이 계속 상승하지 않는다.
+4. live thread가 회차마다 누적되지 않는다.
+5. Hikari pending이 증가하면 SSE 연결 객체보다 연결 시 세션 인증의 DB·Redis 조회를 먼저 확인한다.
+
+Issue #267에는 실행마다 다음 형식으로 결과를 남깁니다. Heap은 부하 전, 부하 중 최대값, 연결 종료 후 자연 GC가 지난 값을 구분합니다.
+
+| 실행 | 모드 | 연결 수 | 유지 시간 | Gauge 전/최대/후 | Heap 전/최대/후 | GC pause | Thread 전/최대/후 | 결과 |
+| --- | --- | ---: | ---: | --- | --- | --- | --- | --- |
+| 1 | distinct | 10 | 30초 | 0 / 10 / 0 |  |  |  |  |
+
+각 단계는 최소 세 번 반복합니다. 로컬 PC의 절대 처리량을 운영 용량으로 해석하지 않고, 같은 자원 제한과 데이터 상태에서 변경 전후 및 반복 회복 여부를 비교합니다.
 
 Grafana 시간 범위에는 한 번의 테스트 구간만 포함합니다. 여러 실행이 섞이면 k6 누적값과 최대값을 잘못 해석할 수 있습니다.
 
