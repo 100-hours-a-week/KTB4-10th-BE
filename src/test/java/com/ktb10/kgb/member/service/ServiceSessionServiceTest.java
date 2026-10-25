@@ -11,6 +11,7 @@ import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.session.MySqlServiceSessionAuthenticationStore;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Instant;
@@ -24,12 +25,16 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @DataJpaTest(properties = {
         "spring.flyway.enabled=false",
         "spring.jpa.hibernate.ddl-auto=create-drop"
 })
-@Import({ServiceSessionService.class, SessionIdHasher.class,
+@Import({ServiceSessionService.class, MySqlServiceSessionAuthenticationStore.class, SessionIdHasher.class,
         ServiceSessionServiceTest.FixedClockConfiguration.class})
 class ServiceSessionServiceTest {
 
@@ -50,6 +55,9 @@ class ServiceSessionServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     @BeforeEach
     void cleanUp() {
@@ -75,6 +83,53 @@ class ServiceSessionServiceTest {
                 session.getId()));
         AuthSession updatedSession = authSessionRepository.findById(session.getId()).orElseThrow();
         assertThat(updatedSession.getLastUsedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void authenticationStoreCommitsActivityWithoutCallerTransaction() {
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        Long sessionId = transaction.execute(status -> {
+            Member member = memberRepository.save(member("committed-session-member"));
+            return authSessionRepository.saveAndFlush(AuthSession.issue(
+                    member,
+                    sessionIdHasher.hash("committed-session"),
+                    NOW.plusHours(1),
+                    NOW.minusMinutes(10))).getId();
+        });
+
+        try {
+            assertThat(serviceSessionService.authenticate("committed-session")).isPresent();
+            LocalDateTime lastUsedAt = transaction.execute(status -> authSessionRepository
+                    .findById(sessionId).orElseThrow().getLastUsedAt());
+            assertThat(lastUsedAt).isEqualTo(NOW);
+        } finally {
+            transaction.executeWithoutResult(status -> {
+                authSessionRepository.deleteAll();
+                memberRepository.deleteAll();
+            });
+        }
+    }
+
+    @Test
+    void authenticationUpdatesActivityWithoutExtendingAbsoluteExpiration() {
+        Member member = memberRepository.save(member("absolute-expiration-member"));
+        AuthSession session = AuthSession.issue(
+                member,
+                sessionIdHasher.hash("absolute-expiration-session"),
+                NOW.plusMinutes(10),
+                NOW.minusHours(7).minusMinutes(50));
+        session.recordUse(NOW.minusMinutes(1));
+        authSessionRepository.saveAndFlush(session);
+        entityManager.clear();
+
+        assertThat(serviceSessionService.authenticate("absolute-expiration-session")).isPresent();
+
+        entityManager.flush();
+        entityManager.clear();
+        AuthSession updated = authSessionRepository.findById(session.getId()).orElseThrow();
+        assertThat(updated.getLastUsedAt()).isEqualTo(NOW);
+        assertThat(updated.getExpiresAt()).isEqualTo(NOW.plusMinutes(10));
     }
 
     @Test
@@ -104,6 +159,12 @@ class ServiceSessionServiceTest {
         assertThat(serviceSessionService.authenticate("revoked-session")).isEmpty();
         assertThat(serviceSessionService.authenticate("expired-session")).isEmpty();
         assertThat(serviceSessionService.authenticate("idle-expired-session")).isEmpty();
+        assertThat(authSessionRepository.findById(revokedSession.getId()).orElseThrow().getLastUsedAt())
+                .isEqualTo(NOW.minusMinutes(10));
+        assertThat(authSessionRepository.findById(expiredSession.getId()).orElseThrow().getLastUsedAt())
+                .isEqualTo(NOW.minusHours(1));
+        assertThat(authSessionRepository.findById(idleExpiredSession.getId()).orElseThrow().getLastUsedAt())
+                .isEqualTo(NOW.minusMinutes(30));
     }
 
     @Test

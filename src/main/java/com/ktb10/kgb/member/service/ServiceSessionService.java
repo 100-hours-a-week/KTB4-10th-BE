@@ -5,10 +5,10 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.member.entity.AuthSession;
-import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
+import com.ktb10.kgb.member.session.ServiceSessionAuthenticationStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ServiceSessionService {
 
+    private final ServiceSessionAuthenticationStore authenticationStore;
     private final AuthSessionRepository authSessionRepository;
     private final WebPushSubscriptionRepository webPushSubscriptionRepository;
     private final SessionIdHasher sessionIdHasher;
@@ -28,11 +29,13 @@ public class ServiceSessionService {
     private final Duration idleTimeout;
 
     public ServiceSessionService(
+            ServiceSessionAuthenticationStore authenticationStore,
             AuthSessionRepository authSessionRepository,
             WebPushSubscriptionRepository webPushSubscriptionRepository,
             SessionIdHasher sessionIdHasher,
             Clock clock,
             @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout) {
+        this.authenticationStore = authenticationStore;
         this.authSessionRepository = authSessionRepository;
         this.webPushSubscriptionRepository = webPushSubscriptionRepository;
         this.sessionIdHasher = sessionIdHasher;
@@ -40,27 +43,9 @@ public class ServiceSessionService {
         this.idleTimeout = idleTimeout;
     }
 
-    @Transactional
     public Optional<AuthenticatedMember> authenticate(String rawSessionId) {
         byte[] sessionIdHash = sessionIdHasher.hash(rawSessionId);
-        Optional<AuthSession> foundSession = authSessionRepository
-                .findBySessionIdHashForAuthentication(sessionIdHash);
-        if (foundSession.isEmpty()) {
-            return Optional.empty();
-        }
-
-        AuthSession session = foundSession.get();
-        LocalDateTime now = LocalDateTime.now(clock);
-        Member member = session.getMember();
-        if (!session.isUsable(now, idleTimeout) || member.isDeleted()) {
-            return Optional.empty();
-        }
-
-        session.recordUse(now);
-        return Optional.of(new AuthenticatedMember(
-                member.getId(),
-                member.getStatus(),
-                session.getId()));
+        return authenticationStore.authenticateAndRecordUse(sessionIdHash, idleTimeout);
     }
 
     @Transactional
