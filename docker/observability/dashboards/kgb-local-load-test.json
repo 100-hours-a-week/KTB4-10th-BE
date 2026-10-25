@@ -207,6 +207,80 @@
       "targets": [{"editorMode": "code", "expr": "{service_name=\"backend\"} |~ `(?i)error|exception|failed`", "queryType": "range", "refId": "A"}],
       "title": "에러 로그",
       "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 50},
+      "id": 20,
+      "panels": [],
+      "title": "SSE 연결 수명과 자원 회복",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "현재 백엔드 인스턴스 메모리에 남아 있는 SSE 연결 수입니다. 클라이언트 종료 후 테스트 전 기준선으로 돌아와야 합니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 15, "lineWidth": 2, "showPoints": "never"}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 51},
+      "id": 21,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "kgb_notification_sse_connections{application=\"kgb\"}", "legendFormat": "active connections", "range": true, "refId": "A"}],
+      "title": "SSE — 현재 연결 수",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "SSE 연결 생성과 종료 Counter의 초당 증가율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 51},
+      "id": 22,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (event) (rate(kgb_notification_sse_connection_events_total{application=\"kgb\"}[$__rate_interval]))", "legendFormat": "{{event}}", "range": true, "refId": "A"}],
+      "title": "SSE — Open·Close rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "completion, timeout, heartbeat_failure, evicted 등 종료 사유별 초당 증가율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 51},
+      "id": 23,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (reason) (rate(kgb_notification_sse_connection_events_total{application=\"kgb\",event=\"closed\"}[$__rate_interval]))", "legendFormat": "{{reason}}", "range": true, "refId": "A"}],
+      "title": "SSE — 종료 사유",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "종료된 SSE 연결의 평균 수명과 관측 구간 최대 수명입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 58},
+      "id": 24,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum(rate(kgb_notification_sse_connection_duration_seconds_sum{application=\"kgb\"}[$__rate_interval])) / clamp_min(sum(rate(kgb_notification_sse_connection_duration_seconds_count{application=\"kgb\"}[$__rate_interval])), 1e-9)", "legendFormat": "average", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "max(kgb_notification_sse_connection_duration_seconds_max{application=\"kgb\"})", "legendFormat": "max", "range": true, "refId": "B"}],
+      "title": "SSE — 연결 수명",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "SSE 연결 부하 전후의 JVM GC pause 누적 시간 증가율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 58},
+      "id": 25,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum(rate(jvm_gc_pause_seconds_sum{application=\"kgb\"}[$__rate_interval]))", "legendFormat": "GC pause rate", "range": true, "refId": "A"}],
+      "title": "JVM — GC pause",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "SSE 연결을 반복해도 부하 종료 후 누적 증가하지 않아야 하는 JVM live thread 수입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 58},
+      "id": 26,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "jvm_threads_live_threads{application=\"kgb\"}", "legendFormat": "live threads", "range": true, "refId": "A"}],
+      "title": "JVM — Live threads",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",
