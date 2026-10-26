@@ -35,7 +35,7 @@ class GuidebookGenerationControllerTest {
         AuthenticatedMember member = new AuthenticatedMember(
                 1L,
                 MemberStatus.ACTIVE,
-                10L);
+                "000000000000000000000000000000000000000000000000000000000000000a");
         GuidebookGenerationRequest request = new GuidebookGenerationRequest(
                 "경상북도",
                 "경주시",

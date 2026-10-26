@@ -8,13 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.Notification;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import jakarta.servlet.http.Cookie;
@@ -49,7 +47,7 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 @AutoConfigureMockMvc
 @Import(MemberSettingsApiTest.FixedClockConfiguration.class)
-class MemberSettingsApiTest {
+class MemberSettingsApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-23T03:00:00Z");
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
@@ -63,8 +61,6 @@ class MemberSettingsApiTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private NotificationRepository notificationRepository;
@@ -72,7 +68,7 @@ class MemberSettingsApiTest {
     @BeforeEach
     void cleanUp() {
         notificationRepository.deleteAll();
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
@@ -175,12 +171,12 @@ class MemberSettingsApiTest {
         return memberRepository.save(member);
     }
 
-    private AuthSession issueSession(Member member, String rawSessionId) {
-        return authSessionRepository.saveAndFlush(AuthSession.issue(
+    private String issueSession(Member member, String rawSessionId) {
+        return sessions.seed(
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
     }
 
     private Csrf csrf() throws Exception {

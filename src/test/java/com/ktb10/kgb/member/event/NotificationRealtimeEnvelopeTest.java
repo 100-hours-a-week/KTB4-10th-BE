@@ -20,7 +20,7 @@ class NotificationRealtimeEnvelopeTest {
                 notificationEvent(),
                 OCCURRED_AT);
 
-        assertThat(envelope.schemaVersion()).isEqualTo(1);
+        assertThat(envelope.schemaVersion()).isEqualTo(2);
         assertThat(envelope.eventId()).isEqualTo("notification:301");
         assertThat(envelope.eventType())
                 .isEqualTo(NotificationRealtimeEventType.NOTIFICATION_CREATED);
@@ -31,7 +31,7 @@ class NotificationRealtimeEnvelopeTest {
     @Test
     void rejectsUnsupportedSchemaVersion() {
         assertThatThrownBy(() -> new NotificationRealtimeEnvelope(
-                2,
+                3,
                 "notification:301",
                 NotificationRealtimeEventType.NOTIFICATION_CREATED,
                 OCCURRED_AT,
@@ -45,7 +45,7 @@ class NotificationRealtimeEnvelopeTest {
     @Test
     void requiresSessionIdForSessionDisconnectEvent() {
         assertThatThrownBy(() -> new NotificationRealtimeEnvelope(
-                1,
+                2,
                 "session-disconnected:test",
                 NotificationRealtimeEventType.SESSION_DISCONNECTED,
                 OCCURRED_AT,

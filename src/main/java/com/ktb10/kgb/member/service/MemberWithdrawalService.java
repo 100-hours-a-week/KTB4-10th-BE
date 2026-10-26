@@ -12,9 +12,9 @@ import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
+import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
@@ -33,7 +33,7 @@ public class MemberWithdrawalService {
     private static final String CREDIT_REVOKE_KEY_PREFIX = "withdrawal-revoke:";
 
     private final MemberRepository memberRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private final ServiceSessionLifecycleStore sessionStore;
     private final WebPushSubscriptionRepository webPushSubscriptionRepository;
     private final CreditWalletRepository creditWalletRepository;
     private final CreditTransactionRepository creditTransactionRepository;
@@ -43,7 +43,7 @@ public class MemberWithdrawalService {
 
     public MemberWithdrawalService(
             MemberRepository memberRepository,
-            AuthSessionRepository authSessionRepository,
+            ServiceSessionLifecycleStore sessionStore,
             WebPushSubscriptionRepository webPushSubscriptionRepository,
             CreditWalletRepository creditWalletRepository,
             CreditTransactionRepository creditTransactionRepository,
@@ -51,7 +51,7 @@ public class MemberWithdrawalService {
             KakaoUnlinkClient kakaoUnlinkClient,
             Clock clock) {
         this.memberRepository = memberRepository;
-        this.authSessionRepository = authSessionRepository;
+        this.sessionStore = sessionStore;
         this.webPushSubscriptionRepository = webPushSubscriptionRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.creditTransactionRepository = creditTransactionRepository;
@@ -78,7 +78,7 @@ public class MemberWithdrawalService {
                 WebPushSubscriptionStatus.ACTIVE,
                 WebPushSubscriptionStatus.REVOKED,
                 now);
-        authSessionRepository.revokeAllActiveByMemberId(memberId, now);
+        sessionStore.revokeAllForMember(memberId);
     }
 
     private void revokeCredits(Long memberId, LocalDateTime now) {

@@ -32,35 +32,7 @@ class MemberEntityTest {
                 .isInstanceOf(IllegalStateException.class);
     }
 
-    @Test
-    void sessionUsesAbsoluteAndIdleExpirationAndCanBeRevoked() {
-        AuthSession session = AuthSession.issue(
-                createMember(),
-                hash(1),
-                BASE_TIME.plusHours(8),
-                BASE_TIME);
 
-        assertThat(session.isUsable(BASE_TIME.plusMinutes(29), Duration.ofMinutes(30))).isTrue();
-        assertThat(session.isUsable(BASE_TIME.plusMinutes(30), Duration.ofMinutes(30))).isFalse();
-
-        session.recordUse(BASE_TIME.plusMinutes(20));
-        assertThat(session.isUsable(BASE_TIME.plusMinutes(49), Duration.ofMinutes(30))).isTrue();
-
-        session.revoke(BASE_TIME.plusMinutes(50));
-        assertThat(session.isUsable(BASE_TIME.plusMinutes(51), Duration.ofMinutes(30))).isFalse();
-    }
-
-    @Test
-    void sessionHashMustBeSha256Length() {
-        Member member = createMember();
-
-        assertThatThrownBy(() -> AuthSession.issue(
-                member,
-                new byte[31],
-                BASE_TIME.plusHours(8),
-                BASE_TIME))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
 
     @Test
     void preferenceTypeComesFromStablePreferenceCode() {

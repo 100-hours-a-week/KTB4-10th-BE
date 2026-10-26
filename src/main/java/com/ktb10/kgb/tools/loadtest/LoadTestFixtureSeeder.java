@@ -3,16 +3,17 @@ package com.ktb10.kgb.tools.loadtest;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.PreferenceCode;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
+import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -39,7 +40,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
     private final MemberRepository memberRepository;
     private final MemberPreferenceRepository memberPreferenceRepository;
     private final CreditWalletRepository creditWalletRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private final ServiceSessionLifecycleStore sessionStore;
     private final SessionIdHasher sessionIdHasher;
     private final Optional<LoadTestSessionAuthenticationBypass> authenticationBypass;
     private final int userCount;
@@ -50,7 +51,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
             MemberRepository memberRepository,
             MemberPreferenceRepository memberPreferenceRepository,
             CreditWalletRepository creditWalletRepository,
-            AuthSessionRepository authSessionRepository,
+            ServiceSessionLifecycleStore sessionStore,
             SessionIdHasher sessionIdHasher,
             Optional<LoadTestSessionAuthenticationBypass> authenticationBypass,
             @Value("${load-test.user-count}") int userCount,
@@ -59,7 +60,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
         this.memberRepository = memberRepository;
         this.memberPreferenceRepository = memberPreferenceRepository;
         this.creditWalletRepository = creditWalletRepository;
-        this.authSessionRepository = authSessionRepository;
+        this.sessionStore = sessionStore;
         this.sessionIdHasher = sessionIdHasher;
         this.authenticationBypass = authenticationBypass;
         this.userCount = validateUserCount(userCount);
@@ -77,11 +78,11 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
             preparePreferences(member);
             prepareWallet(member, now);
             String rawSessionId = rawSessionId(sequence);
-            AuthSession session = replaceSession(member, rawSessionId, now);
+            String sessionHash = replaceSession(member, rawSessionId);
             authenticationBypass.ifPresent(bypass -> bypass.replace(
                     rawSessionId,
                     member.getId(),
-                    session.getId()));
+                    sessionHash));
         }
 
         LOGGER.info(
@@ -132,18 +133,11 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
         }
     }
 
-    private AuthSession replaceSession(Member member, String rawSessionId, LocalDateTime now) {
-        byte[] sessionHash = sessionIdHasher.hash(rawSessionId);
-        authSessionRepository.revokeAllActiveByMemberId(member.getId(), now);
-        authSessionRepository.findBySessionIdHash(sessionHash).ifPresent(existing -> {
-            authSessionRepository.delete(existing);
-            authSessionRepository.flush();
-        });
-        return authSessionRepository.save(AuthSession.issue(
-                member,
-                sessionHash,
-                now.plusDays(30),
-                now));
+    private String replaceSession(Member member, String rawSessionId) {
+        byte[] hash = sessionIdHasher.hash(rawSessionId);
+        sessionStore.revokeCurrent(hash, member.getId());
+        sessionStore.issueReplacingForMember(hash, member.getId(), Duration.ofDays(30), Duration.ofDays(30));
+        return HexFormat.of().formatHex(hash);
     }
 
     private String rawSessionId(int sequence) {

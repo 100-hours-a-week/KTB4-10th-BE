@@ -6,12 +6,10 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.member.dto.request.WebPushSubscriptionKeysRequest;
 import com.ktb10.kgb.member.dto.request.WebPushSubscriptionRequest;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.error.MemberErrorCode;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import com.ktb10.kgb.member.service.WebPushSubscriptionService;
@@ -36,7 +34,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
-class WebPushSubscriptionMysqlConcurrencyTest {
+class WebPushSubscriptionMysqlConcurrencyTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final int CONCURRENT_REQUESTS = 6;
     private static final String P256DH =
@@ -52,8 +50,6 @@ class WebPushSubscriptionMysqlConcurrencyTest {
     @Autowired
     private WebPushSubscriptionRepository subscriptionRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -74,7 +70,7 @@ class WebPushSubscriptionMysqlConcurrencyTest {
     @BeforeEach
     void cleanUp() {
         subscriptionRepository.deleteAllInBatch();
-        authSessionRepository.deleteAllInBatch();
+        sessions.clear();
         memberRepository.deleteAllInBatch();
     }
 
@@ -90,13 +86,13 @@ class WebPushSubscriptionMysqlConcurrencyTest {
                 now.minusDays(1));
         member.activate(now.minusHours(1));
         member = memberRepository.saveAndFlush(member);
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
+        String session = sessions.seed(
                 member,
                 sessionIdHasher.hash("concurrent-web-push-session"),
                 now.plusHours(8),
-                now.minusMinutes(1)));
+                now.minusMinutes(1));
 
-        List<Boolean> results = registerConcurrently(member.getId(), session.getId());
+        List<Boolean> results = registerConcurrently(member.getId(), session);
 
         assertThat(results).containsExactlyInAnyOrder(true, true, true, true, true, false);
         assertThat(subscriptionRepository.countByMemberIdAndStatus(
@@ -104,7 +100,7 @@ class WebPushSubscriptionMysqlConcurrencyTest {
                 .isEqualTo(5);
     }
 
-    private List<Boolean> registerConcurrently(Long memberId, Long sessionId) throws Exception {
+    private List<Boolean> registerConcurrently(Long memberId, String sessionHash) throws Exception {
         CountDownLatch ready = new CountDownLatch(CONCURRENT_REQUESTS);
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -112,7 +108,7 @@ class WebPushSubscriptionMysqlConcurrencyTest {
             for (int sequence = 1; sequence <= CONCURRENT_REQUESTS; sequence++) {
                 int requestSequence = sequence;
                 futures.add(executor.submit(() -> registerAfterStart(
-                        memberId, sessionId, requestSequence, ready, start)));
+                        memberId, sessionHash, requestSequence, ready, start)));
             }
             assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
             start.countDown();
@@ -126,7 +122,7 @@ class WebPushSubscriptionMysqlConcurrencyTest {
 
     private boolean registerAfterStart(
             Long memberId,
-            Long sessionId,
+            String sessionHash,
             int sequence,
             CountDownLatch ready,
             CountDownLatch start) throws InterruptedException {
@@ -137,7 +133,7 @@ class WebPushSubscriptionMysqlConcurrencyTest {
         try {
             subscriptionService.registerOrRenew(
                     memberId,
-                    sessionId,
+                    sessionHash,
                     new WebPushSubscriptionRequest(
                             "https://fcm.googleapis.com/fcm/send/concurrent-" + sequence,
                             null,

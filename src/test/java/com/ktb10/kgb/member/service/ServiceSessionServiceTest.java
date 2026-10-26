@@ -2,262 +2,90 @@ package com.ktb10.kgb.member.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
-import com.ktb10.kgb.common.security.AuthenticatedMember;
+import static org.mockito.Mockito.*;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.common.error.BusinessException;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
-import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
+import com.ktb10.kgb.member.entity.MemberStatus;
+import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.repository.MemberRepository;
-import com.ktb10.kgb.member.session.MySqlServiceSessionAuthenticationStore;
-import jakarta.persistence.EntityManager;
+import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
+import com.ktb10.kgb.member.session.ServiceSessionAuthenticationStore;
+import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
 import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneOffset;
+import java.time.Duration;
+import java.util.HexFormat;
 import java.util.Optional;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Import;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
-@DataJpaTest(properties = {
-        "spring.flyway.enabled=false",
-        "spring.jpa.hibernate.ddl-auto=create-drop"
-})
-@Import({ServiceSessionService.class, MySqlServiceSessionAuthenticationStore.class, SessionIdHasher.class,
-        ServiceSessionServiceTest.FixedClockConfiguration.class})
 class ServiceSessionServiceTest {
+    private final ServiceSessionAuthenticationStore auth = mock(ServiceSessionAuthenticationStore.class);
+    private final ServiceSessionLifecycleStore lifecycle = mock(ServiceSessionLifecycleStore.class);
+    private final MemberRepository members = mock(MemberRepository.class);
+    private final WebPushSubscriptionRepository subscriptions = mock(WebPushSubscriptionRepository.class);
+    private final SessionIdHasher hasher = new SessionIdHasher();
+    private final Clock clock = Clock.systemUTC();
+    private final Duration idle = Duration.ofMinutes(30);
+    private final ServiceSessionService service = new ServiceSessionService(
+            auth, lifecycle, members, subscriptions, hasher, clock, idle);
 
-    private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-17T05:00:00Z");
-    private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
-
-    @Autowired
-    private ServiceSessionService serviceSessionService;
-
-    @Autowired
-    private SessionIdHasher sessionIdHasher;
-
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
-
-    @Autowired
-    private MemberRepository memberRepository;
-
-    @Autowired
-    private EntityManager entityManager;
-
-    @Autowired
-    private PlatformTransactionManager transactionManager;
-
-    @BeforeEach
-    void cleanUp() {
-        authSessionRepository.deleteAll();
-        memberRepository.deleteAll();
+    @Test
+    void memberStatusAlwaysComesFromMysqlAndHashComesFromCookie() {
+        byte[] hash = hasher.hash("cookie");
+        Member member = mock(Member.class);
+        when(member.getId()).thenReturn(7L);
+        when(member.getStatus()).thenReturn(MemberStatus.ONBOARDING, MemberStatus.ACTIVE);
+        when(auth.authenticateAndRecordUse(hash, idle)).thenReturn(Optional.of(7L));
+        when(members.findByIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(member));
+        var first = service.authenticate("cookie").orElseThrow();
+        var second = service.authenticate("cookie").orElseThrow();
+        assertThat(first.status()).isEqualTo(MemberStatus.ONBOARDING);
+        assertThat(second.status()).isEqualTo(MemberStatus.ACTIVE);
+        assertThat(second.sessionHash()).isEqualTo(HexFormat.of().formatHex(hash));
+        verify(members, times(2)).findByIdAndDeletedAtIsNull(7L);
+        verifyNoInteractions(lifecycle, subscriptions);
     }
 
     @Test
-    void validSessionCreatesPrincipalAndUpdatesLastUsedAt() {
-        Member member = memberRepository.save(member("valid-member"));
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("valid-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10)));
-        entityManager.clear();
-
-        Optional<AuthenticatedMember> result = serviceSessionService.authenticate("valid-session");
-
-        assertThat(result).contains(new AuthenticatedMember(
-                member.getId(),
-                member.getStatus(),
-                session.getId()));
-        AuthSession updatedSession = authSessionRepository.findById(session.getId()).orElseThrow();
-        assertThat(updatedSession.getLastUsedAt()).isEqualTo(NOW);
+    void missingSessionDoesNotQueryMysql() {
+        when(auth.authenticateAndRecordUse(hasher.hash("missing"), idle)).thenReturn(Optional.empty());
+        assertThat(service.authenticate("missing")).isEmpty();
+        verifyNoInteractions(members, subscriptions, lifecycle);
     }
 
     @Test
-    @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    void authenticationStoreCommitsActivityWithoutCallerTransaction() {
-        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
-        Long sessionId = transaction.execute(status -> {
-            Member member = memberRepository.save(member("committed-session-member"));
-            return authSessionRepository.saveAndFlush(AuthSession.issue(
-                    member,
-                    sessionIdHasher.hash("committed-session"),
-                    NOW.plusHours(1),
-                    NOW.minusMinutes(10))).getId();
-        });
-
-        try {
-            assertThat(serviceSessionService.authenticate("committed-session")).isPresent();
-            LocalDateTime lastUsedAt = transaction.execute(status -> authSessionRepository
-                    .findById(sessionId).orElseThrow().getLastUsedAt());
-            assertThat(lastUsedAt).isEqualTo(NOW);
-        } finally {
-            transaction.executeWithoutResult(status -> {
-                authSessionRepository.deleteAll();
-                memberRepository.deleteAll();
-            });
-        }
+    void deletedMemberIsRejectedWithoutCachingItsStatus() {
+        when(auth.authenticateAndRecordUse(hasher.hash("deleted"), idle)).thenReturn(Optional.of(7L));
+        when(members.findByIdAndDeletedAtIsNull(7L)).thenReturn(Optional.empty());
+        assertThat(service.authenticate("deleted")).isEmpty();
     }
 
     @Test
-    void authenticationUpdatesActivityWithoutExtendingAbsoluteExpiration() {
-        Member member = memberRepository.save(member("absolute-expiration-member"));
-        AuthSession session = AuthSession.issue(
-                member,
-                sessionIdHasher.hash("absolute-expiration-session"),
-                NOW.plusMinutes(10),
-                NOW.minusHours(7).minusMinutes(50));
-        session.recordUse(NOW.minusMinutes(1));
-        authSessionRepository.saveAndFlush(session);
-        entityManager.clear();
-
-        assertThat(serviceSessionService.authenticate("absolute-expiration-session")).isPresent();
-
-        entityManager.flush();
-        entityManager.clear();
-        AuthSession updated = authSessionRepository.findById(session.getId()).orElseThrow();
-        assertThat(updated.getLastUsedAt()).isEqualTo(NOW);
-        assertThat(updated.getExpiresAt()).isEqualTo(NOW.plusMinutes(10));
+    void redisFailureDoesNotFallBackToMysql() {
+        var failure = new IllegalStateException("Redis unavailable");
+        when(auth.authenticateAndRecordUse(hasher.hash("cookie"), idle)).thenThrow(failure);
+        assertThatThrownBy(() -> service.authenticate("cookie")).isSameAs(failure);
+        verifyNoInteractions(members, subscriptions, lifecycle);
     }
 
     @Test
-    void unknownRevokedAndExpiredSessionsAreRejected() {
-        Member member = memberRepository.save(member("invalid-session-member"));
-        AuthSession revokedSession = AuthSession.issue(
-                member,
-                sessionIdHasher.hash("revoked-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10));
-        revokedSession.revoke(NOW.minusMinutes(1));
-        AuthSession expiredSession = AuthSession.issue(
-                member,
-                sessionIdHasher.hash("expired-session"),
-                NOW,
-                NOW.minusHours(1));
-        AuthSession idleExpiredSession = AuthSession.issue(
-                member,
-                sessionIdHasher.hash("idle-expired-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(30));
-        authSessionRepository.saveAllAndFlush(
-                java.util.List.of(revokedSession, expiredSession, idleExpiredSession));
-        entityManager.clear();
-
-        assertThat(serviceSessionService.authenticate("unknown-session")).isEmpty();
-        assertThat(serviceSessionService.authenticate("revoked-session")).isEmpty();
-        assertThat(serviceSessionService.authenticate("expired-session")).isEmpty();
-        assertThat(serviceSessionService.authenticate("idle-expired-session")).isEmpty();
-        assertThat(authSessionRepository.findById(revokedSession.getId()).orElseThrow().getLastUsedAt())
-                .isEqualTo(NOW.minusMinutes(10));
-        assertThat(authSessionRepository.findById(expiredSession.getId()).orElseThrow().getLastUsedAt())
-                .isEqualTo(NOW.minusHours(1));
-        assertThat(authSessionRepository.findById(idleExpiredSession.getId()).orElseThrow().getLastUsedAt())
-                .isEqualTo(NOW.minusMinutes(30));
+    void logoutLocksMemberAndRevokesOnlyTheMatchingSubscriptionAssociation() {
+        String hash = HexFormat.of().formatHex(hasher.hash("cookie"));
+        when(members.findActiveByIdForUpdate(7L)).thenReturn(Optional.of(mock(Member.class)));
+        service.revokeCurrent(7L, hash);
+        var order = inOrder(members, lifecycle, subscriptions);
+        order.verify(members).findActiveByIdForUpdate(7L);
+        order.verify(lifecycle).revokeCurrent(hasher.hash("cookie"), 7L);
+        order.verify(subscriptions).revokeAllActiveByMemberIdAndSessionHash(
+                eq(7L), eq(hash), eq(WebPushSubscriptionStatus.ACTIVE),
+                eq(WebPushSubscriptionStatus.REVOKED), any());
     }
 
     @Test
-    void withdrawnMemberSessionIsRejected() {
-        Member member = memberRepository.save(member("withdrawn-member"));
-        AuthSession session = authSessionRepository.save(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("withdrawn-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10)));
-        member.withdraw("withdrawn:" + member.getId(), NOW.minusMinutes(1));
-        memberRepository.flush();
-        authSessionRepository.flush();
-        entityManager.clear();
-
-        assertThat(serviceSessionService.authenticate("withdrawn-session")).isEmpty();
-        assertThat(authSessionRepository.findById(session.getId())).isPresent();
-    }
-
-    @Test
-    void nullLastUsedAtFallsBackToCreatedAt() {
-        Member member = memberRepository.save(member("legacy-session-member"));
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("legacy-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(20)));
-        entityManager.createNativeQuery("update auth_sessions set last_used_at = null where id = :id")
-                .setParameter("id", session.getId())
-                .executeUpdate();
-        entityManager.clear();
-
-        assertThat(serviceSessionService.authenticate("legacy-session")).isPresent();
-        assertThat(authSessionRepository.findById(session.getId()).orElseThrow().getLastUsedAt())
-                .isEqualTo(NOW);
-    }
-
-    @Test
-    void revokeCurrentRevokesOnlyMatchedMemberSession() {
-        Member member = memberRepository.save(member("logout-member"));
-        Member otherMember = memberRepository.save(member("other-member"));
-        AuthSession currentSession = authSessionRepository.save(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("current-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10)));
-        AuthSession otherSession = authSessionRepository.saveAndFlush(AuthSession.issue(
-                otherMember,
-                sessionIdHasher.hash("other-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10)));
-        entityManager.clear();
-
-        serviceSessionService.revokeCurrent(member.getId(), currentSession.getId());
-
-        assertThat(authSessionRepository.findById(currentSession.getId()).orElseThrow()
-                .getRevokedAt()).isEqualTo(NOW);
-        assertThat(authSessionRepository.findById(otherSession.getId()).orElseThrow()
-                .getRevokedAt()).isNull();
-    }
-
-    @Test
-    void revokeCurrentRejectsSessionOwnedByAnotherMember() {
-        Member member = memberRepository.save(member("logout-owner"));
-        Member otherMember = memberRepository.save(member("logout-attacker"));
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("owned-session"),
-                NOW.plusHours(1),
-                NOW.minusMinutes(10)));
-
-        assertThatThrownBy(() -> serviceSessionService.revokeCurrent(
-                otherMember.getId(),
-                session.getId()))
-                .isInstanceOf(BusinessException.class);
-    }
-
-    private static Member member(String oauthSubject) {
-        return Member.register(
-                OauthProvider.KAKAO,
-                oauthSubject,
-                "여행자",
-                null,
-                null,
-                NOW.minusDays(1));
-    }
-
-    @TestConfiguration
-    static class FixedClockConfiguration {
-
-        @Bean
-        Clock fixedClock() {
-            return Clock.fixed(CURRENT_INSTANT, ZoneOffset.UTC);
-        }
+    void redisFailureAbortsLogoutBeforePushMutation() {
+        String hash = HexFormat.of().formatHex(hasher.hash("cookie"));
+        when(members.findActiveByIdForUpdate(7L)).thenReturn(Optional.of(mock(Member.class)));
+        when(lifecycle.revokeCurrent(hasher.hash("cookie"), 7L)).thenThrow(new IllegalStateException("Redis down"));
+        assertThatThrownBy(() -> service.revokeCurrent(7L, hash)).isInstanceOf(IllegalStateException.class);
+        verifyNoInteractions(subscriptions);
     }
 }

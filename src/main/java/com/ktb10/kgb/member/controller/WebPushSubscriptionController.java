@@ -52,7 +52,7 @@ public class WebPushSubscriptionController {
                 SUBSCRIPTION_UPSERT_SUCCESS_MESSAGE,
                 subscriptionService.registerOrRenew(
                         member.memberId(),
-                        member.sessionId(),
+                        member.sessionHash(),
                         request));
     }
 

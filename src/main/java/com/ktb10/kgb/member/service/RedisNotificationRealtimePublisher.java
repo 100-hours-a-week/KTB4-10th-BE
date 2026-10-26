@@ -46,10 +46,10 @@ public class RedisNotificationRealtimePublisher implements NotificationRealtimeP
     }
 
     @Override
-    public void publishSessionDisconnected(Long memberId, Long sessionId) {
+    public void publishSessionDisconnected(Long memberId, String sessionHash) {
         publish(NotificationRealtimeEnvelope.sessionDisconnected(
                 memberId,
-                sessionId,
+                sessionHash,
                 Instant.now(clock)));
     }
 

@@ -5,7 +5,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import org.springframework.stereotype.Component;
 
-/** 원문 서비스 세션 ID를 DB 조회용 SHA-256 해시로 변환합니다. */
+/** 원문 서비스 세션 토큰을 Redis 조회·Push/SSE 연결용 SHA-256 해시로 변환합니다. */
 @Component
 public class SessionIdHasher {
 

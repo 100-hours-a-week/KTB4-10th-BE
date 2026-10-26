@@ -2,11 +2,9 @@ package com.ktb10.kgb.member.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import java.time.Clock;
@@ -38,8 +36,6 @@ class WebPushTargetReaderTest {
     @Autowired
     private WebPushSubscriptionRepository subscriptionRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private MemberRepository memberRepository;
@@ -47,18 +43,13 @@ class WebPushTargetReaderTest {
     @BeforeEach
     void cleanUp() {
         subscriptionRepository.deleteAllInBatch();
-        authSessionRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
     }
 
     @Test
-    void naturallyExpiredServiceSessionDoesNotRevokeWebPushTarget() {
+    void pushDeliveryDoesNotDependOnRedisSessionExistence() {
         Member member = activeMember("expired-session-push-target");
-        AuthSession expiredSession = authSessionRepository.saveAndFlush(AuthSession.issue(
-                member,
-                new byte[32],
-                NOW.minusMinutes(1),
-                NOW.minusHours(13)));
+        String expiredSession = "0".repeat(64);
         WebPushSubscription subscription = subscriptionRepository.saveAndFlush(
                 WebPushSubscription.register(
                         member,

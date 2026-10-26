@@ -10,7 +10,9 @@ import static org.mockito.Mockito.when;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.member.entity.MemberStatus;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
+import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import com.ktb10.kgb.member.session.ServiceSessionAuthenticationStore;
 import java.time.Clock;
@@ -31,7 +33,10 @@ class ServiceSessionAuthenticationDelegationTest {
     private ServiceSessionAuthenticationStore authenticationStore;
 
     @Mock
-    private AuthSessionRepository authSessionRepository;
+    private MemberRepository memberRepository;
+
+    @Mock
+    private ServiceSessionLifecycleStore lifecycleStore;
 
     @Mock
     private WebPushSubscriptionRepository webPushSubscriptionRepository;
@@ -43,7 +48,8 @@ class ServiceSessionAuthenticationDelegationTest {
     void setUp() {
         service = new ServiceSessionService(
                 authenticationStore,
-                authSessionRepository,
+                lifecycleStore,
+                memberRepository,
                 webPushSubscriptionRepository,
                 sessionIdHasher,
                 Clock.systemUTC(),
@@ -51,17 +57,22 @@ class ServiceSessionAuthenticationDelegationTest {
     }
 
     @Test
-    void delegatesHashedCookieAndReturnsStorePrincipalWithoutJpaAccess() {
+    void delegatesHashedCookieAndLoadsCurrentMemberFromMysql() {
         byte[] hash = sessionIdHasher.hash("opaque-session-cookie");
-        AuthenticatedMember principal = new AuthenticatedMember(7L, MemberStatus.ACTIVE, 123L);
+        AuthenticatedMember principal = new AuthenticatedMember(7L, MemberStatus.ACTIVE, java.util.HexFormat.of().formatHex(hash));
         when(authenticationStore.authenticateAndRecordUse(hash, IDLE_TIMEOUT))
-                .thenReturn(Optional.of(principal));
+                .thenReturn(Optional.of(7L));
+        Member member = org.mockito.Mockito.mock(Member.class);
+        when(member.getId()).thenReturn(7L);
+        when(member.getStatus()).thenReturn(MemberStatus.ACTIVE);
+        when(memberRepository.findByIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(member));
 
         assertThat(service.authenticate("opaque-session-cookie")).contains(principal);
 
         verify(authenticationStore).authenticateAndRecordUse(hash, IDLE_TIMEOUT);
         verifyNoMoreInteractions(authenticationStore);
-        verifyNoInteractions(authSessionRepository, webPushSubscriptionRepository);
+        verify(memberRepository).findByIdAndDeletedAtIsNull(7L);
+        verifyNoInteractions(lifecycleStore, webPushSubscriptionRepository);
     }
 
     @Test
@@ -72,7 +83,7 @@ class ServiceSessionAuthenticationDelegationTest {
 
         assertThat(service.authenticate("unknown-session")).isEmpty();
 
-        verifyNoInteractions(authSessionRepository, webPushSubscriptionRepository);
+        verifyNoInteractions(memberRepository, webPushSubscriptionRepository);
     }
 
     @Test
@@ -84,6 +95,6 @@ class ServiceSessionAuthenticationDelegationTest {
         assertThatThrownBy(() -> service.authenticate("session-with-store-failure"))
                 .isSameAs(failure);
 
-        verifyNoInteractions(authSessionRepository, webPushSubscriptionRepository);
+        verifyNoInteractions(memberRepository, webPushSubscriptionRepository);
     }
 }

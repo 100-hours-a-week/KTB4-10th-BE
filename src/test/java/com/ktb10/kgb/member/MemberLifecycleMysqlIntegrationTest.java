@@ -11,13 +11,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.Notification;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
@@ -51,7 +49,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @AutoConfigureMockMvc
 @Import(MemberLifecycleMysqlIntegrationTest.FixedClockConfiguration.class)
 @Testcontainers(disabledWithoutDocker = true)
-class MemberLifecycleMysqlIntegrationTest {
+class MemberLifecycleMysqlIntegrationTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-27T06:00:00Z");
     private static final LocalDateTime NOW =
@@ -70,8 +68,6 @@ class MemberLifecycleMysqlIntegrationTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private MemberPreferenceRepository memberPreferenceRepository;
@@ -95,11 +91,11 @@ class MemberLifecycleMysqlIntegrationTest {
                 "traveler@example.com",
                 null,
                 NOW.minusDays(1)));
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
+        String session = sessions.seed(
                 member,
                 sessionIdHasher.hash(RAW_SESSION_ID),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
         Notification notification = notificationRepository.saveAndFlush(Notification.create(
                 member,
                 NotificationType.GUIDEBOOK_COMPLETED,
@@ -153,8 +149,7 @@ class MemberLifecycleMysqlIntegrationTest {
                         .cookie(sessionCookie, csrfCookie)
                         .header("X-XSRF-TOKEN", csrfCookie.getValue()))
                 .andExpect(status().isNoContent());
-        assertThat(authSessionRepository.findById(session.getId()).orElseThrow().getRevokedAt())
-                .isEqualTo(NOW);
+        assertThat(sessions.findById(session)).isEmpty();
         mockMvc.perform(get("/api/v1/members/me").cookie(sessionCookie))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));

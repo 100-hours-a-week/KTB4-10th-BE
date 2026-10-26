@@ -10,10 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.error.TraceId;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
@@ -50,7 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
 @AutoConfigureMockMvc
 @Import({SecurityAuthenticationTest.SecurityTestConfiguration.class,
         SecurityAuthenticationTest.SecurityTestController.class})
-class SecurityAuthenticationTest {
+class SecurityAuthenticationTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-17T05:00:00Z");
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
@@ -61,15 +59,13 @@ class SecurityAuthenticationTest {
     @Autowired
     private SessionIdHasher sessionIdHasher;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private MemberRepository memberRepository;
 
     @BeforeEach
     void cleanUp() {
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
@@ -87,28 +83,28 @@ class SecurityAuthenticationTest {
     @Test
     void validSessionExposesAuthenticatedMemberPrincipal() throws Exception {
         Member member = memberRepository.save(activeMember("principal-member"));
-        AuthSession session = authSessionRepository.saveAndFlush(AuthSession.issue(
+        String session = sessions.seed(
                 member,
                 sessionIdHasher.hash("principal-session"),
                 NOW.plusHours(1),
-                NOW.minusMinutes(10)));
+                NOW.minusMinutes(10));
 
         mockMvc.perform(get("/api/v1/test/principal")
                         .cookie(new Cookie(SessionCookieResolver.COOKIE_NAME, "principal-session")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.member_id").value(member.getId()))
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.session_id").value(session.getId()));
+                .andExpect(jsonPath("$.session_id").value(session));
     }
 
     @Test
     void onboardingMemberCanAccessInitialSetupApi() throws Exception {
         Member member = memberRepository.save(member("onboarding-allowed-member"));
-        authSessionRepository.saveAndFlush(AuthSession.issue(
+        sessions.seed(
                 member,
                 sessionIdHasher.hash("onboarding-allowed-session"),
                 NOW.plusHours(1),
-                NOW.minusMinutes(10)));
+                NOW.minusMinutes(10));
 
         mockMvc.perform(get("/api/v1/members/me")
                         .cookie(new Cookie(
@@ -121,11 +117,11 @@ class SecurityAuthenticationTest {
     @Test
     void onboardingMemberCannotAccessActiveMemberApi() throws Exception {
         Member member = memberRepository.save(member("onboarding-forbidden-member"));
-        authSessionRepository.saveAndFlush(AuthSession.issue(
+        sessions.seed(
                 member,
                 sessionIdHasher.hash("onboarding-forbidden-session"),
                 NOW.plusHours(1),
-                NOW.minusMinutes(10)));
+                NOW.minusMinutes(10));
 
         mockMvc.perform(get("/api/v1/test/principal")
                         .cookie(new Cookie(
@@ -152,11 +148,11 @@ class SecurityAuthenticationTest {
     @Test
     void stateChangingRequestWithoutCsrfTokenReturnsCommonForbiddenResponse() throws Exception {
         Member member = memberRepository.save(activeMember("csrf-member"));
-        authSessionRepository.saveAndFlush(AuthSession.issue(
+        sessions.seed(
                 member,
                 sessionIdHasher.hash("csrf-session"),
                 NOW.plusHours(1),
-                NOW.minusMinutes(10)));
+                NOW.minusMinutes(10));
 
         mockMvc.perform(post("/api/v1/test/protected-change")
                         .cookie(new Cookie(SessionCookieResolver.COOKIE_NAME, "csrf-session"))
@@ -188,11 +184,11 @@ class SecurityAuthenticationTest {
     @Test
     void stateChangingRequestWithCookieTokenAndHeaderSucceeds() throws Exception {
         Member member = memberRepository.save(activeMember("valid-csrf-member"));
-        authSessionRepository.saveAndFlush(AuthSession.issue(
+        sessions.seed(
                 member,
                 sessionIdHasher.hash("valid-csrf-session"),
                 NOW.plusHours(1),
-                NOW.minusMinutes(10)));
+                NOW.minusMinutes(10));
         MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf")
                         .header("Origin", "http://localhost:3000"))
                 .andExpect(status().isOk())
@@ -293,7 +289,7 @@ class SecurityAuthenticationTest {
             return Map.of(
                     "member_id", member.memberId(),
                     "status", member.status(),
-                    "session_id", member.sessionId());
+                    "session_id", member.sessionHash());
         }
 
         @PostMapping("/api/v1/test/protected-change")

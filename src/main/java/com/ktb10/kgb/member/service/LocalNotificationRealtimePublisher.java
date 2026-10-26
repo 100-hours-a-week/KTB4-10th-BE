@@ -31,7 +31,7 @@ public class LocalNotificationRealtimePublisher implements NotificationRealtimeP
     }
 
     @Override
-    public void publishSessionDisconnected(Long memberId, Long sessionId) {
+    public void publishSessionDisconnected(Long memberId, String sessionHash) {
         // 호출 인스턴스의 연결은 컨트롤러에서 먼저 종료하므로 추가 작업이 필요하지 않습니다.
     }
 

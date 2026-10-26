@@ -74,9 +74,9 @@ public class NotificationStreamService {
                 .register(meterRegistry);
     }
 
-    public SseEmitter subscribe(Long memberId, Long sessionId) {
+    public SseEmitter subscribe(Long memberId, String sessionHash) {
         Objects.requireNonNull(memberId, "회원 ID는 null일 수 없습니다.");
-        Objects.requireNonNull(sessionId, "세션 ID는 null일 수 없습니다.");
+        Objects.requireNonNull(sessionHash, "세션 ID는 null일 수 없습니다.");
         String connectionId = UUID.randomUUID().toString();
         SseEmitter emitter = emitterFactory.create(connectionTimeout.toMillis());
         AtomicReference<EvictedConnection> evictedConnection = new AtomicReference<>();
@@ -88,7 +88,7 @@ public class NotificationStreamService {
                     connections,
                     connectionId,
                     new StreamConnection(
-                            sessionId,
+                            sessionHash,
                             emitter,
                             connectionSequence.incrementAndGet(),
                             System.nanoTime())));
@@ -174,11 +174,11 @@ public class NotificationStreamService {
         }
     }
 
-    public void disconnectSession(Long memberId, Long sessionId) {
+    public void disconnectSession(Long memberId, String sessionHash) {
         List<RemovedConnection> disconnectedConnections = new ArrayList<>();
         memberConnections.computeIfPresent(memberId, (ignored, connections) -> {
             connections.forEach((connectionId, connection) -> {
-                if (connection.sessionId().equals(sessionId)
+                if (connection.sessionHash().equals(sessionHash)
                         && connections.remove(connectionId, connection)) {
                     disconnectedConnections.add(new RemovedConnection(
                             connectionId,
@@ -270,13 +270,13 @@ public class NotificationStreamService {
         return connections == null ? 0 : connections.size();
     }
 
-    int connectionCount(Long memberId, Long sessionId) {
+    int connectionCount(Long memberId, String sessionHash) {
         ConcurrentMap<String, StreamConnection> connections = memberConnections.get(memberId);
         if (connections == null) {
             return 0;
         }
         return (int) connections.values().stream()
-                .filter(connection -> connection.sessionId().equals(sessionId))
+                .filter(connection -> connection.sessionHash().equals(sessionHash))
                 .count();
     }
 
@@ -323,7 +323,7 @@ public class NotificationStreamService {
     }
 
     private record StreamConnection(
-            Long sessionId,
+            String sessionHash,
             SseEmitter emitter,
             long sequence,
             long openedAtNanos) {

@@ -21,19 +21,7 @@ CREATE TABLE members (
     INDEX ix_members_status (status)
 ) COMMENT = '회원, OAuth 식별 정보, 프로필과 설정';
 
-CREATE TABLE auth_sessions (
-    id BIGINT NOT NULL AUTO_INCREMENT,
-    member_id BIGINT NOT NULL,
-    session_id_hash BINARY(32) NOT NULL,
-    expires_at DATETIME(6) NOT NULL,
-    revoked_at DATETIME(6) NULL,
-    last_used_at DATETIME(6) NULL,
-    created_at DATETIME(6) NOT NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT uq_auth_sessions_session_id UNIQUE (session_id_hash),
-    CONSTRAINT fk_auth_sessions_member FOREIGN KEY (member_id) REFERENCES members (id),
-    INDEX ix_auth_sessions_member_state (member_id, revoked_at, expires_at)
-) COMMENT = '서버 측 로그인 세션';
+-- Service sessions are stored in Redis; auth_sessions was removed in V14.
 
 CREATE TABLE member_preferences (
     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -85,7 +73,7 @@ CREATE TABLE notification_occurrences (
 CREATE TABLE web_push_subscriptions (
     id BIGINT NOT NULL AUTO_INCREMENT,
     member_id BIGINT NOT NULL,
-    auth_session_id BIGINT NOT NULL,
+    session_hash VARCHAR(64) NOT NULL,
     endpoint TEXT NOT NULL,
     endpoint_hash BINARY(32) NOT NULL,
     p256dh VARCHAR(255) NOT NULL,
@@ -101,13 +89,13 @@ CREATE TABLE web_push_subscriptions (
     PRIMARY KEY (id),
     CONSTRAINT uq_web_push_subscriptions_endpoint_hash UNIQUE (endpoint_hash),
     CONSTRAINT fk_web_push_subscriptions_member FOREIGN KEY (member_id) REFERENCES members (id),
-    CONSTRAINT fk_web_push_subscriptions_auth_session
-        FOREIGN KEY (auth_session_id) REFERENCES auth_sessions (id),
+    -- Session association is a hash, not a relational FK.
+    -- Push subscriptions survive natural session expiry.
     CONSTRAINT ck_web_push_subscriptions_status
         CHECK (status IN ('ACTIVE', 'INVALID', 'REVOKED')),
     CONSTRAINT ck_web_push_subscriptions_failure_count CHECK (failure_count >= 0),
     INDEX ix_web_push_subscriptions_member_status (member_id, status),
-    INDEX ix_web_push_subscriptions_session_status (auth_session_id, status)
+    INDEX ix_web_push_subscriptions_session_status (session_hash, status)
 ) COMMENT = '회원 브라우저별 표준 Web Push 구독';
 
 CREATE TABLE regions (

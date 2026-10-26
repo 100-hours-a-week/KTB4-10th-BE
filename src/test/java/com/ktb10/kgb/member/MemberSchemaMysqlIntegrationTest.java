@@ -64,16 +64,8 @@ class MemberSchemaMysqlIntegrationTest {
     }
 
     @Test
-    void rejectsDuplicateSessionHashAndUnknownMemberReference() {
-        long memberId = insertMember("session-member");
-        byte[] sessionHash = new byte[32];
-        Arrays.fill(sessionHash, (byte) 1);
-        insertSession(memberId, sessionHash);
-
-        assertThatThrownBy(() -> insertSession(memberId, sessionHash))
-                .isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> insertSession(Long.MAX_VALUE, new byte[32]))
-                .isInstanceOf(DataIntegrityViolationException.class);
+    void serviceSessionTableHasBeenRemoved() {
+        assertThat(jdbcTemplate.queryForList("SHOW TABLES LIKE 'auth_sessions'")).isEmpty();
     }
 
     @Test
@@ -101,22 +93,18 @@ class MemberSchemaMysqlIntegrationTest {
     @Test
     void enforcesWebPushEndpointUniquenessAndReferences() {
         long memberId = insertMember("web-push-schema-member");
-        long sessionId = insertSession(memberId, filledHash((byte) 1));
+        String sessionHash = "a".repeat(64);
         byte[] endpointHash = filledHash((byte) 2);
-        insertWebPushSubscription(memberId, sessionId, endpointHash);
+        insertWebPushSubscription(memberId, sessionHash, endpointHash);
 
-        assertThatThrownBy(() -> insertWebPushSubscription(memberId, sessionId, endpointHash))
+        assertThatThrownBy(() -> insertWebPushSubscription(memberId, sessionHash, endpointHash))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertWebPushSubscription(
                 Long.MAX_VALUE,
-                sessionId,
+                sessionHash,
                 filledHash((byte) 3)))
                 .isInstanceOf(DataIntegrityViolationException.class);
-        assertThatThrownBy(() -> insertWebPushSubscription(
-                memberId,
-                Long.MAX_VALUE,
-                filledHash((byte) 4)))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        insertWebPushSubscription(memberId, "b".repeat(64), filledHash((byte) 4));
     }
 
     private long insertMember(String oauthSubject) {
@@ -136,24 +124,6 @@ class MemberSchemaMysqlIntegrationTest {
             statement.setString(3, "테스트회원");
             statement.setObject(4, now);
             statement.setObject(5, now);
-            return statement;
-        }, keyHolder);
-        return keyHolder.getKey().longValue();
-    }
-
-    private long insertSession(long memberId, byte[] sessionHash) {
-        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement statement = connection.prepareStatement(
-                    """
-                    INSERT INTO auth_sessions (
-                        member_id, session_id_hash, expires_at, last_used_at, created_at
-                    ) VALUES (?, ?, '2026-09-28 12:00:00', '2026-09-27 12:00:00',
-                              '2026-09-27 12:00:00')
-                    """,
-                    Statement.RETURN_GENERATED_KEYS);
-            statement.setLong(1, memberId);
-            statement.setBytes(2, sessionHash);
             return statement;
         }, keyHolder);
         return keyHolder.getKey().longValue();
@@ -189,19 +159,19 @@ class MemberSchemaMysqlIntegrationTest {
 
     private void insertWebPushSubscription(
             long memberId,
-            long sessionId,
+            String sessionHash,
             byte[] endpointHash) {
         jdbcTemplate.update(
                 """
                 INSERT INTO web_push_subscriptions (
-                    member_id, auth_session_id, endpoint, endpoint_hash,
+                    member_id, session_hash, endpoint, endpoint_hash,
                     p256dh, auth_secret, status, failure_count, created_at, updated_at
                 ) VALUES (?, ?, 'https://push.example.test/subscription', ?,
                           'p256dh', 'auth', 'ACTIVE', 0,
                           '2026-09-27 12:00:00', '2026-09-27 12:00:00')
                 """,
                 memberId,
-                sessionId,
+                sessionHash,
                 endpointHash);
     }
 

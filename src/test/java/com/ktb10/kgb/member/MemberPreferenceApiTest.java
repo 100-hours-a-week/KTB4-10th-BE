@@ -8,13 +8,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.PreferenceCode;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import jakarta.servlet.http.Cookie;
@@ -47,7 +45,7 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 @AutoConfigureMockMvc
 @Import(MemberPreferenceApiTest.FixedClockConfiguration.class)
-class MemberPreferenceApiTest {
+class MemberPreferenceApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-22T03:00:00Z");
     private static final LocalDateTime NOW =
@@ -65,13 +63,11 @@ class MemberPreferenceApiTest {
     @Autowired
     private MemberPreferenceRepository memberPreferenceRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @BeforeEach
     void cleanUp() {
         memberPreferenceRepository.deleteAll();
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
@@ -342,12 +338,12 @@ class MemberPreferenceApiTest {
                 NOW.minusDays(1)));
     }
 
-    private AuthSession issueSession(Member member, String rawSessionId) {
-        return authSessionRepository.saveAndFlush(AuthSession.issue(
+    private String issueSession(Member member, String rawSessionId) {
+        return sessions.seed(
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
     }
 
     private Cookie issueCsrfCookie() throws Exception {

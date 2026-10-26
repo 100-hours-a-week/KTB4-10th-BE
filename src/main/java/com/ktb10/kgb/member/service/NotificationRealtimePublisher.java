@@ -7,7 +7,7 @@ public interface NotificationRealtimePublisher {
 
     void publishNotification(NotificationCreatedEvent event);
 
-    void publishSessionDisconnected(Long memberId, Long sessionId);
+    void publishSessionDisconnected(Long memberId, String sessionHash);
 
     void publishMemberDisconnected(Long memberId);
 }

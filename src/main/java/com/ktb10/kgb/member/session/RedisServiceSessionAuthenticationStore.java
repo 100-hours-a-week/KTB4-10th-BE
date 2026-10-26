@@ -1,7 +1,5 @@
 package com.ktb10.kgb.member.session;
 
-import com.ktb10.kgb.common.security.AuthenticatedMember;
-import com.ktb10.kgb.member.entity.MemberStatus;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.List;
@@ -11,7 +9,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-/** Redis 인증 어댑터. 발급·폐기 전환 전까지 Spring 기본 빈으로 등록하지 않습니다. */
+/** Redis에서 세션만 검증하고 활동 시각을 갱신합니다. 회원 상태는 저장하지 않습니다. */
 public final class RedisServiceSessionAuthenticationStore implements ServiceSessionAuthenticationStore {
 
     private static final long MAX_SAFE_INTEGER = 9007199254740991L;
@@ -34,7 +32,7 @@ public final class RedisServiceSessionAuthenticationStore implements ServiceSess
     }
 
     @Override
-    public Optional<AuthenticatedMember> authenticateAndRecordUse(byte[] sessionIdHash, Duration idleTimeout) {
+    public Optional<Long> authenticateAndRecordUse(byte[] sessionIdHash, Duration idleTimeout) {
         if (sessionIdHash == null || sessionIdHash.length != 32) {
             throw new IllegalArgumentException("Session hash must contain 32 bytes");
         }
@@ -50,11 +48,6 @@ public final class RedisServiceSessionAuthenticationStore implements ServiceSess
         if (result.isEmpty()) {
             return Optional.empty();
         }
-        String[] fields = result.split(":", -1);
-        if (fields.length != 3) {
-            throw new IllegalStateException("Invalid Redis authentication result");
-        }
-        return Optional.of(new AuthenticatedMember(
-                Long.valueOf(fields[1]), MemberStatus.valueOf(fields[2]), Long.valueOf(fields[0])));
+        return Optional.of(Long.valueOf(result));
     }
 }

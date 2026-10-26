@@ -2,37 +2,45 @@ package com.ktb10.kgb.common.security.oauth;
 
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.credit.service.SignupCreditGrantService;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-/** 회원 생성·무료 생성권 지급·기존 세션 폐기·새 세션 저장을 한 트랜잭션으로 처리합니다. */
+/** 회원 DB 작업 중 Redis 세션을 발급하고 DB 롤백 시 새 세션을 폐기합니다. */
 @Service
 public class OauthLoginTransactionService {
 
     private static final Duration ABSOLUTE_SESSION_LIFETIME = Duration.ofHours(8);
 
     private final MemberRepository memberRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private static final Logger LOGGER = LoggerFactory.getLogger(OauthLoginTransactionService.class);
+    private final ServiceSessionLifecycleStore sessionStore;
+    private final Duration idleTimeout;
     private final SignupCreditGrantService signupCreditGrantService;
     private final SessionIdHasher sessionIdHasher;
     private final Clock clock;
 
     public OauthLoginTransactionService(
             MemberRepository memberRepository,
-            AuthSessionRepository authSessionRepository,
+            ServiceSessionLifecycleStore sessionStore,
+            @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout,
             SignupCreditGrantService signupCreditGrantService,
             SessionIdHasher sessionIdHasher,
             Clock clock) {
         this.memberRepository = memberRepository;
-        this.authSessionRepository = authSessionRepository;
+        this.sessionStore = sessionStore;
+        this.idleTimeout = idleTimeout;
         this.signupCreditGrantService = signupCreditGrantService;
         this.sessionIdHasher = sessionIdHasher;
         this.clock = clock;
@@ -44,15 +52,27 @@ public class OauthLoginTransactionService {
         Member lockedMember = memberRepository.findActiveByIdForUpdate(member.getId())
                 .orElseThrow(() -> new IllegalStateException("로그인할 회원을 찾을 수 없습니다."));
 
-        LocalDateTime now = LocalDateTime.now(clock);
-        authSessionRepository.revokeAllActiveByMemberId(lockedMember.getId(), now);
-        authSessionRepository.save(AuthSession.issue(
-                lockedMember,
-                sessionIdHasher.hash(rawSessionId),
-                now.plus(ABSOLUTE_SESSION_LIFETIME),
-                now));
+        byte[] sessionHash = sessionIdHasher.hash(rawSessionId);
+        registerRollbackCleanup(sessionHash, lockedMember.getId());
+        sessionStore.issueReplacingForMember(sessionHash, lockedMember.getId(),
+                ABSOLUTE_SESSION_LIFETIME, idleTimeout);
 
         return new OauthLoginResult(rawSessionId, lockedMember.getStatus());
+    }
+
+    private void registerRollbackCleanup(byte[] hash, Long memberId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    try {
+                        sessionStore.revokeCurrent(hash, memberId);
+                    } catch (RuntimeException exception) {
+                        LOGGER.error("로그인 롤백 후 Redis 세션 정리에 실패했습니다. memberId={}", memberId, exception);
+                    }
+                }
+            }
+        });
     }
 
     private Member findOrRegister(KakaoOauthUser oauthUser) {

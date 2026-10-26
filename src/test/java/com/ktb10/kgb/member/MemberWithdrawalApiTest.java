@@ -21,12 +21,10 @@ import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
 import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import jakarta.servlet.http.Cookie;
@@ -58,7 +56,7 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 @AutoConfigureMockMvc
 @Import(MemberWithdrawalApiTest.FixedClockConfiguration.class)
-class MemberWithdrawalApiTest {
+class MemberWithdrawalApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-27T06:00:00Z");
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
@@ -72,8 +70,6 @@ class MemberWithdrawalApiTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private WebPushSubscriptionRepository webPushSubscriptionRepository;
@@ -96,15 +92,15 @@ class MemberWithdrawalApiTest {
         generationJobRepository.deleteAll();
         creditWalletRepository.deleteAll();
         webPushSubscriptionRepository.deleteAll();
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
     @Test
     void withdrawalRevokesMemberSessionsCreditsAndActiveGenerationJob() throws Exception {
         Member member = saveMember("withdrawal-member");
-        AuthSession currentSession = issueSession(member, "current-session");
-        AuthSession otherSession = issueSession(member, "other-session");
+        String currentSession = issueSession(member, "current-session");
+        String otherSession = java.util.HexFormat.of().formatHex(sessionIdHasher.hash("other-session"));
         WebPushSubscription currentSubscription = savePushSubscription(
                 member, currentSession, "current", (byte) 1);
         WebPushSubscription otherSubscription = savePushSubscription(
@@ -137,10 +133,8 @@ class MemberWithdrawalApiTest {
         Member withdrawn = memberRepository.findById(member.getId()).orElseThrow();
         assertThat(withdrawn.getDeletedAt()).isEqualTo(NOW);
         assertThat(withdrawn.getOauthSubject()).isEqualTo("withdrawn:" + member.getId());
-        assertThat(authSessionRepository.findById(currentSession.getId()).orElseThrow()
-                .getRevokedAt()).isEqualTo(NOW);
-        assertThat(authSessionRepository.findById(otherSession.getId()).orElseThrow()
-                .getRevokedAt()).isEqualTo(NOW);
+        assertThat(sessions.findById(currentSession)).isEmpty();
+        assertThat(sessions.findById(otherSession)).isEmpty();
         assertThat(webPushSubscriptionRepository.findById(currentSubscription.getId())
                 .orElseThrow().getStatus()).isEqualTo(WebPushSubscriptionStatus.REVOKED);
         assertThat(webPushSubscriptionRepository.findById(otherSubscription.getId())
@@ -200,7 +194,7 @@ class MemberWithdrawalApiTest {
     @Test
     void kakaoUnlinkFailureRollsBackLocalWithdrawal() throws Exception {
         Member member = saveMember("12345");
-        AuthSession session = issueSession(member, "unlink-failure-session");
+        String session = issueSession(member, "unlink-failure-session");
         CreditWallet wallet = CreditWallet.open(member, NOW.minusDays(1));
         wallet.grant(3, NOW.minusDays(1));
         creditWalletRepository.saveAndFlush(wallet);
@@ -223,8 +217,7 @@ class MemberWithdrawalApiTest {
         Member activeMember = memberRepository.findById(member.getId()).orElseThrow();
         assertThat(activeMember.getDeletedAt()).isNull();
         assertThat(activeMember.getOauthSubject()).isEqualTo("12345");
-        assertThat(authSessionRepository.findById(session.getId()).orElseThrow()
-                .getRevokedAt()).isNull();
+        assertThat(sessions.findById(session)).isPresent();
         assertThat(creditWalletRepository.findById(wallet.getId()).orElseThrow()
                 .getCreditBalance()).isEqualTo(3);
         assertThat(generationJobRepository.findById(job.getId()).orElseThrow()
@@ -241,17 +234,17 @@ class MemberWithdrawalApiTest {
                 NOW.minusDays(1)));
     }
 
-    private AuthSession issueSession(Member member, String rawSessionId) {
-        return authSessionRepository.saveAndFlush(AuthSession.issue(
+    private String issueSession(Member member, String rawSessionId) {
+        return sessions.seed(
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
     }
 
     private WebPushSubscription savePushSubscription(
             Member member,
-            AuthSession session,
+            String session,
             String endpointSuffix,
             byte hashValue) {
         byte[] endpointHash = new byte[32];

@@ -4,11 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ktb10.kgb.common.security.SessionIdHasher;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberPreferenceRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.LocalDateTime;
@@ -32,7 +30,12 @@ import org.springframework.transaction.annotation.Transactional;
     "load-test.credit-balance=10",
     "load-test.session-prefix=test-session-"
 })
-class LoadTestFixtureSeederTest {
+class LoadTestFixtureSeederTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
+
+    @org.junit.jupiter.api.BeforeEach
+    void seedSessionsAfterRedisCleanup() {
+        fixtureSeeder.run(new DefaultApplicationArguments(new String[0]));
+    }
 
     @Autowired
     private LoadTestFixtureSeeder fixtureSeeder;
@@ -47,7 +50,9 @@ class LoadTestFixtureSeederTest {
     private CreditWalletRepository creditWalletRepository;
 
     @Autowired
-    private AuthSessionRepository authSessionRepository;
+    private com.ktb10.kgb.member.service.ServiceSessionService serviceSessions;
+    @Autowired
+    private com.ktb10.kgb.member.session.ServiceSessionLifecycleStore lifecycle;
 
     @Autowired
     private SessionIdHasher sessionIdHasher;
@@ -72,8 +77,7 @@ class LoadTestFixtureSeederTest {
                     .get()
                     .extracting(wallet -> wallet.getCreditBalance())
                     .isEqualTo(10);
-            assertThat(authSessionRepository.findBySessionIdHash(
-                    sessionIdHasher.hash("test-session-" + suffix)))
+            assertThat(serviceSessions.authenticate("test-session-" + suffix))
                     .isPresent();
         }
     }
@@ -86,7 +90,8 @@ class LoadTestFixtureSeederTest {
         assertThat(memberRepository.count()).isEqualTo(2);
         assertThat(memberPreferenceRepository.count()).isEqualTo(6);
         assertThat(creditWalletRepository.count()).isEqualTo(2);
-        assertThat(authSessionRepository.count()).isEqualTo(2);
+        assertThat(serviceSessions.authenticate("test-session-001")).isPresent();
+        assertThat(serviceSessions.authenticate("test-session-002")).isPresent();
     }
 
     @Test
@@ -98,22 +103,12 @@ class LoadTestFixtureSeederTest {
                         "load-test-user-001")
                 .orElseThrow();
         LocalDateTime issuedAt = LocalDateTime.now().minusMinutes(1);
-        AuthSession previousSession = authSessionRepository.saveAndFlush(AuthSession.issue(
-                member,
-                sessionIdHasher.hash("previous-prefix-001"),
-                issuedAt.plusDays(30),
-                issuedAt));
+        lifecycle.issueReplacingForMember(sessionIdHasher.hash("previous-prefix-001"), member.getId(),
+                java.time.Duration.ofDays(30), java.time.Duration.ofDays(30));
 
         fixtureSeeder.run(new DefaultApplicationArguments(new String[0]));
 
-        assertThat(authSessionRepository.findById(previousSession.getId()))
-                .get()
-                .extracting(AuthSession::getRevokedAt)
-                .isNotNull();
-        assertThat(authSessionRepository
-                .findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(member.getId()))
-                .singleElement()
-                .satisfies(session -> assertThat(session.getSessionIdHash())
-                        .containsExactly(sessionIdHasher.hash("test-session-001")));
+        assertThat(serviceSessions.authenticate("previous-prefix-001")).isEmpty();
+        assertThat(serviceSessions.authenticate("test-session-001")).isPresent();
     }
 }

@@ -44,11 +44,11 @@ public class AuthController {
             @AuthenticationPrincipal AuthenticatedMember member,
             HttpServletRequest request,
             HttpServletResponse response) {
-        serviceSessionService.revokeCurrent(member.memberId(), member.sessionId());
-        notificationStreamService.disconnectSession(member.memberId(), member.sessionId());
+        serviceSessionService.revokeCurrent(member.memberId(), member.sessionHash());
+        notificationStreamService.disconnectSession(member.memberId(), member.sessionHash());
         notificationRealtimePublisher.publishSessionDisconnected(
                 member.memberId(),
-                member.sessionId());
+                member.sessionHash());
         csrfTokenLifecycle.clear(request, response);
         response.addHeader(
                 HttpHeaders.SET_COOKIE,

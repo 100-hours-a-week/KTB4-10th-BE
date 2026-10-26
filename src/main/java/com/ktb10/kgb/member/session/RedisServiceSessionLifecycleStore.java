@@ -1,6 +1,5 @@
 package com.ktb10.kgb.member.session;
 
-import com.ktb10.kgb.member.entity.MemberStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -11,7 +10,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 
-/** Redis 발급·폐기 어댑터. 로그인 및 알림 생명주기 전환 전까지 기본 빈으로 등록하지 않습니다. */
+/** 회원별 한 세션을 원자적으로 발급·교체·폐기합니다. */
 public final class RedisServiceSessionLifecycleStore implements ServiceSessionLifecycleStore {
 
     private static final long MAX_SAFE_INTEGER = 9007199254740991L;
@@ -32,14 +31,12 @@ public final class RedisServiceSessionLifecycleStore implements ServiceSessionLi
     }
 
     @Override
-    public IssueResult issueReplacingForMember(byte[] sessionIdHash, Long sessionId, Long memberId,
-            MemberStatus memberStatus, Duration absoluteLifetime, Duration idleTimeout) {
+    public IssueResult issueReplacingForMember(byte[] sessionIdHash, Long memberId,
+            Duration absoluteLifetime, Duration idleTimeout) {
         final String hash = hashHex(sessionIdHash);
-        requirePositive(sessionId);
         requirePositive(memberId);
-        Objects.requireNonNull(memberStatus);
         String result = execute(ISSUE, List.of(sessionPrefix + hash, memberKey(memberId)),
-                sessionPrefix, hash, sessionId.toString(), memberId.toString(), memberStatus.name(),
+                sessionPrefix, hash, memberId.toString(),
                 durationMillis(absoluteLifetime), durationMillis(idleTimeout));
         String[] fields = result.split(":", -1);
         if (fields.length != 3) {
@@ -47,24 +44,23 @@ public final class RedisServiceSessionLifecycleStore implements ServiceSessionLi
         }
         return new IssueResult(Instant.ofEpochMilli(Long.parseLong(fields[0])),
                 Instant.ofEpochMilli(Long.parseLong(fields[1])),
-                fields[2].isEmpty() ? Optional.empty() : Optional.of(Long.valueOf(fields[2])));
+                fields[2].isEmpty() ? Optional.empty() : Optional.of(fields[2]));
     }
 
     @Override
-    public boolean revokeCurrent(byte[] sessionIdHash, Long sessionId, Long memberId) {
+    public boolean revokeCurrent(byte[] sessionIdHash, Long memberId) {
         String hash = hashHex(sessionIdHash);
-        requirePositive(sessionId);
         requirePositive(memberId);
         return !execute(REVOKE, List.of(memberKey(memberId)),
-                sessionPrefix, memberId.toString(), hash, sessionId.toString()).isEmpty();
+                sessionPrefix, memberId.toString(), hash).isEmpty();
     }
 
     @Override
-    public Optional<Long> revokeAllForMember(Long memberId) {
+    public Optional<String> revokeAllForMember(Long memberId) {
         requirePositive(memberId);
         String result = execute(REVOKE, List.of(memberKey(memberId)),
                 sessionPrefix, memberId.toString());
-        return result.isEmpty() ? Optional.empty() : Optional.of(Long.valueOf(result));
+        return result.isEmpty() ? Optional.empty() : Optional.of(result);
     }
 
     private String memberKey(Long memberId) {
@@ -92,7 +88,7 @@ public final class RedisServiceSessionLifecycleStore implements ServiceSessionLi
 
     private static void requirePositive(Long id) {
         if (id == null || id <= 0) {
-            throw new IllegalArgumentException("Session and member IDs must be positive");
+            throw new IllegalArgumentException("Member ID must be positive");
         }
     }
 

@@ -101,16 +101,16 @@ class RedisNotificationRealtimeIntegrationTest {
 
     @Test
     void fansOutSessionDisconnectToEveryInstance() {
-        publisher.publishSessionDisconnected(1L, 11L);
+        publisher.publishSessionDisconnected(1L, "000000000000000000000000000000000000000000000000000000000000000b");
 
         verify(firstAdapter, timeout(5_000)).handle(argThat(envelope ->
                 envelope.eventType() == NotificationRealtimeEventType.SESSION_DISCONNECTED
                         && envelope.memberId().equals(1L)
-                        && envelope.sessionId().equals(11L)));
+                        && envelope.sessionHash().equals("000000000000000000000000000000000000000000000000000000000000000b")));
         verify(secondAdapter, timeout(5_000)).handle(argThat(envelope ->
                 envelope.eventType() == NotificationRealtimeEventType.SESSION_DISCONNECTED
                         && envelope.memberId().equals(1L)
-                        && envelope.sessionId().equals(11L)));
+                        && envelope.sessionHash().equals("000000000000000000000000000000000000000000000000000000000000000b")));
     }
 
     private LettuceConnectionFactory connectionFactory() {
