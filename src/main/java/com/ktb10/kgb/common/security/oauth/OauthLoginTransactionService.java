@@ -73,7 +73,8 @@ public class OauthLoginTransactionService {
     private void registerReplacedSessionDisconnect(Long memberId, String previousHash) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
-            public void afterCommit() {
+            public void afterCompletion(int status) {
+                // Redis에서 이미 교체된 이전 세션은 DB 롤백으로 복원되지 않습니다.
                 try {
                     streams.disconnectSession(memberId, previousHash);
                 } catch (RuntimeException exception) {

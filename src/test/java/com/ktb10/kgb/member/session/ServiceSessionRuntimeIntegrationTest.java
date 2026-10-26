@@ -89,6 +89,31 @@ class ServiceSessionRuntimeIntegrationTest extends RedisSessionTestSupport {
     }
 
     @Test
+    void rolledBackReloginRevokesNewSessionAndClosesPreviousEmitter() {
+        Member member = member();
+        String previousHash = HexFormat.of().formatHex(hasher.hash("rollback-previous"));
+        lifecycle.issueReplacingForMember(hasher.hash("rollback-previous"), member.getId(),
+                Duration.ofHours(8), Duration.ofMinutes(30));
+        SseEmitter previous = mock(SseEmitter.class);
+        SseEmitter other = mock(SseEmitter.class);
+        when(emitters.create(org.mockito.ArgumentMatchers.anyLong())).thenReturn(previous, other);
+        streams.subscribe(member.getId(), previousHash);
+        streams.subscribe(member.getId() + 100000, previousHash);
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            login.complete(new KakaoOauthUser(member.getOauthSubject(), "회원", null, null), "rollback-next");
+            verify(previous, never()).complete();
+            verify(publisher, never()).publishSessionDisconnected(member.getId(), previousHash);
+            status.setRollbackOnly();
+        });
+        verify(previous).complete();
+        verify(other, never()).complete();
+        verify(publisher).publishSessionDisconnected(member.getId(), previousHash);
+        assertThat(service.authenticate("rollback-previous")).isEmpty();
+        assertThat(service.authenticate("rollback-next")).isEmpty();
+        streams.disconnectMember(member.getId() + 100000);
+    }
+
+    @Test
     void authenticationExecutesOnlyOneMemberSelectAndNoMysqlUpdate() {
         Member member = member();
         lifecycle.issueReplacingForMember(hasher.hash("query-test"), member.getId(),

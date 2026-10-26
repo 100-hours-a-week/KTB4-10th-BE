@@ -52,7 +52,7 @@ class OauthLoginTransactionServiceTest {
     }
 
     @Test
-    void replacedSessionIsDisconnectedOnlyAfterCommit() {
+    void replacedSessionIsDisconnectedAfterCommittedTransactionCompletes() {
         String previous = "a".repeat(64);
         when(sessions.issueReplacingForMember(any(byte[].class), anyLong(), any(Duration.class), any(Duration.class)))
                 .thenReturn(new ServiceSessionLifecycleStore.IssueResult(NOW, NOW.plusSeconds(28800),
@@ -68,15 +68,34 @@ class OauthLoginTransactionServiceTest {
     }
 
     @Test
-    void rollbackDoesNotDisconnectPreviousSession() {
+    void rollbackRevokesNewSessionAndDisconnectsPreviousSession() {
         when(sessions.issueReplacingForMember(any(byte[].class), anyLong(), any(Duration.class), any(Duration.class)))
                 .thenReturn(new ServiceSessionLifecycleStore.IssueResult(NOW, NOW.plusSeconds(28800),
                         Optional.of("b".repeat(64))));
         service.complete(new KakaoOauthUser("rollback", "회원", null, null), "new-token");
+        Long memberId = members.findByOauthProviderAndOauthSubjectAndDeletedAtIsNull(
+                OauthProvider.KAKAO, "rollback").orElseThrow().getId();
+        verifyNoInteractions(streams, publisher);
         TestTransaction.flagForRollback();
         TestTransaction.end();
-        verifyNoInteractions(streams, publisher);
+        verify(streams).disconnectSession(memberId, "b".repeat(64));
+        verify(publisher).publishSessionDisconnected(memberId, "b".repeat(64));
         verify(sessions).revokeCurrent(eq(new SessionIdHasher().hash("new-token")), anyLong());
+    }
+
+    @Test
+    void rollbackCleanupFailureDoesNotSkipPreviousSessionDisconnect() {
+        String previous = "d".repeat(64);
+        when(sessions.issueReplacingForMember(any(byte[].class), anyLong(), any(Duration.class), any(Duration.class)))
+                .thenReturn(new ServiceSessionLifecycleStore.IssueResult(NOW, NOW.plusSeconds(28800),
+                        Optional.of(previous)));
+        doThrow(new IllegalStateException("Redis unavailable")).when(sessions)
+                .revokeCurrent(any(byte[].class), anyLong());
+        service.complete(new KakaoOauthUser("cleanup-failure", "회원", null, null), "new-token");
+        TestTransaction.flagForRollback();
+        TestTransaction.end();
+        verify(streams).disconnectSession(anyLong(), eq(previous));
+        verify(publisher).publishSessionDisconnected(anyLong(), eq(previous));
     }
 
     @Test
