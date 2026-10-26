@@ -12,12 +12,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.response.ApiResponse;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.Map;
+import org.apache.catalina.connector.ClientAbortException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,17 +36,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
     private MockMvc mockMvc;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new TestController())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(meterRegistry))
                 .addFilters(new TraceIdFilter())
                 .build();
     }
@@ -189,6 +194,30 @@ class GlobalExceptionHandlerTest {
         assertThat(output).contains("rootCauseType=IllegalStateException");
     }
 
+    @Test
+    void asyncClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
+            throws Exception {
+        mockMvc.perform(get("/test/async-client-abort"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void containerClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
+            throws Exception {
+        mockMvc.perform(get("/test/container-client-abort"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isEqualTo(1.0);
+    }
+
     @RestController
     @RequestMapping("/test")
     private static class TestController {
@@ -228,6 +257,16 @@ class GlobalExceptionHandlerTest {
             throw new BusinessException(
                     CommonErrorCode.UPSTREAM_SERVICE_ERROR,
                     new IllegalStateException("upstream unavailable"));
+        }
+
+        @GetMapping("/async-client-abort")
+        void asyncClientAbort() throws AsyncRequestNotUsableException {
+            throw new AsyncRequestNotUsableException("클라이언트 연결 종료");
+        }
+
+        @GetMapping("/container-client-abort")
+        void containerClientAbort() throws ClientAbortException {
+            throw new ClientAbortException("클라이언트 연결 종료");
         }
 
         @GetMapping("/number")

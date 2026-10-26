@@ -113,13 +113,12 @@ public class NotificationStreamService {
                     .name(CONNECTED_EVENT_NAME)
                     .reconnectTime(reconnectTimeMillis)
                     .data(Map.of("connection_id", connectionId)));
-        } catch (IOException | IllegalStateException exception) {
-            removeConnection(
+        } catch (IOException | IllegalStateException ignored) {
+            removeAfterSendFailure(
                     memberId,
                     connectionId,
                     emitter,
                     SseConnectionCloseReason.INITIAL_SEND_FAILURE);
-            emitter.completeWithError(exception);
         }
         return emitter;
     }
@@ -148,14 +147,13 @@ public class NotificationStreamService {
                         .data(event.notification()));
                 delivered.set(true);
                 metrics.recordSseDelivery("success");
-            } catch (IOException | IllegalStateException exception) {
+            } catch (IOException | IllegalStateException ignored) {
                 metrics.recordSseDelivery("failure");
-                removeConnection(
+                removeAfterSendFailure(
                         event.recipientMemberId(),
                         connectionId,
                         emitter,
                         SseConnectionCloseReason.NOTIFICATION_SEND_FAILURE);
-                emitter.completeWithError(exception);
             }
         });
         return delivered.get();
@@ -203,15 +201,26 @@ public class NotificationStreamService {
                     SseEmitter emitter = connection.emitter();
                     try {
                         emitter.send(SseEmitter.event().comment(HEARTBEAT_COMMENT));
-                    } catch (IOException | IllegalStateException exception) {
-                        removeConnection(
+                    } catch (IOException | IllegalStateException ignored) {
+                        removeAfterSendFailure(
                                 memberId,
                                 connectionId,
                                 emitter,
                                 SseConnectionCloseReason.HEARTBEAT_FAILURE);
-                        emitter.completeWithError(exception);
                     }
                 }));
+    }
+
+    /**
+     * SSE send 실패는 Servlet 컨테이너가 오류 알림과 최종 ASYNC dispatch를 수행한다.
+     * 여기서 completeWithError를 다시 호출하면 종료 dispatch와 오류 로그가 중복될 수 있다.
+     */
+    private void removeAfterSendFailure(
+            Long memberId,
+            String connectionId,
+            SseEmitter emitter,
+            SseConnectionCloseReason reason) {
+        removeConnection(memberId, connectionId, emitter, reason);
     }
 
     @Scheduled(fixedDelayString =

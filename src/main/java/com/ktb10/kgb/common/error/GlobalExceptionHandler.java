@@ -1,10 +1,13 @@
 package com.ktb10.kgb.common.error;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
@@ -20,6 +23,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -30,6 +34,26 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final Counter clientAbortCounter;
+
+    public GlobalExceptionHandler(MeterRegistry meterRegistry) {
+        this.clientAbortCounter = Counter.builder("kgb.http.client.aborts")
+                .description("클라이언트가 응답 완료 전에 연결을 종료한 횟수")
+                .register(meterRegistry);
+    }
+
+    @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class})
+    public void handleClientAbortException(
+            Exception exception,
+            HttpServletRequest request) {
+        clientAbortCounter.increment();
+        LOGGER.debug(
+                "클라이언트가 응답 완료 전에 연결을 종료했습니다."
+                        + " event=client_abort, method={}, route={}, exceptionType={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName());
+    }
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleRateLimitExceededException(

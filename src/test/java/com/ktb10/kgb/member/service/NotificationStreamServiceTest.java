@@ -121,6 +121,22 @@ class NotificationStreamServiceTest {
 
         assertThat(delivered).isFalse();
         assertThat(streamService.connectionCount(1L)).isZero();
+        verify(firstEmitter, never()).completeWithError(any(Throwable.class));
+    }
+
+    @Test
+    void initialSendFailureRemovesConnectionWithoutCompletingAgain() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter);
+        doThrow(new IOException("연결 종료"))
+                .when(firstEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+
+        assertThat(streamService.connectionCount(1L)).isZero();
+        verify(firstEmitter, never()).completeWithError(any(Throwable.class));
+        assertThat(connectionEventCount("closed", "initial_send_failure")).isEqualTo(1.0);
     }
 
     @Test
@@ -143,7 +159,28 @@ class NotificationStreamServiceTest {
         streamService.sendHeartbeat();
 
         assertThat(streamService.connectionCount(1L)).isZero();
-        verify(firstEmitter).completeWithError(any(IllegalStateException.class));
+        verify(firstEmitter, never()).completeWithError(any(IllegalStateException.class));
+        assertThat(connectionEventCount("closed", "heartbeat_failure")).isEqualTo(1.0);
+    }
+
+    @Test
+    void heartbeatContinuesAfterOneConnectionFails() throws Exception {
+        given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
+                .willReturn(firstEmitter, secondEmitter);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(2L, "0000000000000000000000000000000000000000000000000000000000000016");
+        reset(firstEmitter, secondEmitter);
+        doThrow(new IOException("연결 종료"))
+                .when(firstEmitter)
+                .send(any(SseEmitter.SseEventBuilder.class));
+
+        streamService.sendHeartbeat();
+
+        verify(firstEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        verify(firstEmitter, never()).completeWithError(any(Throwable.class));
+        verify(secondEmitter).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(streamService.connectionCount(1L)).isZero();
+        assertThat(streamService.connectionCount(2L)).isOne();
         assertThat(connectionEventCount("closed", "heartbeat_failure")).isEqualTo(1.0);
     }
 
