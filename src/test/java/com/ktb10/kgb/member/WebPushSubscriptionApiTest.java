@@ -10,12 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import jakarta.servlet.http.Cookie;
@@ -48,7 +46,7 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 @AutoConfigureMockMvc
 @Import(WebPushSubscriptionApiTest.FixedClockConfiguration.class)
-class WebPushSubscriptionApiTest {
+class WebPushSubscriptionApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     static final String P256DH =
             "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -67,8 +65,6 @@ class WebPushSubscriptionApiTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private WebPushSubscriptionRepository subscriptionRepository;
@@ -76,7 +72,7 @@ class WebPushSubscriptionApiTest {
     @BeforeEach
     void cleanUp() {
         subscriptionRepository.deleteAll();
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
@@ -317,12 +313,12 @@ class WebPushSubscriptionApiTest {
         return memberRepository.saveAndFlush(member);
     }
 
-    private AuthSession issueSession(Member member, String rawSessionId) {
-        return authSessionRepository.saveAndFlush(AuthSession.issue(
+    private String issueSession(Member member, String rawSessionId) {
+        return sessions.seed(
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
     }
 
     private Csrf csrf() throws Exception {

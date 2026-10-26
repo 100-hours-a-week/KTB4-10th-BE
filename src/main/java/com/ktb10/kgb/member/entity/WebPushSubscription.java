@@ -1,5 +1,6 @@
 package com.ktb10.kgb.member.entity;
 
+import com.ktb10.kgb.common.security.SessionHash;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -31,7 +32,7 @@ import java.util.Objects;
                     columnList = "member_id, status"),
             @Index(
                     name = "ix_web_push_subscriptions_session_status",
-                    columnList = "auth_session_id, status")
+                    columnList = "session_hash, status")
         })
 public class WebPushSubscription {
 
@@ -48,12 +49,8 @@ public class WebPushSubscription {
             foreignKey = @ForeignKey(name = "fk_web_push_subscriptions_member"))
     private Member member;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "auth_session_id",
-            nullable = false,
-            foreignKey = @ForeignKey(name = "fk_web_push_subscriptions_auth_session"))
-    private AuthSession authSession;
+    @Column(name = "session_hash", nullable = false, length = 64)
+    private String sessionHash;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String endpoint;
@@ -97,7 +94,7 @@ public class WebPushSubscription {
 
     private WebPushSubscription(
             Member member,
-            AuthSession authSession,
+            String sessionHash,
             String endpoint,
             byte[] endpointHash,
             String p256dh,
@@ -105,7 +102,7 @@ public class WebPushSubscription {
             LocalDateTime expirationAt,
             LocalDateTime now) {
         this.member = Objects.requireNonNull(member, "회원은 null일 수 없습니다.");
-        this.authSession = Objects.requireNonNull(authSession, "인증 세션은 null일 수 없습니다.");
+        this.sessionHash = SessionHash.requireValid(sessionHash);
         this.endpoint = requireText(endpoint, "Push endpoint");
         this.endpointHash = copyHash(endpointHash);
         this.p256dh = requireText(p256dh, "p256dh 키");
@@ -119,7 +116,7 @@ public class WebPushSubscription {
 
     public static WebPushSubscription register(
             Member member,
-            AuthSession authSession,
+            String sessionHash,
             String endpoint,
             byte[] endpointHash,
             String p256dh,
@@ -128,7 +125,7 @@ public class WebPushSubscription {
             LocalDateTime now) {
         return new WebPushSubscription(
                 member,
-                authSession,
+                sessionHash,
                 endpoint,
                 endpointHash,
                 p256dh,
@@ -139,14 +136,14 @@ public class WebPushSubscription {
 
     public void renew(
             Member member,
-            AuthSession authSession,
+            String sessionHash,
             String endpoint,
             String p256dh,
             String authSecret,
             LocalDateTime expirationAt,
             LocalDateTime now) {
         this.member = Objects.requireNonNull(member, "회원은 null일 수 없습니다.");
-        this.authSession = Objects.requireNonNull(authSession, "인증 세션은 null일 수 없습니다.");
+        this.sessionHash = SessionHash.requireValid(sessionHash);
         this.endpoint = requireText(endpoint, "Push endpoint");
         this.p256dh = requireText(p256dh, "p256dh 키");
         this.authSecret = requireText(authSecret, "auth 키");
@@ -227,8 +224,8 @@ public class WebPushSubscription {
         return member;
     }
 
-    public AuthSession getAuthSession() {
-        return authSession;
+    public String getSessionHash() {
+        return sessionHash;
     }
 
     public String getEndpoint() {

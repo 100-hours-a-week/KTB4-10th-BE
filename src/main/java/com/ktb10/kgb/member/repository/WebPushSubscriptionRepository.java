@@ -36,10 +36,11 @@ public interface WebPushSubscriptionRepository extends JpaRepository<WebPushSubs
     @Query("update WebPushSubscription subscription "
             + "set subscription.status = :revokedStatus, "
             + "subscription.revokedAt = :revokedAt, subscription.updatedAt = :revokedAt "
-            + "where subscription.authSession.id = :sessionId "
+            + "where subscription.member.id = :memberId and subscription.sessionHash = :sessionHash "
             + "and subscription.status = :activeStatus")
-    int revokeAllActiveByAuthSessionId(
-            @Param("sessionId") Long sessionId,
+    int revokeAllActiveByMemberIdAndSessionHash(
+            @Param("memberId") Long memberId,
+            @Param("sessionHash") String sessionHash,
             @Param("activeStatus") WebPushSubscriptionStatus activeStatus,
             @Param("revokedStatus") WebPushSubscriptionStatus revokedStatus,
             @Param("revokedAt") LocalDateTime revokedAt);

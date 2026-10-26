@@ -1,6 +1,7 @@
 package com.ktb10.kgb.member.event;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.ktb10.kgb.common.security.SessionHash;
 import com.ktb10.kgb.member.dto.response.NotificationItemResponse;
 import java.time.Instant;
 import java.util.Objects;
@@ -18,11 +19,11 @@ public record NotificationRealtimeEnvelope(
         Instant occurredAt,
         @JsonProperty("member_id")
         Long memberId,
-        @JsonProperty("session_id")
-        Long sessionId,
+        @JsonProperty("session_hash")
+        String sessionHash,
         NotificationItemResponse notification) {
 
-    public static final int CURRENT_SCHEMA_VERSION = 1;
+    public static final int CURRENT_SCHEMA_VERSION = 2;
 
     public NotificationRealtimeEnvelope {
         if (schemaVersion != CURRENT_SCHEMA_VERSION) {
@@ -34,7 +35,7 @@ public record NotificationRealtimeEnvelope(
         Objects.requireNonNull(eventType, "실시간 알림 이벤트 종류는 null일 수 없습니다.");
         Objects.requireNonNull(occurredAt, "실시간 알림 이벤트 발생 시각은 null일 수 없습니다.");
         Objects.requireNonNull(memberId, "실시간 알림 수신 회원 ID는 null일 수 없습니다.");
-        validatePayload(eventType, sessionId, notification);
+        validatePayload(eventType, sessionHash, notification);
     }
 
     public static NotificationRealtimeEnvelope notification(
@@ -52,7 +53,7 @@ public record NotificationRealtimeEnvelope(
 
     public static NotificationRealtimeEnvelope sessionDisconnected(
             Long memberId,
-            Long sessionId,
+            String sessionHash,
             Instant occurredAt) {
         return new NotificationRealtimeEnvelope(
                 CURRENT_SCHEMA_VERSION,
@@ -60,7 +61,7 @@ public record NotificationRealtimeEnvelope(
                 NotificationRealtimeEventType.SESSION_DISCONNECTED,
                 occurredAt,
                 memberId,
-                sessionId,
+                sessionHash,
                 null);
     }
 
@@ -79,29 +80,30 @@ public record NotificationRealtimeEnvelope(
 
     private static void validatePayload(
             NotificationRealtimeEventType eventType,
-            Long sessionId,
+            String sessionHash,
             NotificationItemResponse notification) {
         switch (eventType) {
             case NOTIFICATION_CREATED -> {
                 Objects.requireNonNull(
                         notification,
                         "알림 생성 이벤트의 알림 내용은 null일 수 없습니다.");
-                if (sessionId != null) {
+                if (sessionHash != null) {
                     throw new IllegalArgumentException(
                             "알림 생성 이벤트에는 세션 ID를 포함할 수 없습니다.");
                 }
             }
             case SESSION_DISCONNECTED -> {
                 Objects.requireNonNull(
-                        sessionId,
+                        sessionHash,
                         "세션 종료 이벤트의 세션 ID는 null일 수 없습니다.");
+                SessionHash.requireValid(sessionHash);
                 if (notification != null) {
                     throw new IllegalArgumentException(
                             "세션 종료 이벤트에는 알림 내용을 포함할 수 없습니다.");
                 }
             }
             case MEMBER_DISCONNECTED -> {
-                if (sessionId != null || notification != null) {
+                if (sessionHash != null || notification != null) {
                     throw new IllegalArgumentException(
                             "회원 연결 종료 이벤트에는 세션 또는 알림 내용을 포함할 수 없습니다.");
                 }

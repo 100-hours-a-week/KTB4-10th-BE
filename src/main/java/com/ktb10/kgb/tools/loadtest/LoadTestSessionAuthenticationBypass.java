@@ -23,10 +23,10 @@ public class LoadTestSessionAuthenticationBypass {
         return Optional.ofNullable(sessions.get(rawSessionId));
     }
 
-    public void replace(String rawSessionId, Long memberId, Long sessionId) {
+    public void replace(String rawSessionId, Long memberId, String sessionHash) {
         sessions.put(
                 rawSessionId,
-                new AuthenticatedMember(memberId, MemberStatus.ACTIVE, sessionId));
+                new AuthenticatedMember(memberId, MemberStatus.ACTIVE, sessionHash));
     }
 
     public void clear() {

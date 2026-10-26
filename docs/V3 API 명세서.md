@@ -208,9 +208,9 @@
 | 비밀값 | client_secret·verifier·공급자 토큰은 서버에서만 처리, 브라우저와 로그에 노출 금지. 서비스 세션 ID는 DB에 SHA-256 해시만 보관 |
 | 다중 서버 | 로그인 후 세션은 기존 공용 MySQL을 사용한다. 로그인 전에는 Redis의 state별 key와 브라우저별 Sorted Set을 공유하며 GETDEL로 인스턴스 간 원자 소비를 보장한다. HttpSession은 JSESSIONID 발급과 브라우저 결속에 사용한다. |
 | 쿠키·CSRF | 임시 세션 쿠키도 운영 HttpOnly·Secure·SameSite=Lax·host-only 적용. 서비스 세션 인증의 POST/PUT/PATCH/DELETE에는 Spring Security CSRF 토큰 검증 적용. PKCE/state가 일반 API의 CSRF 방어를 대체하지 않음 |
-| 서비스 로그인 | 기존 auth_sessions 기반 쿠키 인증 유지. API-MEM-02 갱신 API는 복원하지 않음. 회원당 유효 세션은 1개이며 새 로그인은 기존 세션을 폐기. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
+| 서비스 로그인 | Redis 서비스 세션 기반 KGB_SESSION 쿠키 인증. 회원 상태는 매 인증 MySQL 조회. API-MEM-02 갱신 API는 복원하지 않음. 회원당 유효 세션은 1개이며 새 로그인은 기존 세션을 폐기. 현재 세션 로그아웃, 탈퇴 시 모든 세션 폐기 |
 
-프레임워크 기본 설정만으로 10분 TTL·다중 시도·원자 소비·현재 auth_sessions 매핑이 자동 구현되는 것은 아니다. AuthorizationRequestRepository 확장, 로그인 성공 처리, 서비스 세션 검증 및 CSRF 연동을 구현한다. 서비스 세션 수치는 V1-03에 정의하며 CSRF 전달·연동은 별도 보안 구현 항목이며 PKCE 설계 미정 항목이 아니다.
+프레임워크 기본 설정만으로 10분 TTL·다중 시도·원자 소비·커스텀 서비스 세션 정책이 자동 구현되는 것은 아니다. AuthorizationRequestRepository 확장, 로그인 성공 처리, 서비스 세션 검증 및 CSRF 연동을 구현한다. 서비스 세션 수치는 V1-03에 정의하며 CSRF 전달·연동은 별도 보안 구현 항목이며 PKCE 설계 미정 항목이 아니다.
 
 **구현 검증 체크리스트(설계 재결정 아님):** 선택한 Spring 버전에 맞춰 confidential client에도 S256을 명시 적용하고, KAKAO·GOOGLE 실제 요청에서 challenge/verifier 및 틀린 verifier 거절을 확인한다. state 누락·변조·만료·재사용, 브라우저/공급자 교체, 다중 탭·동시 콜백, 사용자 취소, 공급자 장애, 저장 실패, 로그인 후 세션 폐기·CSRF 거절을 테스트한다. 공급자/라이브러리 호환성 실패 시 배포를 막고 원인을 해결하며 plain 또는 PKCE 미사용으로 조용히 낮추지 않는다. 문서 확정은 연동 테스트 완료를 뜻하지 않는다.
 

@@ -23,7 +23,7 @@ public class NotificationRealtimeAdapter {
                             true));
             case SESSION_DISCONNECTED -> notificationStreamService.disconnectSession(
                     envelope.memberId(),
-                    envelope.sessionId());
+                    envelope.sessionHash());
             case MEMBER_DISCONNECTED -> notificationStreamService.disconnectMember(
                     envelope.memberId());
             default -> throw new IllegalArgumentException(

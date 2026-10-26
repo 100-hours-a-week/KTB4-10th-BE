@@ -12,10 +12,8 @@ import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -45,14 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @AutoConfigureMockMvc
 @Transactional
-class GenerationStatusApiTest {
+class GenerationStatusApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     @Autowired
     private MockMvc mockMvc;
     @Autowired
     private MemberRepository memberRepository;
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
     @Autowired
     private GenerationJobRepository generationJobRepository;
     @Autowired
@@ -73,8 +69,8 @@ class GenerationStatusApiTest {
         activeMember.activate(now);
         member = memberRepository.save(activeMember);
         String rawSessionId = UUID.randomUUID().toString();
-        authSessionRepository.saveAndFlush(AuthSession.issue(
-                member, sessionIdHasher.hash(rawSessionId), now.plusHours(1), now));
+        sessions.seed(
+                member, sessionIdHasher.hash(rawSessionId), now.plusHours(1), now);
         sessionCookie = new Cookie("KGB_SESSION", rawSessionId);
     }
 

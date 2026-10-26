@@ -125,7 +125,7 @@ class FavoriteContentApiTest {
 
     private UsernamePasswordAuthenticationToken authenticatedMember() {
         return UsernamePasswordAuthenticationToken.authenticated(
-                new AuthenticatedMember(1L, MemberStatus.ACTIVE, 10L),
+                new AuthenticatedMember(1L, MemberStatus.ACTIVE, "000000000000000000000000000000000000000000000000000000000000000a"),
                 null,
                 List.of());
     }

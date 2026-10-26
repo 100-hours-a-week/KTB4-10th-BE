@@ -247,7 +247,7 @@ ea330328은 GDE-06 제목 PATCH와 GDE-08 일정 PUT을 제거하고 GDE-09로 �
 
 **state와 PKCE:** state는 요청 브라우저·로그인 시도·provider를 연결하고, PKCE S256은 인가 코드와 서버가 보관한 verifier를 연결한다. 임시 HttpSession 기반 저장소에 state별 10분 TTL·최대 5개 시도를 두고 원자적으로 소비한다. 이 수치는 프로젝트 기본값이며 표준에서 강제하는 값은 아니다. 상세 계약과 오류는 API-DEC-01을 따른다. [OAuth 보안 BCP](https://www.rfc-editor.org/rfc/rfc9700.html), [PKCE](https://www.rfc-editor.org/rfc/rfc7636.html)
 
-**저장 경계:** auth_sessions는 로그인 후 서비스 세션이다. verifier는 공급자에 원문을 제출해야 하므로 세션 ID처럼 해시만 보관하지 않는다. HttpSession의 로그인 전 상태와 MySQL 서비스 세션을 구분하고, 다중 서버 배포 전에 임시 상태 공유와 동시 소비를 검증한다. Spring 설정만으로 현재 auth_sessions 테이블 연결이나 원자 소비가 자동 구현되지 않는다.
+**저장 경계:** 로그인 후 서비스 세션은 별도 Redis namespace에서 관리한다. verifier는 공급자에 원문을 제출해야 하므로 세션 토큰처럼 해시만 보관하지 않는다. OAuth 임시 HttpSession과 서비스 KGB_SESSION은 분리하며 최신 회원 상태는 인증마다 MySQL 조회한다. auth_sessions 테이블은 V14에서 제거한다. Push/SSE 연결과 운영 전환 제약은 서비스 세션 저장소 이전 문서를 따른다.
 
 **보안 검증:** Google은 OIDC, Kakao는 별도 OIDC 활성화 없이 OAuth 사용자 정보 조회를 사용한다. 두 공급자 S256의 정상 및 잘못된 verifier 거절을 실제 연동으로 확인한다. 실패 시 PKCE를 끄지 않고 배포를 차단한다. 세션 쿠키 HttpOnly·Secure·SameSite=Lax와 일반 변경 API의 CSRF 검증은 별도 방어다. 서비스 세션 수치는 V1-03 확정값을 따르고 CSRF 전달 계약은 브라우저 실연동 전에 검증한다.
 

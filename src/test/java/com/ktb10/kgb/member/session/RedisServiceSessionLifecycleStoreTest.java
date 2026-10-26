@@ -23,15 +23,13 @@ class RedisServiceSessionLifecycleStoreTest {
 
     @Test
     void rejectsInvalidArgumentsBeforeRedisAccess() {
-        assertThatThrownBy(() -> issue(new byte[31], 1L, 1L, MemberStatus.ACTIVE, Duration.ofHours(8)))
+        assertThatThrownBy(() -> issue(new byte[31], 1L, Duration.ofHours(8)))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> issue(new byte[32], 0L, 1L, MemberStatus.ACTIVE, Duration.ofHours(8)))
+        assertThatThrownBy(() -> issue(new byte[32], 0L, Duration.ofHours(8)))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> issue(new byte[32], 1L, -1L, MemberStatus.ACTIVE, Duration.ofHours(8)))
+        assertThatThrownBy(() -> issue(new byte[32], -1L, Duration.ofHours(8)))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> issue(new byte[32], 1L, 1L, null, Duration.ofHours(8)))
-                .isInstanceOf(NullPointerException.class);
-        assertThatThrownBy(() -> store.revokeCurrent(null, 1L, 1L))
+        assertThatThrownBy(() -> store.revokeCurrent(null, 1L))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> store.revokeAllForMember(0L)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new RedisServiceSessionLifecycleStore(redis, " "))
@@ -43,10 +41,9 @@ class RedisServiceSessionLifecycleStoreTest {
     @ValueSource(strings = {"PT0S", "PT-1S", "PT0.000001S", "PT0.001001S", "PT9007199254740.992S"})
     void rejectsNonPositiveFractionalOrUnsafeDurations(String input) {
         Duration duration = Duration.parse(input);
-        assertThatThrownBy(() -> issue(new byte[32], 1L, 1L, MemberStatus.ACTIVE, duration))
+        assertThatThrownBy(() -> issue(new byte[32], 1L, duration))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> store.issueReplacingForMember(new byte[32], 1L, 1L,
-                MemberStatus.ACTIVE, Duration.ofHours(8), duration)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> store.issueReplacingForMember(new byte[32], 1L, Duration.ofHours(8), duration)).isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(redis);
     }
 
@@ -55,13 +52,13 @@ class RedisServiceSessionLifecycleStoreTest {
         var failure = new RedisConnectionFailureException("test unavailable");
         doThrow(failure).when(redis).execute(
                 ArgumentMatchers.<RedisScript<String>>any(), anyList(), any(Object[].class));
-        assertThatThrownBy(() -> issue(new byte[32], 1L, 1L, MemberStatus.ACTIVE, Duration.ofHours(8)))
+        assertThatThrownBy(() -> issue(new byte[32], 1L, Duration.ofHours(8)))
                 .isSameAs(failure);
-        assertThatThrownBy(() -> store.revokeCurrent(new byte[32], 1L, 1L)).isSameAs(failure);
+        assertThatThrownBy(() -> store.revokeCurrent(new byte[32], 1L)).isSameAs(failure);
         assertThatThrownBy(() -> store.revokeAllForMember(1L)).isSameAs(failure);
     }
 
-    private void issue(byte[] hash, Long sessionId, Long memberId, MemberStatus status, Duration lifetime) {
-        store.issueReplacingForMember(hash, sessionId, memberId, status, lifetime, Duration.ofMinutes(30));
+    private void issue(byte[] hash, Long memberId, Duration lifetime) {
+        store.issueReplacingForMember(hash, memberId, lifetime, Duration.ofMinutes(30));
     }
 }

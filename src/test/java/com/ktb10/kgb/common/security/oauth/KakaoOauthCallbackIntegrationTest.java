@@ -10,7 +10,6 @@ import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -61,8 +60,6 @@ class KakaoOauthCallbackIntegrationTest extends RedisIntegrationTestSupport {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private CreditWalletRepository creditWalletRepository;
@@ -83,7 +80,7 @@ class KakaoOauthCallbackIntegrationTest extends RedisIntegrationTestSupport {
 
     @BeforeEach
     void cleanUp() {
-        authSessionRepository.deleteAll();
+        sessions.clear();
         creditTransactionRepository.deleteAll();
         creditWalletRepository.deleteAll();
         memberRepository.deleteAll();
@@ -128,7 +125,7 @@ class KakaoOauthCallbackIntegrationTest extends RedisIntegrationTestSupport {
         assertThat(member.getEmail()).isNull();
         assertThat(creditWalletRepository.findByMemberId(member.getId()).orElseThrow()
                 .getCreditBalance()).isEqualTo(3);
-        assertThat(authSessionRepository.findBySessionIdHash(sessionIdHasher.hash(rawSessionId)))
+        assertThat(sessions.findBySessionIdHash(sessionIdHasher.hash(rawSessionId)))
                 .isPresent();
         assertThat(TOKEN_REQUEST.get())
                 .contains("client_secret=test-client-secret")
@@ -187,7 +184,7 @@ class KakaoOauthCallbackIntegrationTest extends RedisIntegrationTestSupport {
 
     private void assertNoLoginDataCreated() {
         assertThat(memberRepository.count()).isZero();
-        assertThat(authSessionRepository.count()).isZero();
+        assertThat(sessions.count()).isZero();
         assertThat(creditWalletRepository.count()).isZero();
         assertThat(creditTransactionRepository.count()).isZero();
     }

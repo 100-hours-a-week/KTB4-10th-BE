@@ -61,9 +61,9 @@ class NotificationStreamServiceTest {
     void sendsNotificationToEveryConnectionOwnedByRecipient() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(2L, 22L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(2L, "0000000000000000000000000000000000000000000000000000000000000016");
         reset(firstEmitter, secondEmitter, otherMemberEmitter);
 
         boolean delivered = streamService.publish(notificationEvent(1L, "301"));
@@ -78,7 +78,7 @@ class NotificationStreamServiceTest {
     void doesNotSendRealtimeEventWhenMemberDisabledNotifications() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter);
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         reset(firstEmitter);
 
         boolean delivered = streamService.publish(notificationEvent(1L, "301", false));
@@ -92,8 +92,8 @@ class NotificationStreamServiceTest {
     void removesOnlyFailedConnectionAndContinuesOtherConnections() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         reset(firstEmitter, secondEmitter);
         doThrow(new IOException("연결 종료"))
                 .when(firstEmitter)
@@ -111,7 +111,7 @@ class NotificationStreamServiceTest {
     void reportsFailureWhenEveryStaleConnectionRejectsNotification() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter);
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         reset(firstEmitter);
         doThrow(new IOException("연결 종료"))
                 .when(firstEmitter)
@@ -134,7 +134,7 @@ class NotificationStreamServiceTest {
     void heartbeatRemovesClosedConnection() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter);
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         reset(firstEmitter);
         doThrow(new IllegalStateException("이미 완료된 연결"))
                 .when(firstEmitter)
@@ -153,7 +153,7 @@ class NotificationStreamServiceTest {
                 .willReturn(firstEmitter);
         ArgumentCaptor<Runnable> completionCallback = ArgumentCaptor.forClass(Runnable.class);
 
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         verify(firstEmitter).onCompletion(completionCallback.capture());
 
         completionCallback.getValue().run();
@@ -174,7 +174,7 @@ class NotificationStreamServiceTest {
                 .willReturn(firstEmitter);
         ArgumentCaptor<Runnable> timeoutCallback = ArgumentCaptor.forClass(Runnable.class);
 
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         verify(firstEmitter).onTimeout(timeoutCallback.capture());
 
         timeoutCallback.getValue().run();
@@ -191,7 +191,7 @@ class NotificationStreamServiceTest {
         ArgumentCaptor<Consumer<Throwable>> errorCallback = ArgumentCaptor.forClass(
                 Consumer.class);
 
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         verify(firstEmitter).onError(errorCallback.capture());
 
         errorCallback.getValue().accept(new IOException("연결 종료"));
@@ -204,8 +204,8 @@ class NotificationStreamServiceTest {
     void disconnectsEveryConnectionForMember() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 12L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000c");
 
         streamService.disconnectMember(1L);
 
@@ -227,9 +227,9 @@ class NotificationStreamServiceTest {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
 
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 11L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
 
         assertThat(streamService.connectionCount(1L)).isEqualTo(2);
         verify(firstEmitter).complete();
@@ -242,15 +242,15 @@ class NotificationStreamServiceTest {
     void disconnectsOnlyConnectionsOwnedByCurrentSession() throws Exception {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 12L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000c");
 
-        streamService.disconnectSession(1L, 11L);
+        streamService.disconnectSession(1L, "000000000000000000000000000000000000000000000000000000000000000b");
 
         assertThat(streamService.connectionCount(1L)).isOne();
-        assertThat(streamService.connectionCount(1L, 11L)).isZero();
-        assertThat(streamService.connectionCount(1L, 12L)).isOne();
+        assertThat(streamService.connectionCount(1L, "000000000000000000000000000000000000000000000000000000000000000b")).isZero();
+        assertThat(streamService.connectionCount(1L, "000000000000000000000000000000000000000000000000000000000000000c")).isOne();
         verify(firstEmitter).complete();
         verify(secondEmitter).complete();
         verify(otherMemberEmitter, never()).complete();
@@ -262,9 +262,9 @@ class NotificationStreamServiceTest {
         given(emitterFactory.create(Duration.ofMinutes(25).toMillis()))
                 .willReturn(firstEmitter, secondEmitter, otherMemberEmitter);
 
-        streamService.subscribe(1L, 11L);
-        streamService.subscribe(1L, 12L);
-        streamService.subscribe(2L, 22L);
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
+        streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000c");
+        streamService.subscribe(2L, "0000000000000000000000000000000000000000000000000000000000000016");
 
         assertThat(streamService.activeConnectionCount()).isEqualTo(3);
         assertThat(streamService.activeMemberCount()).isEqualTo(2);
@@ -282,7 +282,7 @@ class NotificationStreamServiceTest {
             ArgumentCaptor<Runnable> completionCallback = ArgumentCaptor.forClass(
                     Runnable.class);
 
-            streamService.subscribe(1L, 11L);
+            streamService.subscribe(1L, "000000000000000000000000000000000000000000000000000000000000000b");
             verify(emitter).onCompletion(completionCallback.capture());
             completionCallback.getValue().run();
         }

@@ -29,11 +29,11 @@ class NotificationRealtimeAdapterTest {
         NotificationCreatedEvent event = notificationEvent();
 
         adapter.handle(NotificationRealtimeEnvelope.notification(event, OCCURRED_AT));
-        adapter.handle(NotificationRealtimeEnvelope.sessionDisconnected(1L, 11L, OCCURRED_AT));
+        adapter.handle(NotificationRealtimeEnvelope.sessionDisconnected(1L, "000000000000000000000000000000000000000000000000000000000000000b", OCCURRED_AT));
         adapter.handle(NotificationRealtimeEnvelope.memberDisconnected(1L, OCCURRED_AT));
 
         verify(notificationStreamService).publish(event);
-        verify(notificationStreamService).disconnectSession(1L, 11L);
+        verify(notificationStreamService).disconnectSession(1L, "000000000000000000000000000000000000000000000000000000000000000b");
         verify(notificationStreamService).disconnectMember(1L);
     }
 

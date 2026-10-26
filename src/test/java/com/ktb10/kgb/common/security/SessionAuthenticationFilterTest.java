@@ -33,7 +33,7 @@ class SessionAuthenticationFilterTest {
     void loadTestBypassAuthenticatesWithoutDatabaseSessionService() throws Exception {
         ServiceSessionService serviceSessionService = mock(ServiceSessionService.class);
         LoadTestSessionAuthenticationBypass bypass = new LoadTestSessionAuthenticationBypass();
-        bypass.replace("fixture-session", 10L, 20L);
+        bypass.replace("fixture-session", 10L, "a".repeat(64));
         SessionAuthenticationFilter filter = new SessionAuthenticationFilter(
                 new SessionCookieResolver(),
                 serviceSessionService,
@@ -49,7 +49,7 @@ class SessionAuthenticationFilterTest {
                 .isEqualTo(new AuthenticatedMember(
                         10L,
                         com.ktb10.kgb.member.entity.MemberStatus.ACTIVE,
-                        20L));
+                        "a".repeat(64)));
         verifyNoInteractions(serviceSessionService);
     }
 

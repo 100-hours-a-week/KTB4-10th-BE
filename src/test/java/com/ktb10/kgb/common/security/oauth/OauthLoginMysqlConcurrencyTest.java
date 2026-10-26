@@ -7,7 +7,6 @@ import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -31,7 +30,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
-class OauthLoginMysqlConcurrencyTest {
+class OauthLoginMysqlConcurrencyTest extends RedisIntegrationTestSupport {
 
     private static final int CONCURRENT_REQUESTS = 2;
     @Container
@@ -39,12 +38,12 @@ class OauthLoginMysqlConcurrencyTest {
 
     @Autowired
     private OauthLoginService oauthLoginService;
+    @Autowired
+    private com.ktb10.kgb.member.service.ServiceSessionService serviceSessions;
 
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private CreditWalletRepository creditWalletRepository;
@@ -66,7 +65,7 @@ class OauthLoginMysqlConcurrencyTest {
     void cleanUp() {
         creditTransactionRepository.deleteAllInBatch();
         creditWalletRepository.deleteAllInBatch();
-        authSessionRepository.deleteAllInBatch();
+        sessions.clear();
         memberRepository.deleteAllInBatch();
     }
 
@@ -92,8 +91,8 @@ class OauthLoginMysqlConcurrencyTest {
                 .singleElement()
                 .extracting(transaction -> transaction.getType())
                 .isEqualTo(CreditTransactionType.FREE_GRANT);
-        assertThat(authSessionRepository.findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(
-                member.getId())).hasSize(1);
+        assertThat(results.stream().filter(result ->
+                serviceSessions.authenticate(result.rawSessionId()).isPresent()).count()).isOne();
     }
 
     @Test
@@ -115,8 +114,8 @@ class OauthLoginMysqlConcurrencyTest {
 
         assertThat(results).hasSize(CONCURRENT_REQUESTS);
         assertThat(memberRepository.count()).isOne();
-        assertThat(authSessionRepository.findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(
-                member.getId())).hasSize(1);
+        assertThat(results.stream().filter(result ->
+                serviceSessions.authenticate(result.rawSessionId()).isPresent()).count()).isOne();
     }
 
     private List<OauthLoginResult> loginConcurrently(KakaoOauthUser user)

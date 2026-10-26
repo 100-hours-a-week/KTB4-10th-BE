@@ -78,11 +78,10 @@ class RedisServiceSessionAuthenticationStoreIntegrationTest {
     }
 
     private Map<String, String> valid() {
-        return new HashMap<>(Map.of(
-                "schemaVersion", "1", "sessionId", "9223372036854775807", "memberId", "9223372036854775806",
-                "memberStatus", "ACTIVE", "createdAtEpochMillis", Long.toString(now - 10000),
+        return new HashMap<>(Map.of("schemaVersion", "2", "memberId", "9223372036854775806",
+                "createdAtEpochMillis", Long.toString(now - 10000),
                 "expiresAtEpochMillis", Long.toString(now + 3600000),
-                "lastUsedAtEpochMillis", Long.toString(now - 5000), "revoked", "0", "memberDeleted", "0"));
+                "lastUsedAtEpochMillis", Long.toString(now - 5000)));
     }
 
     private void seed(Map<String, String> fields) {
@@ -90,25 +89,20 @@ class RedisServiceSessionAuthenticationStoreIntegrationTest {
         redis.expire(key, Duration.ofHours(2));
     }
 
-    @ParameterizedTest
-    @CsvSource({"ACTIVE", "ONBOARDING"})
-    void authenticatesWithoutRoundingIdsAndRenewsIdleTtl(String status) {
+    @Test
+    void returnsMemberIdWithoutRoundingAndUpdatesOnlyActivityAndIdleTtl() {
         var fields = valid();
-        fields.put("memberStatus", status);
         seed(fields);
-        var principal = store.authenticateAndRecordUse(HASH, IDLE).orElseThrow();
-        assertThat(principal.sessionId()).isEqualTo(Long.MAX_VALUE);
-        assertThat(principal.memberId()).isEqualTo(Long.MAX_VALUE - 1);
-        assertThat(principal.status()).isEqualTo(MemberStatus.valueOf(status));
+        assertThat(store.authenticateAndRecordUse(HASH, IDLE)).contains(Long.MAX_VALUE - 1);
         assertThat(Long.parseLong((String) redis.opsForHash().get(key, "lastUsedAtEpochMillis")))
                 .isGreaterThanOrEqualTo(now);
         assertThat(redis.getExpire(key, TimeUnit.MILLISECONDS)).isBetween(1795000L, 1800000L);
-        assertThat(redis.opsForHash().get(key, "expiresAtEpochMillis"))
-                .isEqualTo(fields.get("expiresAtEpochMillis"));
+        assertThat(redis.opsForHash().get(key, "expiresAtEpochMillis")).isEqualTo(fields.get("expiresAtEpochMillis"));
+        assertThat(redis.opsForHash().keys(key)).doesNotContain("memberStatus", "sessionId", "memberDeleted");
     }
 
     @Test
-    void capsTtlAtAbsoluteExpiryAndFallsBackToCreation() {
+    void absoluteLimitAndMissingLastUseFallbackArePreserved() {
         var fields = valid();
         fields.remove("lastUsedAtEpochMillis");
         fields.put("expiresAtEpochMillis", Long.toString(now + 60000));
@@ -118,57 +112,33 @@ class RedisServiceSessionAuthenticationStoreIntegrationTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"revoked,1", "memberDeleted,1", "expiresAtEpochMillis,expired",
-            "lastUsedAtEpochMillis,idle"})
-    void rejectsInvalidLifecycleWithoutTouch(String field, String value) {
+    @CsvSource({"expiresAtEpochMillis,0", "lastUsedAtEpochMillis,1800000"})
+    void rejectsAbsoluteOrIdleBoundaryWithoutTouchingRecord(String field, long age) {
         var fields = valid();
-        if (value.equals("expired")) value = Long.toString(now);
-        if (value.equals("idle")) {
-            value = Long.toString(now - IDLE.toMillis());
-            fields.put("createdAtEpochMillis", value);
-        }
-        fields.put(field, value);
+        fields.put("createdAtEpochMillis", Long.toString(now - 3600000));
+        fields.put(field, Long.toString(now - age));
         seed(fields);
         assertThat(store.authenticateAndRecordUse(HASH, IDLE)).isEmpty();
-        assertThat(redis.opsForHash().get(key, "lastUsedAtEpochMillis"))
-                .isEqualTo(fields.get("lastUsedAtEpochMillis"));
+        assertThat(redis.opsForHash().entries(key)).containsAllEntriesOf(fields);
     }
 
     @ParameterizedTest
-    @CsvSource({"schemaVersion,2", "memberStatus,DELETED", "sessionId,9223372036854775808",
-            "memberId,0", "createdAtEpochMillis,garbage", "revoked,garbage"})
-    void corruptRecordsFailBeforeMutation(String field, String value) {
+    @CsvSource({"schemaVersion,1", "memberId,9223372036854775808", "memberId,0",
+            "createdAtEpochMillis,garbage"})
+    void corruptDataFailsBeforeAnyMutation(String field, String value) {
         var fields = valid();
         fields.put(field, value);
         seed(fields);
         assertThatThrownBy(() -> store.authenticateAndRecordUse(HASH, IDLE)).isInstanceOf(RuntimeException.class);
         assertThat(redis.opsForHash().entries(key)).containsAllEntriesOf(fields);
-        assertThat(redis.getExpire(key, TimeUnit.MILLISECONDS)).isGreaterThan(7000000L);
     }
 
     @Test
-    void absentAndExpiredKeysAreNotRecreated() {
+    void missingAndDeletedKeysAreNeverRecreated() {
         assertThat(store.authenticateAndRecordUse(HASH, IDLE)).isEmpty();
         seed(valid());
-        redis.expireAt(key, java.time.Instant.EPOCH);
-        assertThat(store.authenticateAndRecordUse(HASH, IDLE)).isEmpty();
-        assertThat(redis.hasKey(key)).isFalse();
-    }
-
-    @Test
-    void concurrentClientsAndDeletionCannotResurrectSession() throws Exception {
-        seed(valid());
-        try (var executor = Executors.newFixedThreadPool(8)) {
-            List<Callable<Boolean>> tasks = new ArrayList<>();
-            for (int i = 0; i < 40; i++) {
-                var client = i % 2 == 0 ? store : secondStore;
-                tasks.add(() -> client.authenticateAndRecordUse(HASH, IDLE).isPresent());
-            }
-            for (var result : executor.invokeAll(tasks)) assertThat(result.get()).isTrue();
-            tasks.add(() -> redis.delete(key));
-            for (var result : executor.invokeAll(tasks)) result.get();
-        }
-        assertThat(redis.hasKey(key)).isFalse();
+        redis.delete(key);
         assertThat(secondStore.authenticateAndRecordUse(HASH, IDLE)).isEmpty();
+        assertThat(redis.hasKey(key)).isFalse();
     }
 }

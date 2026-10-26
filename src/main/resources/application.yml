@@ -38,6 +38,12 @@ kgb:
 map:
   common-cache-sync-poll-interval-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INTERVAL_MILLIS:30000}
   common-cache-sync-poll-initial-delay-millis: ${MAP_COMMON_CACHE_SYNC_POLL_INITIAL_DELAY_MILLIS:30000}
+auth:
+  session:
+    idle-timeout: 30m
+    redis:
+      namespace: ${SERVICE_SESSION_REDIS_NAMESPACE:kgb:local:service-session:v2}
+
 server:
   servlet:
     session:

@@ -8,12 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ktb10.kgb.common.security.SessionCookieResolver;
 import com.ktb10.kgb.common.security.SessionIdHasher;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.Notification;
 import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
 import jakarta.servlet.http.Cookie;
@@ -44,7 +42,7 @@ import org.springframework.test.web.servlet.MvcResult;
 })
 @AutoConfigureMockMvc
 @Import(MemberApiIntegrationTest.FixedClockConfiguration.class)
-class MemberApiIntegrationTest {
+class MemberApiIntegrationTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final Instant CURRENT_INSTANT = Instant.parse("2026-09-20T03:00:00Z");
     private static final LocalDateTime NOW = LocalDateTime.ofInstant(CURRENT_INSTANT, ZoneOffset.UTC);
@@ -58,8 +56,6 @@ class MemberApiIntegrationTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private NotificationRepository notificationRepository;
@@ -67,7 +63,7 @@ class MemberApiIntegrationTest {
     @BeforeEach
     void cleanUp() {
         notificationRepository.deleteAll();
-        authSessionRepository.deleteAll();
+        sessions.clear();
         memberRepository.deleteAll();
     }
 
@@ -113,7 +109,7 @@ class MemberApiIntegrationTest {
                 "member@example.com",
                 null,
                 NOW.minusDays(1)));
-        AuthSession session = issueSession(member, "logout-session");
+        String session = issueSession(member, "logout-session");
         MvcResult csrfResult = mockMvc.perform(get("/api/v1/auth/csrf"))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -128,8 +124,7 @@ class MemberApiIntegrationTest {
                 .anyMatch(value -> value.startsWith("XSRF-TOKEN="))
                 .anyMatch(value -> value.startsWith("KGB_SESSION=;"));
 
-        AuthSession revokedSession = authSessionRepository.findById(session.getId()).orElseThrow();
-        assertThat(revokedSession.getRevokedAt()).isEqualTo(NOW);
+        assertThat(sessions.findById(session)).isEmpty();
 
         mockMvc.perform(get("/api/v1/members/me")
                         .cookie(sessionCookie("logout-session")))
@@ -209,12 +204,12 @@ class MemberApiIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
     }
 
-    private AuthSession issueSession(Member member, String rawSessionId) {
-        return authSessionRepository.saveAndFlush(AuthSession.issue(
+    private String issueSession(Member member, String rawSessionId) {
+        return sessions.seed(
                 member,
                 sessionIdHasher.hash(rawSessionId),
                 NOW.plusHours(8),
-                NOW.minusMinutes(1)));
+                NOW.minusMinutes(1));
     }
 
     private static Cookie sessionCookie(String value) {

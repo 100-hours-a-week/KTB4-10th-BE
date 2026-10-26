@@ -18,10 +18,8 @@ import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryDayRepository;
 import com.ktb10.kgb.guidebook.repository.ItineraryItemRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
@@ -51,7 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @AutoConfigureMockMvc
 @Transactional
-class GuidebookDetailApiTest {
+class GuidebookDetailApiTest extends com.ktb10.kgb.support.RedisSessionTestSupport {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 21, 3, 0);
 
@@ -59,8 +57,6 @@ class GuidebookDetailApiTest {
     private MockMvc mockMvc;
     @Autowired
     private MemberRepository memberRepository;
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
     @Autowired
     private GuidebookRepository guidebookRepository;
     @Autowired
@@ -286,8 +282,8 @@ class GuidebookDetailApiTest {
     private Cookie issueSession(Member sessionMember) {
         String rawSessionId = UUID.randomUUID().toString();
         LocalDateTime now = LocalDateTime.now(clock);
-        authSessionRepository.saveAndFlush(AuthSession.issue(
-                sessionMember, sessionIdHasher.hash(rawSessionId), now.plusHours(1), now));
+        sessions.seed(
+                sessionMember, sessionIdHasher.hash(rawSessionId), now.plusHours(1), now);
         return new Cookie("KGB_SESSION", rawSessionId);
     }
 

@@ -3,7 +3,6 @@ package com.ktb10.kgb.member.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.MemberPreference;
 import com.ktb10.kgb.member.entity.Notification;
@@ -32,8 +31,6 @@ class MemberPersistenceTest {
     @Autowired
     private MemberRepository memberRepository;
 
-    @Autowired
-    private AuthSessionRepository authSessionRepository;
 
     @Autowired
     private MemberPreferenceRepository memberPreferenceRepository;
@@ -59,36 +56,6 @@ class MemberPersistenceTest {
         assertThat(memberRepository.findByIdAndDeletedAtIsNull(member.getId())).isEmpty();
     }
 
-    @Test
-    void sessionCanBeFoundByHashAndAllActiveSessionsCanBeRevoked() {
-        Member member = memberRepository.save(member("member-2"));
-        AuthSession first = AuthSession.issue(
-                member,
-                hash(1),
-                BASE_TIME.plusHours(8),
-                BASE_TIME);
-        AuthSession second = AuthSession.issue(
-                member,
-                hash(2),
-                BASE_TIME.plusHours(8),
-                BASE_TIME.plusMinutes(1));
-        authSessionRepository.saveAllAndFlush(List.of(first, second));
-
-        assertThat(authSessionRepository.findBySessionIdHash(hash(1))).contains(first);
-        assertThat(authSessionRepository
-                .findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(member.getId()))
-                .containsExactly(first, second);
-
-        int revoked = authSessionRepository.revokeAllActiveByMemberId(
-                member.getId(),
-                BASE_TIME.plusHours(1));
-        entityManager.clear();
-
-        assertThat(revoked).isEqualTo(2);
-        assertThat(authSessionRepository
-                .findAllByMemberIdAndRevokedAtIsNullOrderByCreatedAtAsc(member.getId()))
-                .isEmpty();
-    }
 
     @Test
     void duplicatePreferenceSelectionIsRejectedAndSelectionsCanBeReplaced() {

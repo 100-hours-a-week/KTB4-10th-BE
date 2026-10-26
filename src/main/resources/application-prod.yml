@@ -18,6 +18,11 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+auth:
+  session:
+    redis:
+      namespace: ${SERVICE_SESSION_REDIS_NAMESPACE:kgb:prod:service-session:v2}
+
 notification:
   redis:
     enabled: ${NOTIFICATION_REDIS_ENABLED:true}

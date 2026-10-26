@@ -1,25 +1,28 @@
 package com.ktb10.kgb.member.service;
 
 import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.security.SessionHash;
 import com.ktb10.kgb.member.dto.request.WebPushSubscriptionRequest;
 import com.ktb10.kgb.member.dto.response.WebPushSubscriptionResponse;
-import com.ktb10.kgb.member.entity.AuthSession;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.WebPushSubscription;
 import com.ktb10.kgb.member.entity.WebPushSubscriptionStatus;
 import com.ktb10.kgb.member.error.MemberErrorCode;
-import com.ktb10.kgb.member.repository.AuthSessionRepository;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
+import com.ktb10.kgb.member.session.ServiceSessionAuthenticationStore;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Clock;
 import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,7 +36,8 @@ public class WebPushSubscriptionService {
     private static final byte UNCOMPRESSED_POINT_PREFIX = 0x04;
 
     private final WebPushSubscriptionRepository subscriptionRepository;
-    private final AuthSessionRepository authSessionRepository;
+    private final ServiceSessionAuthenticationStore sessionStore;
+    private final Duration idleTimeout;
     private final MemberRepository memberRepository;
     private final WebPushEndpointHasher endpointHasher;
     private final WebPushEndpointPolicy endpointPolicy;
@@ -41,13 +45,15 @@ public class WebPushSubscriptionService {
 
     public WebPushSubscriptionService(
             WebPushSubscriptionRepository subscriptionRepository,
-            AuthSessionRepository authSessionRepository,
+            ServiceSessionAuthenticationStore sessionStore,
+            @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout,
             MemberRepository memberRepository,
             WebPushEndpointHasher endpointHasher,
             WebPushEndpointPolicy endpointPolicy,
             Clock clock) {
         this.subscriptionRepository = subscriptionRepository;
-        this.authSessionRepository = authSessionRepository;
+        this.sessionStore = sessionStore;
+        this.idleTimeout = idleTimeout;
         this.memberRepository = memberRepository;
         this.endpointHasher = endpointHasher;
         this.endpointPolicy = endpointPolicy;
@@ -57,14 +63,15 @@ public class WebPushSubscriptionService {
     @Transactional
     public WebPushSubscriptionResponse registerOrRenew(
             Long memberId,
-            Long sessionId,
+            String sessionHash,
             WebPushSubscriptionRequest request) {
         validateRequest(request);
-        Member member = memberRepository.findActiveByIdForUpdate(memberId)
+        final Member member = memberRepository.findActiveByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(
                         MemberErrorCode.WEB_PUSH_SUBSCRIPTION_INVALID));
-        AuthSession authSession = authSessionRepository
-                .findByIdAndMemberIdForPushRegistration(sessionId, memberId)
+        SessionHash.requireValid(sessionHash);
+        sessionStore.authenticateAndRecordUse(HexFormat.of().parseHex(sessionHash), idleTimeout)
+                .filter(memberId::equals)
                 .orElseThrow(() -> new BusinessException(MemberErrorCode.WEB_PUSH_SUBSCRIPTION_INVALID));
         byte[] endpointHash = endpointHasher.hash(request.endpoint());
         LocalDateTime expirationAt = expirationAt(request.expirationTime());
@@ -85,13 +92,13 @@ public class WebPushSubscriptionService {
                 .map(foundSubscription -> renewExisting(
                         foundSubscription,
                         member,
-                        authSession,
+                        sessionHash,
                         request,
                         expirationAt,
                         now))
                 .orElseGet(() -> WebPushSubscription.register(
                         member,
-                        authSession,
+                        sessionHash,
                         request.endpoint(),
                         endpointHash,
                         request.keys().p256dh(),
@@ -123,7 +130,7 @@ public class WebPushSubscriptionService {
     private WebPushSubscription renewExisting(
             WebPushSubscription existing,
             Member member,
-            AuthSession authSession,
+            String sessionHash,
             WebPushSubscriptionRequest request,
             LocalDateTime expirationAt,
             LocalDateTime now) {
@@ -132,7 +139,7 @@ public class WebPushSubscriptionService {
         }
         existing.renew(
                 member,
-                authSession,
+                sessionHash,
                 request.endpoint(),
                 request.keys().p256dh(),
                 request.keys().auth(),
