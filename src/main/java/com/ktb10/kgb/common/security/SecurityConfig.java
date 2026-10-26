@@ -5,6 +5,7 @@ import static org.springframework.security.config.Customizer.withDefaults;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthConfig;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthFailureHandler;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthSuccessHandler;
+import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
@@ -27,6 +28,10 @@ import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.DispatcherTypeRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -34,6 +39,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /** 서비스 세션 인증, 공개 경로와 공통 보안 실패 응답을 설정합니다. */
 @Configuration
 public class SecurityConfig {
+
+    static final RequestMatcher NOTIFICATION_STREAM_ASYNC_DISPATCH =
+            new AndRequestMatcher(
+                    new DispatcherTypeRequestMatcher(
+                            DispatcherType.ASYNC,
+                            HttpMethod.GET),
+                    PathPatternRequestMatcher.withDefaults().matcher(
+                            HttpMethod.GET,
+                            "/api/v1/notifications/stream"));
 
     @Bean
     public Clock utcClock() {
@@ -60,6 +74,10 @@ public class SecurityConfig {
             KakaoOauthFailureHandler failureHandler) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
+                        // 최초 REQUEST는 기존 규칙으로 인증·인가하고, 컨테이너 내부 오류
+                        // 재디스패치는 이미 커밋된 SSE 응답을 다시 인가하지 않습니다.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(NOTIFICATION_STREAM_ASYNC_DISPATCH).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/actuator/prometheus")
                         .permitAll()

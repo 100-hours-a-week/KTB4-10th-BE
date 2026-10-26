@@ -13,6 +13,7 @@ import com.ktb10.kgb.common.error.TraceId;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.Instant;
@@ -30,6 +31,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -78,6 +80,40 @@ class SecurityAuthenticationTest extends com.ktb10.kgb.support.RedisSessionTestS
                 .andExpect(jsonPath("$.data").value((Object) null))
                 .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"))
                 .andExpect(jsonPath("$.error.trace_id").isNotEmpty());
+    }
+
+    @Test
+    void errorRedispatchDoesNotRepeatAuthorizationAfterInitialRequest() throws Exception {
+        mockMvc.perform(get("/api/v1/test/error-redispatch")
+                        .with(request -> {
+                            request.setDispatcherType(DispatcherType.ERROR);
+                            return request;
+                        }))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("redispatched"));
+
+        mockMvc.perform(get("/api/v1/test/error-redispatch"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTH_SESSION_REQUIRED"));
+    }
+
+    @Test
+    void onlyNotificationStreamAsyncRedispatchSkipsRepeatedAuthorization() throws Exception {
+        MockHttpServletRequest asyncRequest = new MockHttpServletRequest(
+                "GET",
+                "/api/v1/notifications/stream");
+        asyncRequest.setServletPath("/api/v1/notifications/stream");
+        asyncRequest.setDispatcherType(DispatcherType.ASYNC);
+
+        MockHttpServletRequest initialRequest = new MockHttpServletRequest(
+                "GET",
+                "/api/v1/notifications/stream");
+        initialRequest.setServletPath("/api/v1/notifications/stream");
+
+        assertThat(SecurityConfig.NOTIFICATION_STREAM_ASYNC_DISPATCH.matches(asyncRequest))
+                .isTrue();
+        assertThat(SecurityConfig.NOTIFICATION_STREAM_ASYNC_DISPATCH.matches(initialRequest))
+                .isFalse();
     }
 
     @Test
@@ -295,6 +331,11 @@ class SecurityAuthenticationTest extends com.ktb10.kgb.support.RedisSessionTestS
         @PostMapping("/api/v1/test/protected-change")
         Map<String, String> protectedChange() {
             return Map.of("status", "changed");
+        }
+
+        @GetMapping("/api/v1/test/error-redispatch")
+        Map<String, String> errorRedispatch() {
+            return Map.of("status", "redispatched");
         }
 
         @GetMapping("/api/v1/policies/test-public")
