@@ -5,6 +5,7 @@ import static org.springframework.security.config.Customizer.withDefaults;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthConfig;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthFailureHandler;
 import com.ktb10.kgb.common.security.oauth.KakaoOauthSuccessHandler;
+import jakarta.servlet.DispatcherType;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.List;
@@ -60,6 +61,9 @@ public class SecurityConfig {
             KakaoOauthFailureHandler failureHandler) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
+                        // 최초 REQUEST는 기존 규칙으로 인증·인가하고, 컨테이너 내부 오류
+                        // 재디스패치는 이미 커밋된 SSE 응답을 다시 인가하지 않습니다.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/actuator/prometheus")
                         .permitAll()
