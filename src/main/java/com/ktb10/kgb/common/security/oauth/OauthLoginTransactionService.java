@@ -5,6 +5,8 @@ import com.ktb10.kgb.credit.service.SignupCreditGrantService;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import com.ktb10.kgb.member.service.NotificationRealtimePublisher;
+import com.ktb10.kgb.member.service.NotificationStreamService;
 import com.ktb10.kgb.member.session.ServiceSessionLifecycleStore;
 import java.time.Clock;
 import java.time.Duration;
@@ -30,6 +32,8 @@ public class OauthLoginTransactionService {
     private final SignupCreditGrantService signupCreditGrantService;
     private final SessionIdHasher sessionIdHasher;
     private final Clock clock;
+    private final NotificationStreamService streams;
+    private final NotificationRealtimePublisher realtimePublisher;
 
     public OauthLoginTransactionService(
             MemberRepository memberRepository,
@@ -37,13 +41,17 @@ public class OauthLoginTransactionService {
             @Value("${auth.session.idle-timeout:30m}") Duration idleTimeout,
             SignupCreditGrantService signupCreditGrantService,
             SessionIdHasher sessionIdHasher,
-            Clock clock) {
+            Clock clock,
+            NotificationStreamService streams,
+            NotificationRealtimePublisher realtimePublisher) {
         this.memberRepository = memberRepository;
         this.sessionStore = sessionStore;
         this.idleTimeout = idleTimeout;
         this.signupCreditGrantService = signupCreditGrantService;
         this.sessionIdHasher = sessionIdHasher;
         this.clock = clock;
+        this.streams = streams;
+        this.realtimePublisher = realtimePublisher;
     }
 
     @Transactional
@@ -54,10 +62,30 @@ public class OauthLoginTransactionService {
 
         byte[] sessionHash = sessionIdHasher.hash(rawSessionId);
         registerRollbackCleanup(sessionHash, lockedMember.getId());
-        sessionStore.issueReplacingForMember(sessionHash, lockedMember.getId(),
+        var issued = sessionStore.issueReplacingForMember(sessionHash, lockedMember.getId(),
                 ABSOLUTE_SESSION_LIFETIME, idleTimeout);
+        issued.replacedSessionHash().ifPresent(previousHash ->
+                registerReplacedSessionDisconnect(lockedMember.getId(), previousHash));
 
         return new OauthLoginResult(rawSessionId, lockedMember.getStatus());
+    }
+
+    private void registerReplacedSessionDisconnect(Long memberId, String previousHash) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    streams.disconnectSession(memberId, previousHash);
+                } catch (RuntimeException exception) {
+                    LOGGER.warn("재로그인 후 이전 로컬 SSE 종료에 실패했습니다. memberId={}", memberId, exception);
+                }
+                try {
+                    realtimePublisher.publishSessionDisconnected(memberId, previousHash);
+                } catch (RuntimeException exception) {
+                    LOGGER.warn("재로그인 후 이전 SSE 종료 전파에 실패했습니다. memberId={}", memberId, exception);
+                }
+            }
+        });
     }
 
     private void registerRollbackCleanup(byte[] hash, Long memberId) {
