@@ -40,6 +40,9 @@ class NotificationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private WebPushOutboxWriter webPushOutboxWriter;
+
     private NotificationService notificationService;
 
     @BeforeEach
@@ -49,7 +52,8 @@ class NotificationServiceTest {
                 notificationOccurrenceRepository,
                 memberRepository,
                 Clock.systemUTC(),
-                eventPublisher);
+                eventPublisher,
+                webPushOutboxWriter);
     }
 
     @Test
@@ -99,6 +103,10 @@ class NotificationServiceTest {
                 ArgumentCaptor.forClass(
                         com.ktb10.kgb.member.event.NotificationCreatedEvent.class);
         verify(eventPublisher).publishEvent(eventCaptor.capture());
+        verify(webPushOutboxWriter).recordPendingTasks(
+                org.mockito.ArgumentMatchers.eq(notification),
+                org.mockito.ArgumentMatchers.eq(false),
+                org.mockito.ArgumentMatchers.any(java.time.LocalDateTime.class));
         assertThat(eventCaptor.getValue().realtimeDeliveryEnabled()).isFalse();
     }
 }
