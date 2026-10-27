@@ -195,13 +195,14 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    void asyncClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
+    void wrappedClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
             throws Exception {
-        mockMvc.perform(get("/test/async-client-abort"))
+        mockMvc.perform(get("/test/wrapped-client-abort"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(""));
 
         assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(output).doesNotContain("event=async_response_unusable");
         assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
                 .isEqualTo(1.0);
     }
@@ -216,6 +217,22 @@ class GlobalExceptionHandlerTest {
         assertThat(output).doesNotContain("Unhandled application exception");
         assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
                 .isEqualTo(1.0);
+    }
+
+    @Test
+    void asyncResponseUnusableWithoutClientAbortIsNotCountedAsClientAbort(
+            CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/test/async-response-unusable"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).contains("event=async_response_unusable");
+        assertThat(output).contains("status=200");
+        assertThat(output).contains("committed=false");
+        assertThat(output).contains("rootCauseType=AsyncRequestNotUsableException");
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isZero();
     }
 
     @RestController
@@ -259,14 +276,21 @@ class GlobalExceptionHandlerTest {
                     new IllegalStateException("upstream unavailable"));
         }
 
-        @GetMapping("/async-client-abort")
-        void asyncClientAbort() throws AsyncRequestNotUsableException {
-            throw new AsyncRequestNotUsableException("클라이언트 연결 종료");
+        @GetMapping("/wrapped-client-abort")
+        void wrappedClientAbort() throws AsyncRequestNotUsableException {
+            throw new AsyncRequestNotUsableException(
+                    "클라이언트 연결 종료",
+                    new ClientAbortException("클라이언트 연결 종료"));
         }
 
         @GetMapping("/container-client-abort")
         void containerClientAbort() throws ClientAbortException {
             throw new ClientAbortException("클라이언트 연결 종료");
+        }
+
+        @GetMapping("/async-response-unusable")
+        void asyncResponseUnusable() throws AsyncRequestNotUsableException {
+            throw new AsyncRequestNotUsableException("비동기 요청 완료 후 응답 사용");
         }
 
         @GetMapping("/number")

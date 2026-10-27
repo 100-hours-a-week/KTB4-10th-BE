@@ -299,7 +299,11 @@ docker compose \
 - 캐시 hit ratio, size와 eviction
 - SSE 현재 연결 수, 초당 open·close와 종료 사유
 - SSE 평균·최대 연결 수명
-- 예상 가능한 클라이언트 단절 횟수: `kgb_http_client_aborts_total`
+- 원인 체인에서 `ClientAbortException`이 확인된 클라이언트 단절 횟수:
+  `kgb_http_client_aborts_total`
+- `AsyncRequestNotUsableException`은 응답 쓰기 실패·컨테이너 오류 통지·비동기 요청 완료 후 접근을
+  모두 포함하므로 예외 타입만으로 client abort로 집계하지 않습니다. client abort가 아닌 경우
+  `event=async_response_unusable` 로그의 status·committed·rootCauseType을 확인합니다.
 - JVM GC pause와 live thread
 
 SSE 메모리 누수는 단순히 Heap이 증가했다는 이유로 판단하지 않습니다. 부하 클라이언트를 모두 종료한 뒤 다음을 함께 확인합니다.
