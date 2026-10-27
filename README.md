@@ -31,6 +31,28 @@ Spring Boot는 프로젝트 루트의 `.env`를 자동으로 읽지 않으므로
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
+### 로컬 AI 서버 선택
+
+`local`은 기본적으로 백엔드 내부 Fake AI 클라이언트를 사용합니다.
+Docker 등으로 별도 실행한 AI 서버를 호출하려면 실행 환경변수를 다음처럼 설정합니다.
+
+```bash
+SPRING_PROFILES_ACTIVE=local AI_CLIENT_MODE=http AI_SERVER_BASE_URL=http://localhost:8000 ./gradlew bootRun
+```
+
+- `AI_CLIENT_MODE=fake` 또는 미설정: 기존 내부 Fake 사용
+- `AI_CLIENT_MODE=http`: HTTP로 AI 접수 및 상태 조회
+- 로컬 HTTP 기본 주소: `http://localhost:8000`
+- 연결/응답 타임아웃: `AI_SERVER_CONNECT_TIMEOUT=3s`, `AI_SERVER_READ_TIMEOUT=10s`
+- `prod`는 로컬 모드 설정과 관계없이 기존 HTTP 클라이언트를 사용합니다.
+- 백엔드도 컨테이너라면 `localhost`는 백엔드 컨테이너 자체입니다. 공유 Docker
+  네트워크의 AI 서비스 주소를 사용하거나 호스트에 공개한 포트로 접근할 수 있도록 구성합니다.
+- AI 서버의 `LLM_MODE=fake`, `FAKE_LLM_DELAY_SEC=60`은 AI 컨테이너에 설정합니다.
+  생성 지연과 개별 상태 조회 HTTP 응답 타임아웃은 별개이므로 생성 지연에 맞춰
+  `AI_SERVER_READ_TIMEOUT`을 늘릴 필요는 없습니다.
+- 내부 Fake로 접수한 `fake-job-*` 작업은 외부 AI 서버에 존재하지 않습니다.
+  모드 전환 전 진행 중 작업을 종료하고 전환 후 새 작업으로 검증합니다.
+
 기본 헬스 체크는 내부 관리 포트 `8081`의 `GET /actuator/health`에서 확인할 수 있습니다.
 
 - JPA는 스키마를 자동 변경하지 않고 `ddl-auto=validate`로 Flyway 결과만 검증합니다.

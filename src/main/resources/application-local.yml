@@ -9,6 +9,14 @@ spring:
     password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
+ai:
+  client:
+    mode: ${AI_CLIENT_MODE:fake}
+  server:
+    base-url: ${AI_SERVER_BASE_URL:http://localhost:8000}
+    connect-timeout: ${AI_SERVER_CONNECT_TIMEOUT:3s}
+    read-timeout: ${AI_SERVER_READ_TIMEOUT:10s}
+
 map:
   common-cache-enabled: ${MAP_COMMON_CACHE_ENABLED:true}
   common-cache-preload-enabled: ${MAP_COMMON_CACHE_PRELOAD_ENABLED:true}

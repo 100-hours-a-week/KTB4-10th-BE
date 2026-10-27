@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +27,8 @@ import org.springframework.stereotype.Component;
  * 이어갈 수 없습니다.
  */
 @Component
-@Profile("local")
+@Profile("local & !prod")
+@ConditionalOnProperty(name = "ai.client.mode", havingValue = "fake", matchIfMissing = true)
 public class FakeGuidebookAiClient implements GuidebookAiClient {
 
     private final Map<String, FakeJob> jobs = new ConcurrentHashMap<>();
