@@ -36,10 +36,14 @@ public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private final Counter clientAbortCounter;
+    private final Counter asyncResponseUnusableCounter;
 
     public GlobalExceptionHandler(MeterRegistry meterRegistry) {
         this.clientAbortCounter = Counter.builder("kgb.http.client.aborts")
                 .description("클라이언트가 응답 완료 전에 연결을 종료한 횟수")
+                .register(meterRegistry);
+        this.asyncResponseUnusableCounter = Counter.builder("kgb.http.async.response.unusable")
+                .description("client abort로 확정할 수 없는 비동기 응답 사용 불가 횟수")
                 .register(meterRegistry);
     }
 
@@ -61,14 +65,27 @@ public class GlobalExceptionHandler {
             return;
         }
 
+        asyncResponseUnusableCounter.increment();
+        if (response.isCommitted()) {
+            LOGGER.debug(
+                    "커밋된 비동기 응답을 더 이상 사용할 수 없습니다."
+                            + " event=async_response_unusable, method={}, route={}, status={},"
+                            + " committed=true, exceptionType={}, rootCauseType={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    response.getStatus(),
+                    exception.getClass().getSimpleName(),
+                    rootCauseType(exception));
+            return;
+        }
+
         LOGGER.warn(
-                "비동기 응답을 더 이상 사용할 수 없습니다."
+                "커밋 전 비동기 응답을 더 이상 사용할 수 없습니다."
                         + " event=async_response_unusable, method={}, route={}, status={},"
-                        + " committed={}, exceptionType={}, rootCauseType={}",
+                        + " committed=false, exceptionType={}, rootCauseType={}",
                 request.getMethod(),
                 request.getRequestURI(),
                 response.getStatus(),
-                response.isCommitted(),
                 exception.getClass().getSimpleName(),
                 rootCauseType(exception));
     }

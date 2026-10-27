@@ -303,7 +303,9 @@ docker compose \
   `kgb_http_client_aborts_total`
 - `AsyncRequestNotUsableException`은 응답 쓰기 실패·컨테이너 오류 통지·비동기 요청 완료 후 접근을
   모두 포함하므로 예외 타입만으로 client abort로 집계하지 않습니다. client abort가 아닌 경우
-  `event=async_response_unusable` 로그의 status·committed·rootCauseType을 확인합니다.
+  `kgb_http_async_response_unusable_total`과 `event=async_response_unusable` 로그의
+  status·committed·rootCauseType을 확인합니다. 이미 커밋된 응답은 예상 가능한 비동기 종료로 보고
+  DEBUG, 커밋 전 발생은 원인 확인이 필요하므로 WARN으로 기록합니다.
 - JVM GC pause와 live thread
 
 SSE 메모리 누수는 단순히 Heap이 증가했다는 이유로 판단하지 않습니다. 부하 클라이언트를 모두 종료한 뒤 다음을 함께 확인합니다.

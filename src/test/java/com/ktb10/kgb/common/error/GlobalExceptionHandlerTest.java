@@ -26,6 +26,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -231,6 +233,27 @@ class GlobalExceptionHandlerTest {
         assertThat(output).contains("committed=false");
         assertThat(output).contains("rootCauseType=AsyncRequestNotUsableException");
         assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isZero();
+        assertThat(meterRegistry.get("kgb.http.async.response.unusable").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void committedAsyncResponseUnusableIsCountedWithoutWarnLog(CapturedOutput output) {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/v1/notifications/stream");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setCommitted(true);
+
+        new GlobalExceptionHandler(meterRegistry).handleAsyncRequestNotUsableException(
+                new AsyncRequestNotUsableException("비동기 응답 쓰기 실패"),
+                request,
+                response);
+
+        assertThat(output).doesNotContain("event=async_response_unusable");
+        assertThat(meterRegistry.get("kgb.http.async.response.unusable").counter().count())
+                .isEqualTo(1.0);
         assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
                 .isZero();
     }
