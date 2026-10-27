@@ -1,10 +1,14 @@
 package com.ktb10.kgb.common.error;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
@@ -20,6 +24,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
@@ -30,6 +35,77 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private final Counter clientAbortCounter;
+    private final Counter asyncResponseUnusableCounter;
+
+    public GlobalExceptionHandler(MeterRegistry meterRegistry) {
+        this.clientAbortCounter = Counter.builder("kgb.http.client.aborts")
+                .description("클라이언트가 응답 완료 전에 연결을 종료한 횟수")
+                .register(meterRegistry);
+        this.asyncResponseUnusableCounter = Counter.builder("kgb.http.async.response.unusable")
+                .description("client abort로 확정할 수 없는 비동기 응답 사용 불가 횟수")
+                .register(meterRegistry);
+    }
+
+    @ExceptionHandler(ClientAbortException.class)
+    public void handleClientAbortException(
+            ClientAbortException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        recordClientAbort(exception, request, response);
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsableException(
+            AsyncRequestNotUsableException exception,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        if (hasCause(exception, ClientAbortException.class)) {
+            recordClientAbort(exception, request, response);
+            return;
+        }
+
+        asyncResponseUnusableCounter.increment();
+        if (response.isCommitted()) {
+            LOGGER.debug(
+                    "커밋된 비동기 응답을 더 이상 사용할 수 없습니다."
+                            + " event=async_response_unusable, method={}, route={}, status={},"
+                            + " committed=true, exceptionType={}, rootCauseType={}",
+                    request.getMethod(),
+                    request.getRequestURI(),
+                    response.getStatus(),
+                    exception.getClass().getSimpleName(),
+                    rootCauseType(exception));
+            return;
+        }
+
+        LOGGER.warn(
+                "커밋 전 비동기 응답을 더 이상 사용할 수 없습니다."
+                        + " event=async_response_unusable, method={}, route={}, status={},"
+                        + " committed=false, exceptionType={}, rootCauseType={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                response.getStatus(),
+                exception.getClass().getSimpleName(),
+                rootCauseType(exception));
+    }
+
+    private void recordClientAbort(
+            Exception exception,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        clientAbortCounter.increment();
+        LOGGER.debug(
+                "클라이언트가 응답 완료 전에 연결을 종료했습니다."
+                        + " event=client_abort, method={}, route={}, status={}, committed={},"
+                        + " exceptionType={}, rootCauseType={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                response.getStatus(),
+                response.isCommitted(),
+                exception.getClass().getSimpleName(),
+                rootCauseType(exception));
+    }
 
     @ExceptionHandler(RateLimitExceededException.class)
     public ResponseEntity<ErrorResponse> handleRateLimitExceededException(
@@ -230,5 +306,27 @@ public class GlobalExceptionHandler {
     private String parameterName(MethodParameter parameter) {
         String parameterName = parameter.getParameterName();
         return parameterName == null ? "arg" + parameter.getParameterIndex() : parameterName;
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            if (current.getCause() == current) {
+                break;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private String rootCauseType(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getClass().getSimpleName();
     }
 }

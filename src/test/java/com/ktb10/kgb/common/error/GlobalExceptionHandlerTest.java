@@ -12,18 +12,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ktb10.kgb.common.response.ApiResponse;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.Map;
+import org.apache.catalina.connector.ClientAbortException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -34,17 +38,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 
 @ExtendWith(OutputCaptureExtension.class)
 class GlobalExceptionHandlerTest {
 
     private MockMvc mockMvc;
+    private SimpleMeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         mockMvc = MockMvcBuilders
                 .standaloneSetup(new TestController())
-                .setControllerAdvice(new GlobalExceptionHandler())
+                .setControllerAdvice(new GlobalExceptionHandler(meterRegistry))
                 .addFilters(new TraceIdFilter())
                 .build();
     }
@@ -189,6 +196,68 @@ class GlobalExceptionHandlerTest {
         assertThat(output).contains("rootCauseType=IllegalStateException");
     }
 
+    @Test
+    void wrappedClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
+            throws Exception {
+        mockMvc.perform(get("/test/wrapped-client-abort"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(output).doesNotContain("event=async_response_unusable");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void containerClientAbortDoesNotBecomeInternalServerError(CapturedOutput output)
+            throws Exception {
+        mockMvc.perform(get("/test/container-client-abort"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void asyncResponseUnusableWithoutClientAbortIsNotCountedAsClientAbort(
+            CapturedOutput output) throws Exception {
+        mockMvc.perform(get("/test/async-response-unusable"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
+
+        assertThat(output).contains("event=async_response_unusable");
+        assertThat(output).contains("status=200");
+        assertThat(output).contains("committed=false");
+        assertThat(output).contains("rootCauseType=AsyncRequestNotUsableException");
+        assertThat(output).doesNotContain("Unhandled application exception");
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isZero();
+        assertThat(meterRegistry.get("kgb.http.async.response.unusable").counter().count())
+                .isEqualTo(1.0);
+    }
+
+    @Test
+    void committedAsyncResponseUnusableIsCountedWithoutWarnLog(CapturedOutput output) {
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/api/v1/notifications/stream");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        response.setCommitted(true);
+
+        new GlobalExceptionHandler(meterRegistry).handleAsyncRequestNotUsableException(
+                new AsyncRequestNotUsableException("비동기 응답 쓰기 실패"),
+                request,
+                response);
+
+        assertThat(output).doesNotContain("event=async_response_unusable");
+        assertThat(meterRegistry.get("kgb.http.async.response.unusable").counter().count())
+                .isEqualTo(1.0);
+        assertThat(meterRegistry.get("kgb.http.client.aborts").counter().count())
+                .isZero();
+    }
+
     @RestController
     @RequestMapping("/test")
     private static class TestController {
@@ -228,6 +297,23 @@ class GlobalExceptionHandlerTest {
             throw new BusinessException(
                     CommonErrorCode.UPSTREAM_SERVICE_ERROR,
                     new IllegalStateException("upstream unavailable"));
+        }
+
+        @GetMapping("/wrapped-client-abort")
+        void wrappedClientAbort() throws AsyncRequestNotUsableException {
+            throw new AsyncRequestNotUsableException(
+                    "클라이언트 연결 종료",
+                    new ClientAbortException("클라이언트 연결 종료"));
+        }
+
+        @GetMapping("/container-client-abort")
+        void containerClientAbort() throws ClientAbortException {
+            throw new ClientAbortException("클라이언트 연결 종료");
+        }
+
+        @GetMapping("/async-response-unusable")
+        void asyncResponseUnusable() throws AsyncRequestNotUsableException {
+            throw new AsyncRequestNotUsableException("비동기 요청 완료 후 응답 사용");
         }
 
         @GetMapping("/number")
