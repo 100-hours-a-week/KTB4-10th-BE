@@ -21,7 +21,12 @@ import com.ktb10.kgb.member.service.NotificationService;
 import com.ktb10.kgb.member.service.WebPushOutboxWriter;
 import com.ktb10.kgb.member.service.WebPushOutboxClaimService;
 import com.ktb10.kgb.member.service.WebPushOutboxTask;
+import com.ktb10.kgb.member.service.WebPushOutboxResultService;
 import java.time.Duration;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +38,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -88,6 +95,9 @@ class WebPushOutboxMysqlIntegrationTest {
 
     @Autowired
     private WebPushOutboxClaimService claimService;
+
+    @Autowired
+    private WebPushOutboxResultService resultService;
 
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
@@ -267,6 +277,79 @@ class WebPushOutboxMysqlIntegrationTest {
             assertThat(task.attemptCount()).isEqualTo(2);
             assertThat(task.claimToken()).isNotEqualTo("stale-token");
         });
+    }
+
+    @Test
+    void retryAndPermanentFailureArePersistedInMysql() {
+        Member member = activeMember("outbox-retry-member", true);
+        activeSubscription(member, 8, null);
+        createNotification(member.getId(), "903");
+        jdbcTemplate.update(
+                "UPDATE web_push_outbox SET next_attempt_at = '2000-01-01 00:00:00'");
+        WebPushOutboxTask firstAttempt = claimService.claim(1, Duration.ofMinutes(1)).getFirst();
+
+        resultService.scheduleRetry(firstAttempt, NOW.plusMinutes(1), "HTTP_503");
+
+        WebPushOutbox retrying = outboxRepository.findById(firstAttempt.id()).orElseThrow();
+        assertThat(retrying.getStatus()).isEqualTo(WebPushOutboxStatus.RETRY_WAIT);
+        assertThat(retrying.getLastErrorCode()).isEqualTo("HTTP_503");
+        jdbcTemplate.update(
+                "UPDATE web_push_outbox SET next_attempt_at = '2000-01-01 00:00:00'");
+        WebPushOutboxTask secondAttempt = claimService.claim(1, Duration.ofMinutes(1)).getFirst();
+
+        resultService.markFailed(secondAttempt, "HTTP_503");
+
+        WebPushOutbox failed = outboxRepository.findById(firstAttempt.id()).orElseThrow();
+        assertThat(failed.getStatus()).isEqualTo(WebPushOutboxStatus.FAILED_PERMANENT);
+        assertThat(failed.getAttemptCount()).isEqualTo(2);
+    }
+
+    @Test
+    void migrationCancelsTasksCreatedBeforeWorkerCutover() throws Exception {
+        String databaseName = "worker_cutover";
+        try (Connection connection = DriverManager.getConnection(
+                MYSQL.getJdbcUrl(), "root", MYSQL.getPassword());
+                Statement statement = connection.createStatement()) {
+            statement.execute("CREATE DATABASE IF NOT EXISTS " + databaseName);
+        }
+        String cutoverUrl = MYSQL.getJdbcUrl().replace("/test", "/" + databaseName);
+        Flyway beforeWorker = Flyway.configure()
+                .dataSource(cutoverUrl, "root", MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("15"))
+                .load();
+        beforeWorker.migrate();
+        try (Connection connection = DriverManager.getConnection(
+                cutoverUrl, "root", MYSQL.getPassword());
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("""
+                    INSERT INTO web_push_outbox (
+                        notification_id, recipient_member_id, subscription_id,
+                        payload_json, status, attempt_count,
+                        next_attempt_at, created_at, updated_at
+                    ) VALUES (
+                        1, 1, 1, JSON_OBJECT(), 'PENDING', 0,
+                        CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6)
+                    )
+                    """);
+        }
+
+        Flyway.configure()
+                .dataSource(cutoverUrl, "root", MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = DriverManager.getConnection(
+                cutoverUrl, "root", MYSQL.getPassword());
+                Statement statement = connection.createStatement();
+                ResultSet result = statement.executeQuery(
+                        "SELECT status, last_error_code FROM web_push_outbox WHERE id = 1")) {
+            assertThat(result.next()).isTrue();
+            assertThat(result.getString("status")).isEqualTo("CANCELLED");
+            assertThat(result.getString("last_error_code"))
+                    .isEqualTo("DIRECT_DELIVERY_CUTOVER");
+        }
     }
 
     private Member activeMember(String oauthSubject, boolean pushEnabled) {
