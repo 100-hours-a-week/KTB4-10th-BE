@@ -107,6 +107,33 @@ class MemberSchemaMysqlIntegrationTest {
         insertWebPushSubscription(memberId, "b".repeat(64), filledHash((byte) 4));
     }
 
+    @Test
+    void createsWebPushOutboxWithUniqueDeliveryKeyAndNoSourceForeignKeys() {
+        long memberId = insertMember("web-push-outbox-schema-member");
+        insertWebPushSubscription(memberId, "c".repeat(64), filledHash((byte) 5));
+        long notificationId = insertNotificationReturningId(
+                memberId,
+                "GUIDEBOOK",
+                "outbox-schema-guidebook");
+        long subscriptionId = jdbcTemplate.queryForObject(
+                "SELECT id FROM web_push_subscriptions WHERE member_id = ?",
+                Long.class,
+                memberId);
+
+        insertWebPushOutbox(notificationId, subscriptionId);
+
+        assertThatThrownBy(() -> insertWebPushOutbox(notificationId, subscriptionId))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.REFERENTIAL_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'web_push_outbox'
+                """,
+                Integer.class)).isZero();
+    }
+
     private long insertMember(String oauthSubject) {
         GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
@@ -155,6 +182,48 @@ class MemberSchemaMysqlIntegrationTest {
                 memberId,
                 referenceType,
                 referenceId);
+    }
+
+    private long insertNotificationReturningId(
+            long memberId,
+            String referenceType,
+            String referenceId) {
+        GeneratedKeyHolder keyHolder = new GeneratedKeyHolder();
+        jdbcTemplate.update(connection -> {
+            PreparedStatement statement = connection.prepareStatement(
+                    """
+                    INSERT INTO notifications (
+                        recipient_member_id, type, title, body,
+                        reference_type, reference_id, created_at
+                    ) VALUES (?, 'GUIDEBOOK_COMPLETED', '완료', '완료 본문', ?, ?,
+                              '2026-09-27 12:00:00')
+                    """,
+                    Statement.RETURN_GENERATED_KEYS);
+            statement.setLong(1, memberId);
+            statement.setString(2, referenceType);
+            statement.setString(3, referenceId);
+            return statement;
+        }, keyHolder);
+        return keyHolder.getKey().longValue();
+    }
+
+    private void insertWebPushOutbox(long notificationId, long subscriptionId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO web_push_outbox (
+                    notification_id, recipient_member_id, subscription_id,
+                    payload_json, status,
+                    attempt_count, next_attempt_at, created_at, updated_at
+                ) VALUES (?, ?, ?, '{}', 'PENDING', 0,
+                          '2026-09-27 12:00:00', '2026-09-27 12:00:00',
+                          '2026-09-27 12:00:00')
+                """,
+                notificationId,
+                jdbcTemplate.queryForObject(
+                        "SELECT recipient_member_id FROM notifications WHERE id = ?",
+                        Long.class,
+                        notificationId),
+                subscriptionId);
     }
 
     private void insertWebPushSubscription(

@@ -34,18 +34,21 @@ public class NotificationService {
     private final MemberRepository memberRepository;
     private final Clock clock;
     private final ApplicationEventPublisher eventPublisher;
+    private final WebPushOutboxWriter webPushOutboxWriter;
 
     public NotificationService(
             NotificationRepository notificationRepository,
             NotificationOccurrenceRepository notificationOccurrenceRepository,
             MemberRepository memberRepository,
             Clock clock,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            WebPushOutboxWriter webPushOutboxWriter) {
         this.notificationRepository = notificationRepository;
         this.notificationOccurrenceRepository = notificationOccurrenceRepository;
         this.memberRepository = memberRepository;
         this.clock = clock;
         this.eventPublisher = eventPublisher;
+        this.webPushOutboxWriter = webPushOutboxWriter;
     }
 
     @Transactional(readOnly = true)
@@ -140,6 +143,10 @@ public class NotificationService {
                 referenceType,
                 referenceId,
                 now));
+        webPushOutboxWriter.recordPendingTasks(
+                notification,
+                recipient.isPushEnabled(),
+                now);
         trimOldNotifications(recipientMemberId);
         eventPublisher.publishEvent(new NotificationCreatedEvent(
                 recipientMemberId,
