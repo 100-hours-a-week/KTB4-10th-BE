@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusEnvelope;
+import com.ktb10.kgb.guidebook.callback.GenerationCallbackEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.ContentType;
@@ -89,11 +89,15 @@ class AiClientContractTest {
     }
 
     @Test
-    void deserializesCompletedStatusEnvelopeUsingCompactDate() throws Exception {
+    void deserializesCompletedCallbackEnvelopeUsingCompactDate() throws Exception {
         String json = """
                 {
                   "message": "guidebook_completed",
                   "data": {
+                    "event_id": "92d30731-e53e-492d-96d0-1789e43c191f",
+                    "request_id": "301-0",
+                    "sequence": 3,
+                    "progress": null,
                     "job_id": "job_12345",
                     "status": "completed",
                     "result": {
@@ -119,9 +123,9 @@ class AiClientContractTest {
                 }
                 """;
 
-        AiGenerationStatusEnvelope envelope = objectMapper.readValue(
-                json, AiGenerationStatusEnvelope.class);
-        AiGenerationStatusResponse response = envelope.data();
+        GenerationCallbackEnvelope envelope = objectMapper.readValue(
+                json, GenerationCallbackEnvelope.class);
+        AiGenerationStatusResponse response = envelope.data().response();
 
         assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
         assertThat(response.result().contentHtml())
@@ -136,11 +140,15 @@ class AiClientContractTest {
     }
 
     @Test
-    void deserializesCompletedStatusWithoutOptionalThumbnailUrl() throws Exception {
+    void deserializesCompletedCallbackWithoutOptionalThumbnailUrl() throws Exception {
         String json = """
                 {
                   "message": "guidebook_completed",
                   "data": {
+                    "event_id": "92d30731-e53e-492d-96d0-1789e43c191f",
+                    "request_id": "301-0",
+                    "sequence": 3,
+                    "progress": null,
                     "job_id": "job_12345",
                     "status": "completed",
                     "result": {
@@ -156,7 +164,7 @@ class AiClientContractTest {
 
         AiGenerationStatusResponse response = objectMapper.readValue(
                 json,
-                AiGenerationStatusEnvelope.class).data();
+                GenerationCallbackEnvelope.class).data().response();
 
         assertThat(response.result().thumbnailUrl()).isNull();
     }

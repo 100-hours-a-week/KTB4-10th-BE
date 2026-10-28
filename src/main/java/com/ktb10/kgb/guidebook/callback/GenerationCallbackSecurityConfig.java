@@ -28,7 +28,7 @@ public class GenerationCallbackSecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/internal/v1/ai/generation-events")
                         .access((authentication, context) -> new AuthorizationDecision(
-                                settings.enabled() && matches(
+                                matches(
                                         settings.token(),
                                         context.getRequest().getHeader("Authorization"))))
                         .anyRequest().denyAll())

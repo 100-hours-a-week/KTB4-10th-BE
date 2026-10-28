@@ -14,7 +14,6 @@ import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 
 /** 생성 상태 전용 채널이며, 알림 push_enabled와 분리합니다. */
 @Configuration
-@ConditionalOnProperty(name = "ai.generation.delivery-mode", havingValue = "callback")
 public class GenerationRedisConfig {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GenerationRedisConfig.class);

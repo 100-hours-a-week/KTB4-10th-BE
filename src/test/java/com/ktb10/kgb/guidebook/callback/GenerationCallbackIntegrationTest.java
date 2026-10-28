@@ -41,7 +41,6 @@ import org.springframework.test.web.servlet.MockMvc;
         "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=create-drop",
         "spring.flyway.enabled=false",
-        "ai.generation.delivery-mode=callback",
         "ai.generation.callback-token=callback-test-token",
         "ai.generation.timeout=15m",
         "ai.generation.redis.enabled=false",

@@ -8,7 +8,6 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withResourceNotFound;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
-import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
@@ -106,75 +105,12 @@ class HttpGuidebookAiClientTest {
     }
 
     @Test
-    void readsCompletedGenerationStatus() {
-        server.expect(once(), requestTo(
-                        "http://ai.internal:8000/guidebooks-generations/job_12345"))
-                .andExpect(method(HttpMethod.GET))
-                .andRespond(withSuccess("""
-                        {
-                          "message": "guidebook_completed",
-                          "data": {
-                            "job_id": "job_12345",
-                            "status": "completed",
-                            "result": {
-                              "title": "경주 역사 여행",
-                              "summary": "여행 요약",
-                              "thumbnail_url": "https://example.com/guidebook.jpg",
-                              "content_html": "<article>가이드북</article>",
-                              "itinerary": [{
-                                "day": 1,
-                                "date": "26.10.12",
-                                "day_summary": "첫날 일정",
-                                "places": [{
-                                  "order": 1,
-                                  "time": "09:00",
-                                  "content_id": "126508",
-                                  "duration_minutes": 60,
-                                  "recommend_reason": "추천 이유"
-                                }]
-                              }]
-                            },
-                            "error": null
-                          }
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        var response = client.getGenerationStatus("job_12345");
-
-        assertThat(response.status()).isEqualTo(AiGenerationStatus.COMPLETED);
-        assertThat(response.result().contentHtml())
-                .isEqualTo("<article>가이드북</article>");
-        assertThat(response.result().thumbnailUrl())
-                .isEqualTo("https://example.com/guidebook.jpg");
-        assertThat(response.result().itinerary().get(0).daySummary())
-                .isEqualTo("첫날 일정");
-        server.verify();
-    }
-
-    @Test
-    void rejectsDifferentJobIdInStatusResponse() {
-        server.expect(requestTo(
-                        "http://ai.internal:8000/guidebooks-generations/job_12345"))
-                .andRespond(withSuccess("""
-                        {
-                          "message": "guidebook_processing",
-                          "data": {"job_id": "different_job", "status": "processing"}
-                        }
-                        """, MediaType.APPLICATION_JSON));
-
-        assertThatThrownBy(() -> client.getGenerationStatus("job_12345"))
-                .isInstanceOf(AiClientException.class)
-                .hasMessage("AI 상태 조회 응답 형식이 올바르지 않습니다.");
-        server.verify();
-    }
-
-    @Test
     void convertsAiErrorResponseToClientException() {
         server.expect(requestTo(
-                        "http://ai.internal:8000/guidebooks-generations/unknown_job"))
+                        "http://ai.internal:8000/guidebooks-generations"))
                 .andRespond(withResourceNotFound());
 
-        assertThatThrownBy(() -> client.getGenerationStatus("unknown_job"))
+        assertThatThrownBy(() -> client.requestGeneration(request()))
                 .isInstanceOf(AiClientException.class)
                 .hasMessage("AI 서버가 오류 응답을 반환했습니다. status=404")
                 .extracting(exception -> ((AiClientException) exception).getFailureType())

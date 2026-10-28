@@ -3,7 +3,6 @@ package com.ktb10.kgb.guidebook.callback;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.guidebook.service.GuidebookGenerationService;
 import jakarta.validation.constraints.Positive;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,7 +15,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /** 본인 작업의 상태만 알림 설정과 무관하게 구독합니다. */
 @RestController
 @Validated
-@ConditionalOnProperty(name = "ai.generation.delivery-mode", havingValue = "callback")
 public class GenerationStreamController {
 
     private final GuidebookGenerationService generations;

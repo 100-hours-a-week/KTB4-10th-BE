@@ -78,7 +78,6 @@ management:
 
 ai:
   generation:
-    delivery-mode: ${AI_GENERATION_DELIVERY_MODE:polling}
     callback-token: ${AI_CALLBACK_TOKEN:}
     timeout: ${AI_GENERATION_TIMEOUT:15m}
     redis:

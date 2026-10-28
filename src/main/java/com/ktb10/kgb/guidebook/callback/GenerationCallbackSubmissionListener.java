@@ -5,7 +5,6 @@ import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -14,7 +13,6 @@ import org.springframework.transaction.event.TransactionalEventListener;
 /** 생성 작업을 AI에 접수하고 콜백 타임아웃을 등록합니다. */
 @Component
 @Profile({"local", "prod"})
-@ConditionalOnProperty(name = "ai.generation.delivery-mode", havingValue = "callback")
 public class GenerationCallbackSubmissionListener {
 
     private final GenerationCallbackTransactionService transactions;

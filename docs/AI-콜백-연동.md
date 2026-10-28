@@ -7,26 +7,24 @@
 기존 생성·재생성 POST와 202 응답을 유지한다. AI 접수 본문도 변경하지 않는다.
 AI는 기존 request_id를 보관하고, 진행·완료·실패를 BE 콜백으로 보낸다.
 
-현재 호환성 기본값은 polling이다. 콜백을 구현한 AI와 연결할 때만 BE에 다음 환경변수를
+콜백은 유일한 처리 경로다. local과 prod 모두 콜백 구현 AI와 연결하고 다음 환경변수를
 주입한다. Spring Boot는 .env를 자동으로 읽지 않는다.
 
 ```dotenv
-AI_CLIENT_MODE=http
 AI_SERVER_BASE_URL=http://localhost:8000
-AI_GENERATION_DELIVERY_MODE=callback
 AI_CALLBACK_TOKEN=양쪽에-동일하게-주입할-충분히-긴-랜덤-비밀값
 AI_GENERATION_TIMEOUT=15m
 AI_GENERATION_REDIS_ENABLED=false
 ```
 
-- prod는 항상 HTTP 클라이언트이고 AI_CLIENT_MODE는 local에서만 사용한다.
-- 콜백 모드에서 토큰이 비어 있으면 BE 기동을 거절한다.
-- polling에서는 기존 GET 상태 동기화와 작업트리의 백그라운드 폴링을 유지한다.
-- callback에서는 두 AI 폴링 경로를 끄며 상태 GET은 DB 조회용으로 유지한다.
-- AI 레포와 FE는 이 BE 구현에서 수정하지 않았다. 기존 FakeGuidebookAiClient는
-  콜백을 보내지 않으므로 HTTP AI 서버와 연결해야 한다.
-- Docker의 LLM_MODE=fake와 생성 지연 설정은 AI 실행 환경에 둔다. 현재 AI 코드가
-  콜백을 구현하기 전에는 수동 콜백으로 BE만 검증할 수 있다.
+- local과 prod 모두 HTTP 클라이언트를 사용하며 토큰이 비어 있으면 BE 기동을 거절한다.
+- AI GET 상태 조회 메서드·조회 시 동기화·백그라운드 폴러·기존 접수 리스너는 제거했다.
+- 사용자 상태 GET은 본인 작업의 DB 조회용으로 유지하며 진행 상태를 변경하지 않는다.
+- BE 내부 Fake 클라이언트도 제거했다. 로컬은 Docker AI의 LLM_MODE=fake를 사용한다.
+- AI_CLIENT_MODE와 AI_GENERATION_DELIVERY_MODE는 더 이상 사용하지 않는다.
+- AI 레포와 FE는 이 BE 구현에서 수정하지 않았다.
+- Docker의 LLM_MODE=fake와 생성 지연 설정은 AI 실행 환경에 둔다. 콜백 구현이 포함된
+  AI 버전으로 빌드하고, 컨테이너에서 BE에 접근할 수 있는 주소를 주입한다.
 
 ## AI → BE 계약
 
@@ -234,7 +232,7 @@ ACTIVE 서비스 세션과 작업 소유권을 검증한다. 알림 push_enabled
   FE는 재연결·복귀·수동 재확인 시 기존 상태 GET으로 종료 상태를 복구한다.
 - 진행 캐시는 재시작 후 사라지고 과거 단계 replay는 제공하지 않는다.
 
-FE의 기존 폴링을 SSE 구독으로 바꾸는 작업과 실제 진행 문구의 Figma 반영은 별도다.
+FE의 생성 SSE 구독 구현과 실제 진행 문구의 Figma 반영은 별도다.
 
 ## 이번 구현의 보장 밖과 운영 리뷰 항목
 
@@ -257,13 +255,21 @@ FE의 기존 폴링을 SSE 구독으로 바꾸는 작업과 실제 진행 문구
 - 연결 제한은 회원당 인스턴스 로컬 5개이며 전역 제한이 아니다. 다중 탭과 기존 알림
   SSE가 추가 연결을 차지하므로 브라우저·프록시·서버 연결 한도도 검증한다.
 - Last-Event-ID replay, 연결 중 무음 유실 탐지, 무조건적인 세션 만료 시각의 연결 종료,
-  롤링 배포 중 polling/callback 혼재 작업의 인계는 구현하지 않았다.
+  이전 polling 버전으로 접수한 작업의 자동 인계는 구현하지 않았다.
 - 내부 경로의 네트워크 노출 제한, TLS, 토큰 회전/겹침 기간, 요청 크기·요청률 제한,
   Nginx/LB 버퍼링·idle timeout·드레이닝과 재접속 정책을 운영에서 확인한다.
 - AI 작업 상한뿐 아니라 큐 대기·전달·DB 저장도 BE 15분에 포함한다. 큐가 길면 AI가
   성공해도 BE는 실패할 수 있다. 이번 제한은 AI 연산 취소나 충분한 큐 처리량을 보장하지 않는다.
 - AI/FE 실연동, 실제 Redis 다중 인스턴스, MySQL 잠금·커넥션 포화, 재시작 장애,
   부하 개선 수치는 이번 자동 테스트만으로 검증한 것이 아니다.
+
+## 로컬 실제 연동 확인
+
+AI dev의 콜백 구현을 별도 fake LLM 컨테이너로 실행하고, 격리 MySQL DB·Redis 세션
+네임스페이스의 BE에 실제 생성 POST를 보냈다. 접수 202 → arranging/writing/completed
+콜백 각각 204 → 생성 SSE 종료 → DB 가이드북·알림 저장과 생성권 1개 차감을 확인했다.
+AI 메트릭에서 생성 접수 POST만 발생하고 AI 상태 GET은 발생하지 않았다.
+검증은 단일 BE·Redis 생성 fan-out 비활성 환경이며 FE 브라우저·다중 인스턴스 검증과는 별개다.
 
 ## 장애 실험과 검증
 
