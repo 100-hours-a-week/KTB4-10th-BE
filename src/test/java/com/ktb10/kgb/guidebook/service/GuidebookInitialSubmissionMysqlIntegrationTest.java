@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.credit.repository.CreditTransactionRepository;
+import com.ktb10.kgb.guidebook.callback.GenerationCallbackTransactionService;
 import com.ktb10.kgb.guidebook.client.AiClientException;
 import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
@@ -20,10 +21,14 @@ import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.member.entity.Member;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import com.ktb10.kgb.member.repository.MemberRepository;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +48,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @ActiveProfiles("local")
 @Testcontainers(disabledWithoutDocker = true)
 class GuidebookInitialSubmissionMysqlIntegrationTest {
+
+    private static final Instant NOW = Instant.parse("2026-10-29T00:00:00Z");
 
     @Container
     private static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4");
@@ -68,6 +75,18 @@ class GuidebookInitialSubmissionMysqlIntegrationTest {
     @MockitoBean
     private GuidebookAiClient guidebookAiClient;
 
+    @MockitoBean
+    private Clock clock;
+
+    @Autowired
+    private GenerationCallbackTransactionService callbacks;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(NOW);
+        given(clock.getZone()).willReturn(ZoneOffset.UTC);
+    }
+
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
@@ -77,7 +96,7 @@ class GuidebookInitialSubmissionMysqlIntegrationTest {
 
     @ParameterizedTest
     @EnumSource(value = AiFailureType.class, names = {"CONNECT_TIMEOUT", "UPSTREAM_5XX"})
-    void initialSubmissionFailureMovesCommittedJobToFailed(AiFailureType failureType) {
+    void uncertainSubmissionWaitsForCallbackAndFailsOnlyAtDeadline(AiFailureType failureType) {
         given(guidebookAiClient.requestGeneration(any())).willThrow(new AiClientException(
                 "AI 접수 실패",
                 new IllegalStateException("private upstream response"),
@@ -104,11 +123,23 @@ class GuidebookInitialSubmissionMysqlIntegrationTest {
             return job.getId();
         });
 
+        GenerationJob pendingJob = generationJobRepository.findById(jobId).orElseThrow();
+        assertThat(pendingJob.getStatus()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(pendingJob.getAiJobId()).isNull();
+        assertThat(pendingJob.getErrorPayload()).isNull();
+        assertThat(pendingJob.getAttemptStartedAt())
+                .isEqualTo(LocalDateTime.ofInstant(NOW, ZoneOffset.UTC));
+        callbacks.expire(jobId, 0);
+        assertThat(generationJobRepository.findById(jobId).orElseThrow().getStatus())
+                .isEqualTo(GenerationStatus.PENDING);
+
+        given(clock.instant()).willReturn(NOW.plusSeconds(900));
+        callbacks.expire(jobId, 0);
         GenerationJob failedJob = generationJobRepository.findById(jobId).orElseThrow();
         assertThat(failedJob.getStatus()).isEqualTo(GenerationStatus.FAILED);
         assertThat(failedJob.getAiJobId()).isNull();
         assertThat(failedJob.getErrorPayload())
-                .contains("AI_SUBMISSION_FAILED", failureType.code(), "retryable");
+                .contains("GENERATION_TIMEOUT", "retryable");
         assertThat(creditTransactionRepository.count()).isZero();
     }
 
