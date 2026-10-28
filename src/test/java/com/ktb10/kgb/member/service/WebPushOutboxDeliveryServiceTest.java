@@ -76,4 +76,29 @@ class WebPushOutboxDeliveryServiceTest {
 
         verify(resultService).scheduleRetry(any(), any(), org.mockito.ArgumentMatchers.eq("HTTP_503"));
     }
+
+    @Test
+    void expiredSubscriptionIsInvalidatedAndCancelled() {
+        when(targetReader.findDeliverableTarget(3L, 4L)).thenReturn(Optional.of(target));
+        when(gateway.send(any(), any(), any())).thenReturn(WebPushSendResult.expired(410));
+
+        service.deliver(task);
+
+        verify(resultService).cancel(task, "SUBSCRIPTION_EXPIRED", true);
+        verify(resultService, never()).scheduleRetry(any(), any(), any());
+    }
+
+    @Test
+    void retryableResponseAtMaxAttemptBecomesPermanentFailure() {
+        WebPushOutboxTask exhausted = new WebPushOutboxTask(
+                1L, 2L, 3L, 4L, "{}", 3, "token");
+        when(targetReader.findDeliverableTarget(3L, 4L)).thenReturn(Optional.of(target));
+        when(gateway.send(any(), any(), any()))
+                .thenReturn(WebPushSendResult.retryable(Duration.ofSeconds(30), 429));
+
+        service.deliver(exhausted);
+
+        verify(resultService).markFailed(exhausted, "HTTP_429");
+        verify(resultService, never()).scheduleRetry(any(), any(), any());
+    }
 }
