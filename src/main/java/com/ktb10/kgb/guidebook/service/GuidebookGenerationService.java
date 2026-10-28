@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +58,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** 가이드북 생성 요청 접수와 회원 본인의 생성 작업 조회를 처리합니다. */
 @Service
 public class GuidebookGenerationService {
+
+    @Value("${ai.generation.delivery-mode:polling}")
+    private String deliveryMode = "polling";
 
     private static final ZoneId SEOUL_ZONE = ZoneId.of("Asia/Seoul");
     private static final int MAX_TRIP_DAYS = 7;
@@ -249,7 +253,7 @@ public class GuidebookGenerationService {
         GenerationJob job = generationJobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
         GuidebookAiClient aiClient = guidebookAiClientProvider.getIfAvailable();
-        if (aiClient != null && shouldSynchronize(job)) {
+        if (!"callback".equals(deliveryMode) && aiClient != null && shouldSynchronize(job)) {
             try {
                 AiGenerationStatusResponse aiResponse =
                         aiClient.getGenerationStatus(job.getAiJobId());

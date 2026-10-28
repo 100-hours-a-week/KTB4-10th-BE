@@ -7,6 +7,7 @@ import jakarta.persistence.LockModeType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -41,4 +42,12 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select job from GenerationJob job where job.id = :id")
     Optional<GenerationJob> findByIdForUpdate(@Param("id") Long id);
+
+    @Query("select job.id from GenerationJob job "
+            + "where job.status in :statuses and job.aiJobId is not null "
+            + "and job.id > :afterId order by job.id")
+    List<Long> findSynchronizableIdsAfter(
+            @Param("statuses") Collection<GenerationStatus> statuses,
+            @Param("afterId") Long afterId,
+            Pageable pageable);
 }

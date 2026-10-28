@@ -1,5 +1,6 @@
 package com.ktb10.kgb.member.service;
 
+import com.ktb10.kgb.guidebook.callback.GenerationStreamService;
 import com.ktb10.kgb.member.event.NotificationCreatedEvent;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -10,6 +11,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -18,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -26,6 +29,13 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 /** 단일 인스턴스에서 회원별 SSE 연결과 실시간 알림 전송을 관리합니다. */
 @Service
 public class NotificationStreamService {
+
+    private Optional<GenerationStreamService> generationStreams = Optional.empty();
+
+    @Autowired
+    void connectGenerationStreams(Optional<GenerationStreamService> streams) {
+        this.generationStreams = streams;
+    }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(
             NotificationStreamService.class);
@@ -160,6 +170,7 @@ public class NotificationStreamService {
     }
 
     public void disconnectMember(Long memberId) {
+        generationStreams.ifPresent(streams -> streams.disconnect(memberId, null));
         ConcurrentMap<String, StreamConnection> connections = memberConnections.remove(memberId);
         if (connections != null) {
             connections.forEach((connectionId, connection) -> {
@@ -173,6 +184,7 @@ public class NotificationStreamService {
     }
 
     public void disconnectSession(Long memberId, String sessionHash) {
+        generationStreams.ifPresent(streams -> streams.disconnect(memberId, sessionHash));
         List<RemovedConnection> disconnectedConnections = new ArrayList<>();
         memberConnections.computeIfPresent(memberId, (ignored, connections) -> {
             connections.forEach((connectionId, connection) -> {

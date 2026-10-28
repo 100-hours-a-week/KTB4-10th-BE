@@ -76,6 +76,15 @@ management:
       export:
         enabled: true
 
+ai:
+  generation:
+    delivery-mode: ${AI_GENERATION_DELIVERY_MODE:polling}
+    callback-token: ${AI_CALLBACK_TOKEN:}
+    timeout: ${AI_GENERATION_TIMEOUT:15m}
+    redis:
+      enabled: ${AI_GENERATION_REDIS_ENABLED:false}
+      channel: ${AI_GENERATION_REDIS_CHANNEL:kgb:local:generation}
+
 notification:
   redis:
     enabled: ${NOTIFICATION_REDIS_ENABLED:false}

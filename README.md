@@ -59,6 +59,24 @@ SPRING_PROFILES_ACTIVE=local AI_CLIENT_MODE=http AI_SERVER_BASE_URL=http://local
 - Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
 - MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
 
+## AI 콜백 모드
+
+AI가 진행·완료·실패 콜백을 구현한 뒤 다음 설정으로 전환합니다.
+
+```dotenv
+AI_CLIENT_MODE=http
+AI_SERVER_BASE_URL=http://localhost:8000
+AI_GENERATION_DELIVERY_MODE=callback
+AI_CALLBACK_TOKEN=AI와-BE에-동일하게-주입할-랜덤-비밀값
+AI_GENERATION_TIMEOUT=15m
+```
+
+토큰은 실제 실행 환경에만 주입하고 커밋하지 않습니다. 콜백 모드에서는 상태 GET과
+백그라운드 작업이 AI를 폴링하지 않습니다. 진행·종료 SSE, Redis 설정, 15분 메모리
+타이머와 재시작 한계는 [AI 콜백 연동](./docs/AI-콜백-연동.md)을 확인하세요.
+다중 인스턴스에서는 `AI_GENERATION_REDIS_ENABLED=true`와 같은 채널을 사용합니다.
+기존 AI/Fake 클라이언트 검증은 기본값 `AI_GENERATION_DELIVERY_MODE=polling`으로 유지합니다.
+
 ## 관측성
 
 - Prometheus 수집 엔드포인트: `GET http://<backend-host>:8081/actuator/prometheus`
