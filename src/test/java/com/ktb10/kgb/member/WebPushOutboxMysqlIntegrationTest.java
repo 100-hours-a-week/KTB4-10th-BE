@@ -19,6 +19,9 @@ import com.ktb10.kgb.member.repository.WebPushOutboxRepository;
 import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import com.ktb10.kgb.member.service.NotificationService;
 import com.ktb10.kgb.member.service.WebPushOutboxWriter;
+import com.ktb10.kgb.member.service.WebPushOutboxClaimService;
+import com.ktb10.kgb.member.service.WebPushOutboxTask;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,7 +49,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 @SpringBootTest(properties = {
         "spring.flyway.enabled=true",
-        "spring.jpa.hibernate.ddl-auto=validate"
+        "spring.jpa.hibernate.ddl-auto=validate",
+        "webpush.outbox.worker.enabled=false"
 })
 @Testcontainers(disabledWithoutDocker = true)
 @Import(WebPushOutboxMysqlIntegrationTest.TransactionConfiguration.class)
@@ -81,6 +85,9 @@ class WebPushOutboxMysqlIntegrationTest {
 
     @Autowired
     private OutboxTransaction outboxTransaction;
+
+    @Autowired
+    private WebPushOutboxClaimService claimService;
 
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
@@ -204,6 +211,62 @@ class WebPushOutboxMysqlIntegrationTest {
 
         assertThat(outboxRepository.countByNotificationIdAndSubscriptionId(
                 notification.getId(), subscription.getId())).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentWorkersClaimTaskOnlyOnce() throws Exception {
+        Member member = activeMember("outbox-worker-member", true);
+        activeSubscription(member, 6, null);
+        createNotification(member.getId(), "901");
+        jdbcTemplate.update(
+                "UPDATE web_push_outbox SET next_attempt_at = '2000-01-01 00:00:00'");
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<List<WebPushOutboxTask>>> futures = new ArrayList<>();
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            for (int worker = 0; worker < 2; worker++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await(5, TimeUnit.SECONDS);
+                    return claimService.claim(10, Duration.ofMinutes(1));
+                }));
+            }
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            int claimed = 0;
+            for (Future<List<WebPushOutboxTask>> future : futures) {
+                claimed += future.get(10, TimeUnit.SECONDS).size();
+            }
+            assertThat(claimed).isEqualTo(1);
+        }
+        assertThat(outboxRepository.findAll()).singleElement().satisfies(task -> {
+            assertThat(task.getStatus()).isEqualTo(WebPushOutboxStatus.PROCESSING);
+            assertThat(task.getAttemptCount()).isEqualTo(1);
+            assertThat(task.getClaimToken()).isNotBlank();
+        });
+    }
+
+    @Test
+    void staleProcessingTaskCanBeClaimedAgain() {
+        Member member = activeMember("outbox-recovery-member", true);
+        activeSubscription(member, 7, null);
+        createNotification(member.getId(), "902");
+        Long taskId = outboxRepository.findAll().getFirst().getId();
+        jdbcTemplate.update("""
+                UPDATE web_push_outbox
+                SET status = 'PROCESSING', attempt_count = 1,
+                    claim_token = 'stale-token', processing_started_at = ?, updated_at = ?
+                WHERE id = ?
+                """, NOW.minusHours(1), NOW.minusHours(1), taskId);
+
+        List<WebPushOutboxTask> reclaimed = claimService.claim(10, Duration.ofMinutes(1));
+
+        assertThat(reclaimed).singleElement().satisfies(task -> {
+            assertThat(task.id()).isEqualTo(taskId);
+            assertThat(task.attemptCount()).isEqualTo(2);
+            assertThat(task.claimToken()).isNotEqualTo("stale-token");
+        });
     }
 
     private Member activeMember(String oauthSubject, boolean pushEnabled) {

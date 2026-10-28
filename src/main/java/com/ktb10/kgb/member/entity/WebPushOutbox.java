@@ -61,6 +61,12 @@ public class WebPushOutbox {
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
 
+    @Column(name = "claim_token", length = 36)
+    private String claimToken;
+
+    @Column(name = "processing_started_at")
+    private LocalDateTime processingStartedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -110,11 +116,74 @@ public class WebPushOutbox {
         return sentAt;
     }
 
+    public String getClaimToken() {
+        return claimToken;
+    }
+
+    public LocalDateTime getProcessingStartedAt() {
+        return processingStartedAt;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
+    }
+
+    public void claim(String token, LocalDateTime now) {
+        if (status != WebPushOutboxStatus.PENDING
+                && status != WebPushOutboxStatus.RETRY_WAIT
+                && status != WebPushOutboxStatus.PROCESSING) {
+            throw new IllegalStateException("선점할 수 없는 Web Push Outbox 상태입니다: " + status);
+        }
+        status = WebPushOutboxStatus.PROCESSING;
+        attemptCount += 1;
+        claimToken = token;
+        processingStartedAt = now;
+        updatedAt = now;
+    }
+
+    public void markSent(LocalDateTime now) {
+        requireProcessing();
+        status = WebPushOutboxStatus.SENT;
+        sentAt = now;
+        lastErrorCode = null;
+        clearClaim(now);
+    }
+
+    public void scheduleRetry(LocalDateTime nextAttempt, String errorCode, LocalDateTime now) {
+        requireProcessing();
+        status = WebPushOutboxStatus.RETRY_WAIT;
+        nextAttemptAt = nextAttempt;
+        lastErrorCode = errorCode;
+        clearClaim(now);
+    }
+
+    public void markFailed(String errorCode, LocalDateTime now) {
+        requireProcessing();
+        status = WebPushOutboxStatus.FAILED_PERMANENT;
+        lastErrorCode = errorCode;
+        clearClaim(now);
+    }
+
+    public void cancel(String reason, LocalDateTime now) {
+        requireProcessing();
+        status = WebPushOutboxStatus.CANCELLED;
+        lastErrorCode = reason;
+        clearClaim(now);
+    }
+
+    private void requireProcessing() {
+        if (status != WebPushOutboxStatus.PROCESSING) {
+            throw new IllegalStateException("처리 중인 Web Push Outbox만 결과를 기록할 수 있습니다.");
+        }
+    }
+
+    private void clearClaim(LocalDateTime now) {
+        claimToken = null;
+        processingStartedAt = null;
+        updatedAt = now;
     }
 }

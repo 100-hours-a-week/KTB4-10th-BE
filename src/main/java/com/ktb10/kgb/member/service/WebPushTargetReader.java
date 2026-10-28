@@ -8,6 +8,7 @@ import com.ktb10.kgb.member.repository.WebPushSubscriptionRepository;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,5 +49,28 @@ public class WebPushTargetReader {
                         subscription.getP256dh(),
                         subscription.getAuthSecret()))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<WebPushDeliveryTarget> findDeliverableTarget(
+            Long memberId,
+            Long subscriptionId) {
+        Member member = memberRepository.findByIdAndDeletedAtIsNull(memberId).orElse(null);
+        if (member == null
+                || member.getStatus() != MemberStatus.ACTIVE
+                || !member.isPushEnabled()) {
+            return Optional.empty();
+        }
+        LocalDateTime now = LocalDateTime.now(clock);
+        return subscriptionRepository.findByIdAndMemberId(subscriptionId, memberId)
+                .filter(subscription -> subscription.getStatus()
+                        == WebPushSubscriptionStatus.ACTIVE)
+                .filter(subscription -> subscription.getExpirationAt() == null
+                        || subscription.getExpirationAt().isAfter(now))
+                .map(subscription -> new WebPushDeliveryTarget(
+                        subscription.getId(),
+                        subscription.getEndpoint(),
+                        subscription.getP256dh(),
+                        subscription.getAuthSecret()));
     }
 }
