@@ -11,11 +11,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
-import com.ktb10.kgb.guidebook.client.AiClientException;
-import com.ktb10.kgb.guidebook.client.AiFailureType;
-import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -50,7 +45,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -81,15 +75,6 @@ class GuidebookGenerationServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
-    @Mock
-    private ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
-
-    @Mock
-    private GuidebookResultService guidebookResultService;
-
-    @Mock
-    private AiIntegrationErrorLogger aiIntegrationErrorLogger;
-
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
 
@@ -104,9 +89,6 @@ class GuidebookGenerationServiceTest {
                 memberGuidebookRepository,
                 creditWalletRepository,
                 eventPublisher,
-                guidebookAiClientProvider,
-                guidebookResultService,
-                aiIntegrationErrorLogger,
                 objectMapper,
                 CLOCK);
     }
@@ -279,60 +261,43 @@ class GuidebookGenerationServiceTest {
     }
 
     @Test
-    void getsLatestAiStatusBeforeReturningJobStatus() {
-        Member member = member();
+    void returnsStoredProcessingStatusWithoutChangingTheJob() {
         GenerationJob job = GenerationJob.createInitial(
-                member, "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+                member(), "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
         ReflectionTestUtils.setField(job, "id", 301L);
         job.registerAiJob("ai-job-301", LocalDateTime.now(CLOCK));
-        GuidebookAiClient aiClient = org.mockito.Mockito.mock(GuidebookAiClient.class);
-        AiGenerationStatusResponse aiResponse =
-                AiGenerationStatusResponse.processing("ai-job-301");
+        job.markProcessing(LocalDateTime.now(CLOCK));
         given(generationJobRepository.existsById(301L)).willReturn(true);
         given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
         given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
-        given(guidebookAiClientProvider.getIfAvailable()).willReturn(aiClient);
-        given(aiClient.getGenerationStatus("ai-job-301")).willReturn(aiResponse);
-
-        service.getGenerationJobStatus(MEMBER_ID, 301L);
-
-        verify(aiClient).getGenerationStatus("ai-job-301");
-        verify(guidebookResultService).apply(301L, aiResponse);
-    }
-
-    @Test
-    void marksJobFailedWhenAiStatusCannotBeFetched() {
-        Member member = member();
-        GenerationJob job = GenerationJob.createInitial(
-                member, "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
-        ReflectionTestUtils.setField(job, "id", 301L);
-        job.registerAiJob("ai-job-301", LocalDateTime.now(CLOCK));
-        GuidebookAiClient aiClient = org.mockito.Mockito.mock(GuidebookAiClient.class);
-        given(generationJobRepository.existsById(301L)).willReturn(true);
-        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
-        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
-        given(guidebookAiClientProvider.getIfAvailable()).willReturn(aiClient);
-        given(aiClient.getGenerationStatus("ai-job-301"))
-                .willThrow(new AiClientException(
-                        "AI 서버 상태 조회 요청에 실패했습니다.",
-                        new IllegalStateException("connection reset"),
-                        AiFailureType.CONNECTION_ERROR,
-                        "/guidebooks-generations/{jobId}",
-                        null,
-                        20L));
 
         var response = service.getGenerationJobStatus(MEMBER_ID, 301L);
 
-        assertThat(response.status()).isEqualTo(GenerationStatus.FAILED);
-        assertThat(response.error().code()).isEqualTo("AI_STATUS_UNAVAILABLE");
-        assertThat(response.error().message()).isEqualTo("가이드북 생성 상태를 확인하지 못했습니다.");
-        assertThat(job.getErrorPayload()).contains("AI_STATUS_UNAVAILABLE");
-        verify(guidebookResultService, never()).apply(any(), any());
-        verify(aiIntegrationErrorLogger).logFailure(
-                org.mockito.ArgumentMatchers.eq("ai_generation_status_sync_failed"),
-                org.mockito.ArgumentMatchers.eq(301L),
-                org.mockito.ArgumentMatchers.eq("ai-job-301"),
-                org.mockito.ArgumentMatchers.any(AiClientException.class));
+        assertThat(response.status()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(response.error()).isNull();
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(job.getAiJobId()).isEqualTo("ai-job-301");
+        verify(generationJobRepository, never()).save(any());
+        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void repeatedStatusReadsDoNotAdvanceAPendingJob() {
+        GenerationJob job = GenerationJob.createInitial(
+                member(), "{}", IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.registerAiJob("ai-job-301", LocalDateTime.now(CLOCK));
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+
+        assertThat(service.getGenerationJobStatus(MEMBER_ID, 301L).status())
+                .isEqualTo(GenerationStatus.PENDING);
+        assertThat(service.getGenerationJobStatus(MEMBER_ID, 301L).status())
+                .isEqualTo(GenerationStatus.PENDING);
+        assertThat(job.getAttemptCount()).isZero();
+        assertThat(job.getAttemptStartedAt()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
     }
 
     @Test

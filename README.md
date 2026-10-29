@@ -4,7 +4,7 @@ KGB 서비스의 백엔드 애플리케이션입니다.
 
 ## 가이드북 생성 API 구현 상태
 
-PR #41의 생성 접수 API는 `PENDING` 저장까지만 구현되어 있으며 아직 사용자에게 제공 가능한 생성 API가 아니다. AI 트리거가 없어 작업이 계속 `PENDING`으로 남고 후속 요청이 `GENERATION_IN_PROGRESS`로 차단될 수 있다. #42의 회원·취향·생성권 검증, 동시성 처리와 커밋 후 AI 트리거 연동 및 검증을 마치기 전에는 프론트엔드 사용자 흐름에 연결하거나 운영에 공개하지 않는다. 상태 조회는 #43에서 구현한다.
+생성·재생성은 작업 저장 후 AI에 HTTP 접수하고 진행·결과 콜백을 반영합니다. 생성 전용 SSE와 DB 상태 GET을 제공하며, BE→AI 폴링과 내부 Fake는 제거했습니다. 15분 메모리 타이머·재시작 복구 한계는 아래 콜백 계약을 따릅니다. 실제 FE 생성 SSE 구독과 운영 장애·부하 검증은 별도입니다.
 
 ## 개발 환경
 
@@ -31,33 +31,40 @@ Spring Boot는 프로젝트 루트의 `.env`를 자동으로 읽지 않으므로
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
-### 로컬 AI 서버 선택
+### 로컬 AI 서버 연결
 
-`local`은 기본적으로 백엔드 내부 Fake AI 클라이언트를 사용합니다.
-Docker 등으로 별도 실행한 AI 서버를 호출하려면 실행 환경변수를 다음처럼 설정합니다.
+local과 prod 모두 HTTP로 AI에 접수하고 진행·결과는 콜백으로 받습니다.
+BE 내부 Fake 클라이언트, AI 상태 조회 및 백그라운드 폴링은 제거했습니다.
+로컬 생성 실험은 별도 AI 컨테이너를 `LLM_MODE=fake`로 실행합니다.
 
-```bash
-SPRING_PROFILES_ACTIVE=local AI_CLIENT_MODE=http AI_SERVER_BASE_URL=http://localhost:8000 ./gradlew bootRun
-```
-
-- `AI_CLIENT_MODE=fake` 또는 미설정: 기존 내부 Fake 사용
-- `AI_CLIENT_MODE=http`: HTTP로 AI 접수 및 상태 조회
-- 로컬 HTTP 기본 주소: `http://localhost:8000`
-- 연결/응답 타임아웃: `AI_SERVER_CONNECT_TIMEOUT=3s`, `AI_SERVER_READ_TIMEOUT=10s`
-- `prod`는 로컬 모드 설정과 관계없이 기존 HTTP 클라이언트를 사용합니다.
-- 백엔드도 컨테이너라면 `localhost`는 백엔드 컨테이너 자체입니다. 공유 Docker
-  네트워크의 AI 서비스 주소를 사용하거나 호스트에 공개한 포트로 접근할 수 있도록 구성합니다.
-- AI 서버의 `LLM_MODE=fake`, `FAKE_LLM_DELAY_SEC=60`은 AI 컨테이너에 설정합니다.
-  생성 지연과 개별 상태 조회 HTTP 응답 타임아웃은 별개이므로 생성 지연에 맞춰
-  `AI_SERVER_READ_TIMEOUT`을 늘릴 필요는 없습니다.
-- 내부 Fake로 접수한 `fake-job-*` 작업은 외부 AI 서버에 존재하지 않습니다.
-  모드 전환 전 진행 중 작업을 종료하고 전환 후 새 작업으로 검증합니다.
+- 로컬 HTTP 기본 주소: `http://localhost:8000`, `AI_SERVER_BASE_URL`로 변경
+- 접수 HTTP 연결/응답 제한: `AI_SERVER_CONNECT_TIMEOUT=3s`, `AI_SERVER_READ_TIMEOUT=10s`
+- AI의 `FAKE_LLM_DELAY_SEC`는 계산 지연이며 접수 응답 타임아웃과 별개
+- BE도 컨테이너라면 `localhost` 대신 공유 Docker 네트워크의 AI 주소 등을 사용
+- AI에는 BE에 접근 가능한 `BE_CALLBACK_BASE_URL`과 BE와 동일한 `AI_CALLBACK_TOKEN` 주입
+- 기존 polling/Fake로 접수한 미종료 작업의 자동 인계·복구는 제공하지 않음
 
 기본 헬스 체크는 내부 관리 포트 `8081`의 `GET /actuator/health`에서 확인할 수 있습니다.
 
 - JPA는 스키마를 자동 변경하지 않고 `ddl-auto=validate`로 Flyway 결과만 검증합니다.
 - Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
 - MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
+
+## AI 콜백 설정
+
+콜백은 유일한 처리 경로입니다. local과 prod 모두 다음 실행 환경을 구성합니다.
+
+```dotenv
+AI_SERVER_BASE_URL=http://localhost:8000
+AI_CALLBACK_TOKEN=AI와-BE에-동일하게-주입할-랜덤-비밀값
+AI_GENERATION_TIMEOUT=15m
+```
+
+토큰은 필수이며 비어 있으면 기동을 거절합니다. 실제 실행 환경에만 주입하고 커밋하지
+않습니다. 상태 GET은 DB만 읽고 AI를 조회하지 않습니다. 진행·종료 SSE, Redis 설정, 15분 메모리
+타이머와 재시작 한계는 [AI 콜백 연동](./docs/AI-콜백-연동.md)을 확인하세요.
+다중 인스턴스에서는 `AI_GENERATION_REDIS_ENABLED=true`와 같은 채널을 사용합니다.
+`AI_CLIENT_MODE`와 `AI_GENERATION_DELIVERY_MODE`는 제거했으며 더 이상 사용하지 않습니다.
 
 ## 관측성
 

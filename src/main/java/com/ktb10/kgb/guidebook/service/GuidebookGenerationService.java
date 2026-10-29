@@ -7,11 +7,6 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
-import com.ktb10.kgb.guidebook.client.AiClientException;
-import com.ktb10.kgb.guidebook.client.AiFailureType;
-import com.ktb10.kgb.guidebook.client.AiIntegrationErrorLogger;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -46,10 +41,8 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,9 +64,6 @@ public class GuidebookGenerationService {
     private final MemberGuidebookRepository memberGuidebookRepository;
     private final CreditWalletRepository creditWalletRepository;
     private final ApplicationEventPublisher eventPublisher;
-    private final ObjectProvider<GuidebookAiClient> guidebookAiClientProvider;
-    private final GuidebookResultService guidebookResultService;
-    private final AiIntegrationErrorLogger aiIntegrationErrorLogger;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -84,9 +74,6 @@ public class GuidebookGenerationService {
             MemberGuidebookRepository memberGuidebookRepository,
             CreditWalletRepository creditWalletRepository,
             ApplicationEventPublisher eventPublisher,
-            ObjectProvider<GuidebookAiClient> guidebookAiClientProvider,
-            GuidebookResultService guidebookResultService,
-            AiIntegrationErrorLogger aiIntegrationErrorLogger,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
@@ -95,9 +82,6 @@ public class GuidebookGenerationService {
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.eventPublisher = eventPublisher;
-        this.guidebookAiClientProvider = guidebookAiClientProvider;
-        this.guidebookResultService = guidebookResultService;
-        this.aiIntegrationErrorLogger = aiIntegrationErrorLogger;
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
@@ -238,7 +222,7 @@ public class GuidebookGenerationService {
         return GuidebookGenerationResponse.from(savedJob);
     }
 
-    @Transactional
+    @Transactional(readOnly = true)
     public GenerationStatusResponse getGenerationJobStatus(Long memberId, Long jobId) {
         if (!generationJobRepository.existsById(jobId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
@@ -248,24 +232,6 @@ public class GuidebookGenerationService {
         }
         GenerationJob job = generationJobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-        GuidebookAiClient aiClient = guidebookAiClientProvider.getIfAvailable();
-        if (aiClient != null && shouldSynchronize(job)) {
-            try {
-                AiGenerationStatusResponse aiResponse =
-                        aiClient.getGenerationStatus(job.getAiJobId());
-                guidebookResultService.apply(jobId, aiResponse);
-                job = generationJobRepository.findById(jobId)
-                        .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
-            } catch (AiClientException exception) {
-                aiIntegrationErrorLogger.logFailure(
-                        "ai_generation_status_sync_failed",
-                        job.getId(),
-                        job.getAiJobId(),
-                        exception);
-                job.fail(serializeStatusLookupFailure(exception), LocalDateTime.now(clock));
-            }
-        }
-
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
                 ? failureResponse(job)
                 : null;
@@ -295,12 +261,6 @@ public class GuidebookGenerationService {
         job.retry(LocalDateTime.now(clock));
         eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(job.getId()));
         return GuidebookGenerationResponse.from(job);
-    }
-
-    private boolean shouldSynchronize(GenerationJob job) {
-        return job.getAiJobId() != null
-                && (job.getStatus() == GenerationStatus.PENDING
-                || job.getStatus() == GenerationStatus.PROCESSING);
     }
 
     private boolean isRetryable(GenerationJob job) {
@@ -360,29 +320,6 @@ public class GuidebookGenerationService {
     private boolean isUserCorrectionRequired(String code) {
         return "feedback_not_applicable".equals(code)
                 || "insufficient_candidates".equals(code);
-    }
-
-    private String serializeStatusLookupFailure(AiClientException exception) {
-        String code;
-        String message;
-        if (Integer.valueOf(404).equals(exception.getUpstreamStatus())) {
-            code = "AI_JOB_NOT_FOUND";
-            message = "생성 작업 정보를 찾을 수 없습니다.";
-        } else if (exception.getFailureType() == AiFailureType.UPSTREAM_5XX) {
-            code = "AI_SERVER_ERROR";
-            message = "가이드북 생성 서버에 일시적인 오류가 발생했습니다.";
-        } else {
-            code = "AI_STATUS_UNAVAILABLE";
-            message = "가이드북 생성 상태를 확인하지 못했습니다.";
-        }
-        try {
-            return objectMapper.writeValueAsString(Map.of(
-                    "code", code,
-                    "message", message,
-                    "retryable", exception.getFailureType().isRetryable()));
-        } catch (JsonProcessingException serializationFailure) {
-            throw new IllegalStateException("가이드북 생성 상태 실패 정보를 저장할 수 없습니다.", serializationFailure);
-        }
     }
 
     private GuidebookGenerationResponse handleRepeatedRequest(

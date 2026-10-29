@@ -181,6 +181,13 @@ public class GenerationJob {
         return status == GenerationStatus.PENDING;
     }
 
+    /** 콜백 방식의 전체 제한 시간은 큐 대기 전 접수 시도부터 계산합니다. */
+    public void beginCallbackAttempt(LocalDateTime now) {
+        if (status == GenerationStatus.PENDING && attemptStartedAt == null) {
+            attemptStartedAt = Objects.requireNonNull(now);
+        }
+    }
+
     public boolean cancelForWithdrawal(LocalDateTime canceledAt) {
         if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
             return false;
@@ -207,7 +214,9 @@ public class GenerationJob {
         }
         status = GenerationStatus.PROCESSING;
         startedAt = processedAt;
-        attemptStartedAt = processedAt;
+        if (attemptStartedAt == null) {
+            attemptStartedAt = processedAt;
+        }
         updatedAt = processedAt;
     }
 

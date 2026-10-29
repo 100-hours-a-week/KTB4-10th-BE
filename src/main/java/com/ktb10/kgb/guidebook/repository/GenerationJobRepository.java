@@ -41,4 +41,5 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select job from GenerationJob job where job.id = :id")
     Optional<GenerationJob> findByIdForUpdate(@Param("id") Long id);
+
 }

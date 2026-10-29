@@ -34,6 +34,10 @@ kgb:
       namespace: ${OAUTH_REDIS_NAMESPACE:kgb:prod:oauth:authorization-request}
 
 ai:
+  generation:
+    redis:
+      enabled: ${AI_GENERATION_REDIS_ENABLED:true}
+      channel: ${AI_GENERATION_REDIS_CHANNEL:kgb:prod:generation}
   server:
     base-url: ${AI_SERVER_BASE_URL}
     connect-timeout: ${AI_SERVER_CONNECT_TIMEOUT:3s}

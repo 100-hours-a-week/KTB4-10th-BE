@@ -49,6 +49,12 @@ public class SecurityConfig {
                             HttpMethod.GET,
                             "/api/v1/notifications/stream"));
 
+    static final RequestMatcher GENERATION_STREAM_ASYNC_DISPATCH =
+            new AndRequestMatcher(
+                    new DispatcherTypeRequestMatcher(DispatcherType.ASYNC, HttpMethod.GET),
+                    PathPatternRequestMatcher.withDefaults().matcher(
+                            HttpMethod.GET, "/api/v1/guidebook-generations/{jobId}/stream"));
+
     @Bean
     public Clock utcClock() {
         return Clock.systemUTC();
@@ -78,6 +84,7 @@ public class SecurityConfig {
                         // 재디스패치는 이미 커밋된 SSE 응답을 다시 인가하지 않습니다.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(NOTIFICATION_STREAM_ASYNC_DISPATCH).permitAll()
+                        .requestMatchers(GENERATION_STREAM_ASYNC_DISPATCH).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/actuator/prometheus")
                         .permitAll()

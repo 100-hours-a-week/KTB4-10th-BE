@@ -30,7 +30,7 @@
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
-- GDE-03의 진행률(progress)은 AI 단계 계약 확정 전까지 제공하지 않는다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성 작업은 조건 수정 화면 복원을 위해 최초 요청 조건(initial_request)을 함께 제공한다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
+- GDE-03은 DB 상태만 조회하고 진행 단계는 생성 전용 SSE로 제공한다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성 작업은 조건 수정 화면 복원을 위해 최초 요청 조건(initial_request)을 함께 제공한다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
@@ -1218,7 +1218,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 생성 요청 검증, 현재 취향 스냅샷 저장, 생성권 사전 확인, 커밋 후 AI 접수 이벤트, AI 요청 변환과 외부 `job_id` 저장을 구현했다. AI 요청 후보는 `province`·`city`가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 `EV`를 `content.id` 오름차순 최대 100개까지 조립한다. 각 후보에는 `detailCommon2.overview` 원문을 연속 Unicode 공백 정규화와 `strip()`만 적용한 전체 `overview`를 함께 전달하며 원문이 없으면 `""`를 전달한다. 별도의 행사 기간 중첩 필터는 적용하지 않으며, 저장된 행사 기간이 있으면 후보에 포함하고 없으면 `null`로 전달한다. AI 접수 응답은 `PENDING`으로 받고 내부 작업도 `PENDING`으로 유지한다. `local`은 Fake AI Client, `prod`는 `AI_SERVER_BASE_URL`로 지정한 내부망 실제 HTTP Client를 사용하며 상태 조회 시 AI 상태를 한 번 동기화한다. 완료 시 `content_html`·일정·보관 관계·생성권 차감 원장·작업 완료를 한 트랜잭션으로 저장하고, 완료 알림은 커밋 후 별도 트랜잭션에서 생성한다. 백그라운드 폴링과 정체 작업 복구는 아직 구현하지 않았다.
+> 구현 상태: 요청 검증, 취향 스냅샷, 생성권 확인, 커밋 후 AI 접수와 외부 job_id 매핑을 구현했다. AI 후보는 province/city가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 EV를 id 오름차순 최대 100개로 조립한다. overview는 연속 공백 정규화·strip한 전체 원문이며 없으면 빈 문자열이다. 행사 기간 중첩 필터는 적용하지 않고 저장된 기간 또는 null을 전달한다. local/prod 모두 HTTP로 AI에 접수한다. AI 이벤트와 15분 메모리 타이머로만 처리하며 AI 폴링·내부 Fake·전달 모드 선택은 제거했다. 사용자 상태 GET은 DB만 조회한다. 완료 결과·일정·보관 관계·차감·원장·작업 완료는 같은 트랜잭션, 완료 알림은 커밋 후 별도 트랜잭션이다. 재시작 복구와 MQ는 제외한다. [AI 콜백 연동](./AI-콜백-연동.md)을 따른다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1273,11 +1273,23 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**현재 구현:** DB 커밋 후 최초 AI 접수가 실패하면 작업을 `FAILED`로 종료하고 실패 유형과 재시도 가능 여부만 내부 저장한다. 실패한 자신의 작업 중 `error.retryable=true`인 작업은 `POST /guidebook-generations/{job_id}/retry`로 수동 재시도하며 `attempt_count` 최대값은 3이다. prod AI HTTP 호출은 연결 3초·응답 10초를 기본값으로 사용한다. 생성 작업 전체의 300초 타임아웃과 시스템 자동 재시도·서버 재시작 후 정체 작업 복구는 후속 구현한다. API-DEC-03의 동행 Enum·인원 상한은 승인된 화면정의서·기능설계도 범위만 구현한다.
+**현재 구현:** AI 접수 HTTP 예외는 접수 응답 유실 가능성이 있어 콜백 또는 15분 제한까지 기다린다. 콜백이 없으면 GENERATION_TIMEOUT으로 실패한다. 실패한 자신의 작업 중 error.retryable=true인 작업은 기존 retry API로 최대 3회 수동 재시도한다. 연결·응답 기본값은 3초·10초이며 전체 생성 제한 시간과 별개다. 타이머 재시작 복구·자동 재접수는 제외한다.
+
+### 생성 콜백·진행 SSE
+
+| Method | 실제 URL | 인증 | 성공 |
+| --- | --- | --- | --- |
+| POST | `/internal/v1/ai/generation-events` | AI Bearer 토큰, 사용자 CSRF 제외 | DB 처리 후 204 |
+| GET | `/api/v1/guidebook-generations/{jobId}/stream` | ACTIVE 서비스 세션·본인 작업 | 200 text/event-stream |
+
+두 경로는 모드 선택 없이 제공하며 AI_CALLBACK_TOKEN은 필수다. 콜백 본문은 기존 message/data/job_id/status/result/error에
+event_id/request_id/sequence/progress를 추가한 형태다. SSE 이벤트명은 generation-status다.
+15분 메모리 타이머, 중복·이전 회차 처리, Redis fan-out, 재연결 규칙과 예시는
+[AI 콜백 연동](./AI-콜백-연동.md)을 따른다. 기존 상태 GET은 아래와 같이 유지한다.
 
 ### API-GDE-03 생성 상태 조회
 
-> 구현 상태: 종료되지 않은 작업을 조회하면 AI 상태를 한 번 동기화한다. `local`은 Fake Client, `prod`는 실제 HTTP Client를 사용한다. `PROCESSING`은 내부 상태와 시작 시각을 갱신하고, `COMPLETED`는 `content_html`·가이드북·일정·회원 보관 관계·생성권 차감·원장·작업 완료를 한 트랜잭션으로 반영한다. 완료 알림은 커밋 후 `REQUIRES_NEW` 별도 트랜잭션에서 생성하므로 알림 실패가 완료 결과를 롤백하지 않는다. AI 상태 조회 전송 실패는 작업을 `FAILED`로 전환하고 `AI_JOB_NOT_FOUND`·`AI_SERVER_ERROR`·`AI_STATUS_UNAVAILABLE` 중 하나의 공개 오류로 반환한다. 실패 작업의 수동 재시도 API도 구현되어 있다. 주기적 백그라운드 폴링·정체 작업 복구는 후속 구현이다.
+> 구현 상태: 상태 GET은 읽기 전용 트랜잭션으로 DB 상태만 반환한다. AI 상태 조회와 백그라운드 폴링은 제거했다. 콜백이 진행·완료·실패를 반영하며 완료 결과·일정·보관 관계·차감·원장·작업 완료는 한 트랜잭션, 완료 알림은 커밋 후 별도 트랜잭션이다. 시도별 15분 메모리 타이머로 `GENERATION_TIMEOUT`을 처리한다. 자동 재접수·재시작 복구는 제외한다. [AI 콜백 연동](./AI-콜백-연동.md)을 따른다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1288,8 +1300,8 @@ Body 없음.
 - job_type: INITIAL|REGENERATION
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
 - initial_request: 최초 생성(INITIAL) 작업의 원본 요청 조건. 재생성(REGENERATION) 작업은 null이다.
-- 현재는 상태 조회 요청 시 local Fake AI 상태를 동기화한다. `CANCELED` 등 종료 상태 작업의 늦은 완료 결과는 결과 반영 단계에서 차단한다. 300초 타임아웃·자동 폴링은 실제 AI Client와 복구 흐름에서 구현할 대상이다.
-- error: FAILED이면 `{code:"<실패 코드>",message:"<실패 메시지>",retryable:true|false}`, 그 외 상태는 null. AI 작업 실패는 저장된 code·message를 반환하며, AI 상태 조회 전송 실패는 `AI_JOB_NOT_FOUND`·`AI_SERVER_ERROR`·`AI_STATUS_UNAVAILABLE` 중 하나를 반환한다. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다.
+- 상태 GET은 DB만 읽으며 AI를 조회하거나 작업 상태를 변경하지 않는다. 종료 상태와 이전 회차의 늦은 결과는 반영하지 않는다. callback은 15분 메모리 타이머를 사용하며 재시작 시 소실될 수 있다.
+- error: FAILED이면 `{code:"<실패 코드>",message:"<실패 메시지>",retryable:true|false}`, 그 외 상태는 null. 콜백 실패 또는 BE 타임아웃의 저장된 code·message를 반환하며 상태 GET 자체는 작업을 실패로 변경하지 않는다. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다.
 
 **Request Body**
 
@@ -2330,7 +2342,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
 | DEC-07 | GDE-12 | 확정: 가이드북을 복제하지 않고 `member_guidebooks` 관계를 생성하며 삭제된 관계는 복구. |
 | DEC-08 | NOT-01 | 확정: 초기 4개 노출, 회원별 미읽음 최대 20개 보관. 새 알림이 추가될 때 20개를 초과하면 가장 오래된 행부터 삭제. |
-| DEC-09 | GDE-02/03/09 | 현재 구현: FAILED 작업의 명시적 재시도 최대 3회(`attempt_count=0~3`). 300초 타임아웃·자동 재시도·정체 작업 복구와 늦은 결과 차단은 실제 AI Client 도입 시 구현. |
+| DEC-09 | GDE-02/03/09 | FAILED 작업의 수동 재시도 최대 3회(`attempt_count=0~3`). callback은 15분 메모리 타이머와 늦은/이전 회차 콜백 차단을 적용한다. 자동 재접수·재시작 복구·MQ는 제외한다. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성. 공유는 재생성 흐름 종료 후 제공. |

@@ -1,7 +1,6 @@
 package com.ktb10.kgb.guidebook.client;
 
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 
@@ -13,7 +12,5 @@ public interface GuidebookAiClient {
     AiGenerationAcceptedResponse requestRegeneration(
             String sourceAiJobId,
             AiGuidebookRegenerationRequest request);
-
-    AiGenerationStatusResponse getGenerationStatus(String aiJobId);
 
 }

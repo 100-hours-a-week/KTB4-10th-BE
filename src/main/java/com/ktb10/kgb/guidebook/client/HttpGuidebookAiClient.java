@@ -3,8 +3,6 @@ package com.ktb10.kgb.guidebook.client;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusEnvelope;
-import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import java.net.ConnectException;
@@ -26,7 +24,6 @@ import org.springframework.web.client.RestClientResponseException;
 public class HttpGuidebookAiClient implements GuidebookAiClient {
 
     private static final String GENERATIONS_PATH = "/guidebooks-generations";
-    private static final String GENERATION_STATUS_ROUTE = GENERATIONS_PATH + "/{jobId}";
     private static final String REGENERATION_ROUTE = GENERATIONS_PATH + "/{jobId}/regenerate";
 
     private final RestClient restClient;
@@ -138,49 +135,6 @@ public class HttpGuidebookAiClient implements GuidebookAiClient {
                     exception);
         } catch (RuntimeException exception) {
             throw unexpectedError(exception, GENERATIONS_PATH, startedAt);
-        }
-    }
-
-    @Override
-    public AiGenerationStatusResponse getGenerationStatus(String aiJobId) {
-        long startedAt = System.nanoTime();
-        try {
-            ResponseEntity<AiGenerationStatusEnvelope> response = restClient.get()
-                    .uri(GENERATIONS_PATH + "/{jobId}", aiJobId)
-                    .retrieve()
-                    .toEntity(AiGenerationStatusEnvelope.class);
-            if (response.getStatusCode() != HttpStatus.OK) {
-                throw invalidResponse(
-                        "AI 상태 조회 응답 상태가 올바르지 않습니다.",
-                        GENERATION_STATUS_ROUTE,
-                        startedAt,
-                        null);
-            }
-            AiGenerationStatusEnvelope envelope = Objects.requireNonNull(
-                    response.getBody(), "AI 상태 조회 응답 본문이 없습니다.");
-            AiGenerationStatusResponse data = envelope.data();
-            if (!aiJobId.equals(data.jobId()) || data.status() == null) {
-                throw invalidResponse(
-                        "AI 상태 조회 응답 형식이 올바르지 않습니다.",
-                        GENERATION_STATUS_ROUTE,
-                        startedAt,
-                        null);
-            }
-            return data;
-        } catch (AiClientException exception) {
-            throw exception;
-        } catch (RestClientResponseException exception) {
-            throw upstreamError(exception, GENERATION_STATUS_ROUTE, startedAt);
-        } catch (RestClientException exception) {
-            throw restClientError(exception, GENERATION_STATUS_ROUTE, startedAt);
-        } catch (IllegalArgumentException | NullPointerException exception) {
-            throw invalidResponse(
-                    "AI 상태 조회 응답 형식이 올바르지 않습니다.",
-                    GENERATION_STATUS_ROUTE,
-                    startedAt,
-                    exception);
-        } catch (RuntimeException exception) {
-            throw unexpectedError(exception, GENERATION_STATUS_ROUTE, startedAt);
         }
     }
 

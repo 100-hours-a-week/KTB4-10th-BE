@@ -11,16 +11,16 @@ class GuidebookAiClientConfigTest {
 
     private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
             .withInitializer(new ConfigDataApplicationContextInitializer())
-            .withUserConfiguration(GuidebookAiClientConfig.class, FakeGuidebookAiClient.class)
+            .withUserConfiguration(GuidebookAiClientConfig.class)
             .withBean(RestClient.Builder.class, RestClient::builder);
 
     @Test
-    void localDefaultsToInProcessFake() {
+    void localAlwaysUsesHttp() {
         contextRunner.withPropertyValues("spring.profiles.active=local")
                 .run(context -> {
                     assertThat(context).hasSingleBean(GuidebookAiClient.class);
                     assertThat(context.getBean(GuidebookAiClient.class))
-                            .isInstanceOf(FakeGuidebookAiClient.class);
+                            .isInstanceOf(HttpGuidebookAiClient.class);
                 });
     }
 
@@ -28,7 +28,6 @@ class GuidebookAiClientConfigTest {
     void localHttpModeUsesConfiguredServer() {
         contextRunner.withPropertyValues(
                         "spring.profiles.active=local",
-                        "AI_CLIENT_MODE=http",
                         "AI_SERVER_BASE_URL=http://localhost:18000",
                         "AI_SERVER_CONNECT_TIMEOUT=2s",
                         "AI_SERVER_READ_TIMEOUT=5s")
@@ -45,7 +44,7 @@ class GuidebookAiClientConfigTest {
 
     @Test
     void localHttpModeDefaultsToDockerPortAndTimeouts() {
-        contextRunner.withPropertyValues("spring.profiles.active=local", "AI_CLIENT_MODE=http")
+        contextRunner.withPropertyValues("spring.profiles.active=local")
                 .run(context -> {
                     assertThat(context).hasSingleBean(GuidebookAiClient.class);
                     assertThat(context.getBean(GuidebookAiClient.class))
@@ -58,10 +57,9 @@ class GuidebookAiClientConfigTest {
     }
 
     @Test
-    void prodAlwaysUsesHttpEvenWhenLocalModeIsFake() {
+    void prodAlwaysUsesHttp() {
         contextRunner.withPropertyValues(
                         "spring.profiles.active=prod",
-                        "AI_CLIENT_MODE=fake",
                         "AI_SERVER_BASE_URL=http://ai.internal:8000")
                 .run(context -> {
                     assertThat(context).hasSingleBean(GuidebookAiClient.class);
@@ -74,7 +72,6 @@ class GuidebookAiClientConfigTest {
     void combinedLocalAndProdProfilesRegisterOnlyProductionHttpClient() {
         contextRunner.withPropertyValues(
                         "spring.profiles.active=local,prod",
-                        "AI_CLIENT_MODE=http",
                         "AI_SERVER_BASE_URL=http://ai.internal:8000")
                 .run(context -> {
                     assertThat(context).hasSingleBean(GuidebookAiClient.class);
