@@ -3,9 +3,12 @@ package com.ktb10.kgb.guidebook.callback;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ktb10.kgb.guidebook.dto.response.GenerationStatusResponse;
@@ -14,11 +17,143 @@ import com.ktb10.kgb.guidebook.entity.JobType;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 class GenerationStreamServiceTest {
+
+    @Test
+    void slowSnapshotDoesNotBlockOtherJobsOrRegressAfterCompletion() throws Exception {
+        GenerationStreamService streams = new GenerationStreamService(10, Duration.ofMinutes(15));
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var slow = executor.submit(() -> streams.subscribe(1L, "slow", 301L, () -> {
+                started.countDown();
+                await(release);
+                return snapshot(GenerationStatus.PENDING);
+            }));
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> {
+                    streams.subscribe(2L, "other", 302L, () -> snapshot(GenerationStatus.PENDING));
+                    streams.heartbeat();
+                    streams.disconnect(2L, "other");
+                    streams.publish(update(3, GenerationStatus.COMPLETED, 0));
+                }).get(5, TimeUnit.SECONDS);
+                assertThat(slow.isDone()).isFalse();
+            } finally {
+                release.countDown();
+            }
+            slow.get(5, TimeUnit.SECONDS);
+            assertThat((Map<?, ?>) ReflectionTestUtils.getField(streams, "connections")).isEmpty();
+        } finally {
+            streams.close();
+        }
+    }
+
+    @Test
+    void slowSendDoesNotBlockOtherJobsOrReverseEventOrder() throws Exception {
+        GenerationStreamService streams = new GenerationStreamService(10, Duration.ofMinutes(15));
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try (var emitters = mockConstruction(SseEmitter.class);
+                var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            streams.subscribe(1L, "one", 301L, () -> snapshot(GenerationStatus.PENDING));
+            streams.subscribe(2L, "two", 302L, () -> snapshot(GenerationStatus.PENDING));
+            SseEmitter slowEmitter = emitters.constructed().getFirst();
+            doAnswer(invocation -> {
+                started.countDown();
+                await(release);
+                return null;
+            }).when(slowEmitter).send(any(SseEmitter.SseEventBuilder.class));
+            var slow = executor.submit(() -> streams.publish(update(1, GenerationStatus.PROCESSING, 0)));
+            try {
+                assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+                executor.submit(() -> streams.publish(new GenerationUpdate(
+                        2L, 302L, "302-0", 3, GenerationStatus.COMPLETED, null, null, null)))
+                        .get(5, TimeUnit.SECONDS);
+                verify(emitters.constructed().get(1)).complete();
+                assertThat(slow.isDone()).isFalse();
+            } finally {
+                release.countDown();
+            }
+            slow.get(5, TimeUnit.SECONDS);
+            streams.publish(update(3, GenerationStatus.COMPLETED, 0));
+            streams.publish(update(2, GenerationStatus.PROCESSING, 0));
+            verify(slowEmitter, times(3)).send(any(SseEmitter.SseEventBuilder.class));
+            streams.close();
+        }
+    }
+
+    @Test
+    void concurrentSubscriptionsRespectGlobalAndMemberLimits() throws Exception {
+        for (int limit : new int[]{3, 30}) {
+            GenerationStreamService streams = new GenerationStreamService(limit, Duration.ofMinutes(15));
+            CountDownLatch start = new CountDownLatch(1);
+            try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                var requests = IntStream.range(0, 20).mapToObj(index -> executor.submit(() -> {
+                    await(start);
+                    try {
+                        streams.subscribe(limit == 3 ? index + 1L : 1L, "session-" + index, 301L,
+                                () -> snapshot(GenerationStatus.PENDING));
+                        return true;
+                    } catch (com.ktb10.kgb.common.error.BusinessException exception) {
+                        return false;
+                    }
+                })).toList();
+                start.countDown();
+                int accepted = 0;
+                for (var request : requests) {
+                    if (request.get(5, TimeUnit.SECONDS)) {
+                        accepted++;
+                    }
+                }
+                assertThat(accepted).isEqualTo(Math.min(limit, 5));
+            } finally {
+                streams.close();
+            }
+        }
+    }
+
+    @Test
+    void sendAndCompletionFailuresDoNotStopOtherConnections() throws Exception {
+        GenerationStreamService streams = new GenerationStreamService(10, Duration.ofMinutes(15));
+        try (var emitters = mockConstruction(SseEmitter.class)) {
+            for (int index = 0; index < 3; index++) {
+                streams.subscribe(1L, "session-" + index, 301L, () -> snapshot(GenerationStatus.PENDING));
+            }
+            SseEmitter broken = emitters.constructed().getFirst();
+            SseEmitter closing = emitters.constructed().get(1);
+            SseEmitter healthy = emitters.constructed().get(2);
+            doThrow(new IOException("closed")).when(broken).send(any(SseEmitter.SseEventBuilder.class));
+            doThrow(new IllegalStateException("already closed")).when(closing).complete();
+            streams.publish(update(1, GenerationStatus.PROCESSING, 0));
+            streams.heartbeat();
+            streams.publish(update(3, GenerationStatus.COMPLETED, 0));
+            verify(broken, never()).completeWithError(any());
+            verify(healthy, times(4)).send(any(SseEmitter.SseEventBuilder.class));
+            verify(healthy).complete();
+            assertThat((Map<?, ?>) ReflectionTestUtils.getField(streams, "connections")).isEmpty();
+            streams.close();
+        }
+    }
+
+    private void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(10, TimeUnit.SECONDS)) {
+                throw new AssertionError("동시성 테스트 대기 시간 초과");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError(exception);
+        }
+    }
 
     @Test
     void snapshotUsesNewestProgressAndNeverRegressesAfterTerminal() {

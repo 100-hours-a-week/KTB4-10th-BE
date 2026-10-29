@@ -225,6 +225,11 @@ ACTIVE 서비스 세션과 작업 소유권을 검증한다. 알림 push_enabled
 - 같은 회차 진행 이벤트는 더 큰 sequence만 반영하고 이전 회차 이벤트는 무시한다.
 - COMPLETED/FAILED/CANCELED를 받으면 EventSource.close()한다. 서버도 종료 이벤트 후 닫는다.
 - 15초 heartbeat, 인스턴스당 기본 1000개/회원당 5개 연결 제한이 있다.
+- 연결은 ConcurrentHashMap으로 관리한다. 연결 수 검사·등록·제거만 짧은 잠금으로,
+  최신 이벤트 갱신은 작업 키별 원자 연산으로, 초기화·전송 순서는 연결별 잠금으로 보호한다.
+  DB snapshot 조회·전송에 전역 잠금을 사용하지 않으며 조회 중 이벤트는 최신 값만 보관한다.
+- 전송 실패 시 연결만 제거하고 completeWithError를 다시 호출하지 않는다.
+  연결 종료 예외도 다른 연결 순회를 중단하지 않는다.
 - 로그아웃·탈퇴 시 기존 연결 종료 경로를 통해 생성 SSE도 종료한다.
 - Redis 사용 시 ai.generation.redis.channel로 fan-out한다. prod 기본 활성,
   local 기본 비활성이다. 다중 인스턴스는 AI_GENERATION_REDIS_ENABLED=true와 같은 채널이 필요하다.
@@ -249,9 +254,9 @@ FE의 생성 SSE 구독 구현과 실제 진행 문구의 Figma 반영은 별도
 - Redis 발행과 SSE 전송은 비동기 큐로 격리하지 않았다. callback 204가 AFTER_COMMIT
   처리 지연의 영향을 받을 수 있다. 기존 완료 알림 후처리의 중첩 REQUIRES_NEW와
   커넥션 풀 점유도 함께 관찰한다. #300의 Web Push Outbox와 별개 경로다.
-- SSE 서비스의 synchronized 구간에 snapshot DB 조회와 emitter 전송이 포함된다.
-  느린 조회/클라이언트가 다른 연결·heartbeat·발행을 지연시킬 수 있으며 역압력·연결별
-  전송 큐·느린 소비자 격리·전용 지표는 이번 범위 밖이다.
+- 생성 SSE의 전역 잠금에서 snapshot DB 조회·전송을 제거했다. 연결별 전송 직렬화와
+  순차 fan-out/heartbeat는 유지하므로 같은 순회 안에서의 느린 소비자 지연은 남는다.
+  역압력·연결별 비동기 전송 큐·전용 지표와 실제 최대 처리량 검증은 이번 범위 밖이다.
 - 연결 제한은 회원당 인스턴스 로컬 5개이며 전역 제한이 아니다. 다중 탭과 기존 알림
   SSE가 추가 연결을 차지하므로 브라우저·프록시·서버 연결 한도도 검증한다.
 - Last-Event-ID replay, 연결 중 무음 유실 탐지, 무조건적인 세션 만료 시각의 연결 종료,
