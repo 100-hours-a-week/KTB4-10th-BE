@@ -1,5 +1,6 @@
 package com.ktb10.kgb.member.service;
 
+import io.micrometer.core.instrument.Timer;
 import java.time.Duration;
 import java.util.List;
 import org.slf4j.Logger;
@@ -48,20 +49,36 @@ public class WebPushOutboxWorker {
         if (!enabled || !gateway.isConfigured()) {
             return;
         }
-        List<WebPushOutboxTask> tasks = claimService.claim(batchSize, lease);
-        for (WebPushOutboxTask task : tasks) {
-            try {
-                deliveryService.deliver(task);
-            } catch (RuntimeException exception) {
-                LOGGER.error(
-                        "Web Push Outbox 작업 처리 중 예상하지 못한 오류가 발생했습니다. outboxId={}",
-                        task.id(),
-                        exception);
+        Timer.Sample batchSample = null;
+        try {
+            List<WebPushOutboxTask> tasks =
+                    metrics.recordClaim(() -> claimService.claim(batchSize, lease));
+            metrics.recordClaimedBatchSize(tasks.size());
+            if (!tasks.isEmpty()) {
+                batchSample = metrics.startBatch();
             }
-        }
-        metrics.refresh();
-        if (!tasks.isEmpty()) {
-            LOGGER.info("Web Push Outbox batch 처리를 마쳤습니다. claimed={}", tasks.size());
+            for (WebPushOutboxTask task : tasks) {
+                try {
+                    metrics.recordDelivery(() -> deliveryService.deliver(task));
+                } catch (RuntimeException exception) {
+                    metrics.recordWorkerError();
+                    LOGGER.error(
+                            "Web Push Outbox 작업 처리 중 예상하지 못한 오류가 발생했습니다. outboxId={}",
+                            task.id(),
+                            exception);
+                }
+            }
+            if (!tasks.isEmpty()) {
+                LOGGER.info("Web Push Outbox batch 처리를 마쳤습니다. claimed={}", tasks.size());
+            }
+        } catch (RuntimeException exception) {
+            metrics.recordWorkerError();
+            throw exception;
+        } finally {
+            if (batchSample != null) {
+                metrics.stopBatch(batchSample);
+            }
+            metrics.refresh();
         }
     }
 }

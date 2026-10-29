@@ -12,3 +12,13 @@ load-test:
 auth:
   session:
     idle-timeout: ${LOAD_TEST_SESSION_IDLE_TIMEOUT:30d}
+
+webpush:
+  load-test-gateway:
+    enabled: ${WEB_PUSH_LOAD_TEST_GATEWAY_ENABLED:true}
+    delayed-percent: ${WEB_PUSH_LOAD_TEST_DELAYED_PERCENT:0}
+    retry-429-percent: ${WEB_PUSH_LOAD_TEST_RETRY_429_PERCENT:0}
+    retry-503-percent: ${WEB_PUSH_LOAD_TEST_RETRY_503_PERCENT:0}
+    timeout-percent: ${WEB_PUSH_LOAD_TEST_TIMEOUT_PERCENT:0}
+    delay: ${WEB_PUSH_LOAD_TEST_DELAY:200ms}
+    timeout: ${WEB_PUSH_LOAD_TEST_TIMEOUT:2s}
