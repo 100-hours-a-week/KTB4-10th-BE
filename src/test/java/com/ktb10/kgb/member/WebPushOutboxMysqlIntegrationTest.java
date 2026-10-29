@@ -99,6 +99,9 @@ class WebPushOutboxMysqlIntegrationTest {
     @Autowired
     private WebPushOutboxResultService resultService;
 
+    @Autowired
+    private OutboxResultTransaction outboxResultTransaction;
+
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {
         registry.add("spring.datasource.url", MYSQL::getJdbcUrl);
@@ -280,6 +283,40 @@ class WebPushOutboxMysqlIntegrationTest {
     }
 
     @Test
+    void resultRecordingLockPreventsTaskFromBeingReclaimed() throws Exception {
+        Member member = activeMember("outbox-result-lock-member", true);
+        activeSubscription(member, 9, null);
+        createNotification(member.getId(), "904");
+        jdbcTemplate.update(
+                "UPDATE web_push_outbox SET next_attempt_at = '2000-01-01 00:00:00'");
+        WebPushOutboxTask claimed = claimService.claim(1, Duration.ofMinutes(1)).getFirst();
+        jdbcTemplate.update(
+                "UPDATE web_push_outbox SET processing_started_at = ? WHERE id = ?",
+                NOW.minusHours(1),
+                claimed.id());
+
+        CountDownLatch resultLocked = new CountDownLatch(1);
+        CountDownLatch finishResult = new CountDownLatch(1);
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<?> result = executor.submit(() -> {
+                outboxResultTransaction.markSentWhileHoldingLock(
+                        claimed, resultLocked, finishResult);
+                return null;
+            });
+
+            assertThat(resultLocked.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(claimService.claim(1, Duration.ofMinutes(1))).isEmpty();
+            finishResult.countDown();
+            result.get(10, TimeUnit.SECONDS);
+        }
+
+        WebPushOutbox sent = outboxRepository.findById(claimed.id()).orElseThrow();
+        assertThat(sent.getStatus()).isEqualTo(WebPushOutboxStatus.SENT);
+        assertThat(sent.getClaimToken()).isNull();
+        assertThat(sent.getAttemptCount()).isEqualTo(1);
+    }
+
+    @Test
     void retryAndPermanentFailureArePersistedInMysql() {
         Member member = activeMember("outbox-retry-member", true);
         activeSubscription(member, 8, null);
@@ -407,6 +444,12 @@ class WebPushOutboxMysqlIntegrationTest {
                 WebPushOutboxWriter outboxWriter) {
             return new OutboxTransaction(notificationRepository, outboxWriter);
         }
+
+        @Bean
+        OutboxResultTransaction outboxResultTransaction(
+                WebPushOutboxRepository outboxRepository) {
+            return new OutboxResultTransaction(outboxRepository);
+        }
     }
 
     static class OutboxTransaction {
@@ -426,6 +469,30 @@ class WebPushOutboxMysqlIntegrationTest {
             Notification notification = notificationRepository.findById(notificationId)
                     .orElseThrow();
             outboxWriter.recordPendingTasks(notification, true, now);
+        }
+    }
+
+    static class OutboxResultTransaction {
+
+        private final WebPushOutboxRepository outboxRepository;
+
+        OutboxResultTransaction(WebPushOutboxRepository outboxRepository) {
+            this.outboxRepository = outboxRepository;
+        }
+
+        @Transactional
+        public void markSentWhileHoldingLock(
+                WebPushOutboxTask task,
+                CountDownLatch resultLocked,
+                CountDownLatch finishResult) throws InterruptedException {
+            WebPushOutbox outbox = outboxRepository.findByIdAndStatusAndClaimToken(
+                            task.id(), WebPushOutboxStatus.PROCESSING, task.claimToken())
+                    .orElseThrow();
+            resultLocked.countDown();
+            if (!finishResult.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Outbox 결과 기록 완료 신호가 지연됐습니다.");
+            }
+            outbox.markSent(NOW);
         }
     }
 }

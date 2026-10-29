@@ -1,10 +1,12 @@
 package com.ktb10.kgb.member.repository;
 
 import com.ktb10.kgb.member.entity.WebPushOutbox;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -59,6 +61,7 @@ public interface WebPushOutboxRepository extends JpaRepository<WebPushOutbox, Lo
             @Param("staleBefore") LocalDateTime staleBefore,
             @Param("batchSize") int batchSize);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<WebPushOutbox> findByIdAndStatusAndClaimToken(
             Long id,
             com.ktb10.kgb.member.entity.WebPushOutboxStatus status,
