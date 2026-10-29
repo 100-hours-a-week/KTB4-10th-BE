@@ -838,12 +838,13 @@ Body 없음.
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | 브라우저 구독과 서버 서명에 사용하는 공개키 | API 제공 가능 |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | 서버 VAPID 서명 개인키 | Secret, FE·로그·문서 값 노출 금지 |
 | `WEB_PUSH_VAPID_SUBJECT` | Push 서비스 운영 연락처인 `mailto:` 또는 `https:` URI | 서버 설정 |
-| `WEB_PUSH_EXECUTOR_CORE_POOL_SIZE` | 전송 전용 실행기 기본 스레드 수 | 운영 설정 |
-| `WEB_PUSH_EXECUTOR_MAX_POOL_SIZE` | 전송 전용 실행기 최대 스레드 수 | 운영 설정 |
-| `WEB_PUSH_EXECUTOR_QUEUE_CAPACITY` | 전송 대기 큐 상한 | 운영 설정 |
-| `WEB_PUSH_MAX_ATTEMPTS` | 최초 전송을 포함한 최대 시도 횟수 | 운영 설정 |
-| `WEB_PUSH_INITIAL_BACKOFF` | 첫 재시도 대기 시간 | 운영 설정 |
-| `WEB_PUSH_MAX_BACKOFF` | 서버가 준 Retry-After를 포함한 최대 대기 시간 | 운영 설정 |
+| `WEB_PUSH_OUTBOX_WORKER_ENABLED` | MySQL Outbox Worker 활성화 여부 | 운영 설정 |
+| `WEB_PUSH_OUTBOX_POLL_INTERVAL_MILLIS` | 미처리 작업 조회 간격 | 기본 5초 |
+| `WEB_PUSH_OUTBOX_BATCH_SIZE` | 한 번에 선점할 최대 작업 수 | 기본 50개 |
+| `WEB_PUSH_OUTBOX_LEASE` | 중단된 PROCESSING 작업을 재선점하기까지의 시간 | 기본 1분 |
+| `WEB_PUSH_OUTBOX_MAX_ATTEMPTS` | 최초 전송을 포함한 최대 시도 횟수 | 기본 3회 |
+| `WEB_PUSH_OUTBOX_INITIAL_BACKOFF` | 첫 DB 기반 재시도 대기 시간 | 기본 5초 |
+| `WEB_PUSH_OUTBOX_MAX_BACKOFF` | Retry-After를 포함한 최대 대기 시간 | 기본 5분 |
 
 ## 4. 관광콘텐츠
 
