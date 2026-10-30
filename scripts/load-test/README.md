@@ -69,6 +69,11 @@ docker compose \
 - 백엔드 API: `http://localhost:8080`
 - health: `http://localhost:8081/actuator/health`
 - Prometheus metrics: `http://localhost:8081/actuator/prometheus`
+
+Prometheus는 기본 `backend`와 다중 Outbox 시나리오에서 생성할 수 있는
+`kgb-outbox-loadtest-worker-2`~`4`를 함께 scrape합니다. 추가 Worker를 실행하지 않는 동안 해당
+target이 `DOWN`으로 표시되는 것은 정상이며, `multi` 실행 중 수집된 시계열은 Worker 컨테이너가
+정리된 뒤에도 Prometheus 보존 기간 동안 조회할 수 있습니다.
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100/ready`
@@ -305,6 +310,10 @@ Grafana의 `Web Push Outbox Worker` 행에서 다음 숫자를 함께 본다.
 | Worker errors | 예상하지 못한 내부 오류 | 정상·재시도 시나리오에서는 0이어야 함 |
 | Hikari active·pending | DB connection 사용·대기 | pending이 지속되면 pool 증설보다 claim·결과 transaction과 쿼리부터 확인 |
 
+batch histogram은 2초 timeout을 50건 순차 처리하는 약 100초 배치도 관측할 수 있도록 120초까지
+기록합니다. 이를 넘는 값은 `+Inf` bucket에 포함되므로 p95뿐 아니라 timer의 count·sum과 Worker
+완료 로그를 함께 확인합니다.
+
 문제별 우선 조치는 다음과 같다.
 
 - waiting만 증가하고 CPU·Hikari 여유가 있으면 batch 크기와 Worker 수를 같은 조건에서 한 번씩 조정한다.
@@ -312,6 +321,7 @@ Grafana의 `Web Push Outbox Worker` 행에서 다음 숫자를 함께 본다.
 - delivery p95만 증가하면 DB보다 외부 Push 지연이 원인이다. timeout·backoff·최대 시도를 조정하고 batch thread를 무제한으로 늘리지 않는다.
 - RETRY_WAIT가 급증하되 최종 drain되면 일시 장애 복구는 정상이다. 오래된 대기 시간이 허용 지연을 넘으면 backoff와 입력률을 재검토한다.
 - 다중 Worker에서 `stale_result_ignored`가 증가하면 lease보다 전송 시간이 긴지 확인한다. lease를 무조건 줄이지 말고 timeout보다 충분히 크게 둔다.
+- 다중 Worker 시나리오에서는 Prometheus의 `kgb-outbox-loadtest-worker-2`~`4` target도 함께 확인한다. 실행하지 않은 추가 Worker target이 `DOWN`인 것은 정상이다.
 - 처리량을 올려도 MySQL 선점과 결과 기록이 먼저 포화되면 Redis Streams나 메시지 브로커를 바로 추가하기보다 현재 DB Outbox의 처리 한계와 필요한 목표 처리량을 먼저 비교한다.
 
 로컬 결과의 절대 처리량은 운영 용량으로 사용하지 않는다. 같은 Docker 자원, 데이터 수, batch·poll·lease 설정에서 변경 전후를 비교하는 근거로 사용한다.

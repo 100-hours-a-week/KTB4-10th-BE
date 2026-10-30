@@ -65,6 +65,7 @@ public class WebPushOutboxMetrics {
         this.batchDuration = Timer.builder("kgb.notification.webpush.outbox.batch.duration")
                 .description("Web Push Outbox Worker의 batch 전체 처리 시간")
                 .publishPercentileHistogram()
+                .maximumExpectedValue(Duration.ofMinutes(2))
                 .register(meterRegistry);
         this.claimedBatchSize = DistributionSummary.builder(
                         "kgb.notification.webpush.outbox.claimed.batch.size")
