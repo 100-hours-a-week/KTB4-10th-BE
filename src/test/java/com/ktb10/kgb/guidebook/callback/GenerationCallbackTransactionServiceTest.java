@@ -8,11 +8,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ktb10.kgb.guidebook.client.AiClientException;
-import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
@@ -57,8 +54,6 @@ class GenerationCallbackTransactionServiceTest {
     private AiGuidebookRequestMapper mapper;
     @Mock
     private ApplicationEventPublisher events;
-    @Mock
-    private GuidebookAiClient client;
 
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
     private GenerationCallbackTransactionService transactions;
@@ -74,14 +69,13 @@ class GenerationCallbackTransactionServiceTest {
     void submitsInitialRequestAndRegistersAcceptedJob() throws Exception {
         GenerationJob job = initialJob();
         var request = initialAiRequest(job);
-        when(client.requestGeneration(request)).thenReturn(
+        var prepared = transactions.prepare(301L);
+        transactions.registerAccepted(prepared,
                 new AiGenerationAcceptedResponse("ai-initial", AiGenerationStatus.PENDING));
 
-        var submission = transactions.submit(301L, client);
-
-        assertThat(submission.failure()).isNull();
-        assertThat(submission.prepared().deadline()).isEqualTo(CLOCK.instant().plusSeconds(900));
-        assertThat(submission.prepared().requestId()).isEqualTo("301-0");
+        assertThat(prepared.initialRequest()).isSameAs(request);
+        assertThat(prepared.deadline()).isEqualTo(CLOCK.instant().plusSeconds(900));
+        assertThat(prepared.requestId()).isEqualTo("301-0");
         assertThat(job.getAiJobId()).isEqualTo("ai-initial");
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
         verifyNoInteractions(results);
@@ -96,29 +90,23 @@ class GenerationCallbackTransactionServiceTest {
         ReflectionTestUtils.setField(job, "id", 301L);
         when(jobs.findByIdForUpdate(301L)).thenReturn(Optional.of(job));
         var request = new AiGuidebookRegenerationRequest("301-0", "걷기를 줄여 주세요.");
-        when(client.requestRegeneration("ai-source", request)).thenReturn(
+        var prepared = transactions.prepare(301L);
+        transactions.registerAccepted(prepared,
                 new AiGenerationAcceptedResponse("ai-regenerated", AiGenerationStatus.PROCESSING));
 
-        var submission = transactions.submit(301L, client);
-
-        assertThat(submission.failure()).isNull();
+        assertThat(prepared.sourceAiJobId()).isEqualTo("ai-source");
+        assertThat(prepared.regenerationRequest()).isEqualTo(request);
         assertThat(job.getAiJobId()).isEqualTo("ai-regenerated");
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
-        verify(client).requestRegeneration("ai-source", request);
         verifyNoInteractions(mapper, results);
     }
 
     @Test
-    void keepsUncertainSubmissionPendingForCallbackOrTimeout() throws Exception {
+    void doesNotPrepareTheSameAttemptTwiceBeforeAiIdIsRegistered() throws Exception {
         GenerationJob job = initialJob();
-        var request = initialAiRequest(job);
-        var failure = new AiClientException("response lost", null,
-                AiFailureType.CONNECTION_ERROR, "/guidebooks-generations", null, 1L);
-        when(client.requestGeneration(request)).thenThrow(failure);
-
-        var submission = transactions.submit(301L, client);
-
-        assertThat(submission.failure()).isSameAs(failure);
+        initialAiRequest(job);
+        assertThat(transactions.prepare(301L)).isNotNull();
+        assertThat(transactions.prepare(301L)).isNull();
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(job.getAttemptStartedAt()).isEqualTo(LocalDateTime.now(CLOCK));
         assertThat(job.getAiJobId()).isNull();
@@ -130,9 +118,9 @@ class GenerationCallbackTransactionServiceTest {
         GenerationJob job = initialJob();
         job.registerAiJob("ai-existing", LocalDateTime.now(CLOCK));
 
-        assertThat(transactions.submit(301L, client)).isNull();
+        assertThat(transactions.prepare(301L)).isNull();
 
-        verifyNoInteractions(client, mapper, results);
+        verifyNoInteractions(mapper, results);
     }
 
     private GenerationJob initialJob() throws Exception {

@@ -80,6 +80,7 @@ ai:
   generation:
     callback-token: ${AI_CALLBACK_TOKEN:}
     timeout: ${AI_GENERATION_TIMEOUT:15m}
+    submission-concurrency: ${AI_GENERATION_SUBMISSION_CONCURRENCY:3}
     redis:
       enabled: ${AI_GENERATION_REDIS_ENABLED:false}
       channel: ${AI_GENERATION_REDIS_CHANNEL:kgb:local:generation}

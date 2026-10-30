@@ -7,6 +7,7 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
+import com.ktb10.kgb.guidebook.callback.GenerationSubmissionQueue;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -25,7 +26,6 @@ import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
-import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.guidebook.service.GuidebookRegenerationPolicy.RegenerationAvailability;
@@ -43,9 +43,13 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.springframework.context.ApplicationEventPublisher;
+import java.util.function.Supplier;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 가이드북 생성 요청 접수와 회원 본인의 생성 작업 조회를 처리합니다. */
 @Service
@@ -63,7 +67,8 @@ public class GuidebookGenerationService {
     private final MemberPreferenceRepository memberPreferenceRepository;
     private final MemberGuidebookRepository memberGuidebookRepository;
     private final CreditWalletRepository creditWalletRepository;
-    private final ApplicationEventPublisher eventPublisher;
+    private final ObjectProvider<GenerationSubmissionQueue> submissions;
+    private final TransactionTemplate writes;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
@@ -73,7 +78,8 @@ public class GuidebookGenerationService {
             MemberPreferenceRepository memberPreferenceRepository,
             MemberGuidebookRepository memberGuidebookRepository,
             CreditWalletRepository creditWalletRepository,
-            ApplicationEventPublisher eventPublisher,
+            ObjectProvider<GenerationSubmissionQueue> submissions,
+            PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
             Clock clock) {
         this.generationJobRepository = generationJobRepository;
@@ -81,17 +87,23 @@ public class GuidebookGenerationService {
         this.memberPreferenceRepository = memberPreferenceRepository;
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.creditWalletRepository = creditWalletRepository;
-        this.eventPublisher = eventPublisher;
+        this.submissions = submissions;
+        this.writes = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public GuidebookRegenerationResponse regenerate(
             Long memberId,
             Long guidebookId,
             String idempotencyKey,
             GuidebookRegenerationRequest request) {
+        return admit(() -> regenerateInTransaction(memberId, guidebookId, idempotencyKey, request));
+    }
+
+    private Admission<GuidebookRegenerationResponse> regenerateInTransaction(
+            Long memberId, Long guidebookId, String idempotencyKey, GuidebookRegenerationRequest request) {
         Member member = memberRepository.findActiveByIdForUpdate(memberId)
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.AUTH_SESSION_REQUIRED));
         if (member.getStatus() != MemberStatus.ACTIVE) {
@@ -103,7 +115,7 @@ public class GuidebookGenerationService {
                         memberId,
                         idempotencyKey);
         if (existingJob.isPresent()) {
-            return handleRepeatedRegeneration(existingJob.get(), guidebookId, request);
+            return new Admission<>(handleRepeatedRegeneration(existingJob.get(), guidebookId, request), null);
         }
 
         MemberGuidebook relationship = memberGuidebookRepository
@@ -163,21 +175,25 @@ public class GuidebookGenerationService {
                 idempotencyKey,
                 now);
         GenerationJob savedJob = generationJobRepository.save(job);
-        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(savedJob.getId()));
-        return GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion());
+        return new Admission<>(GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion()), savedJob.getId());
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public GuidebookGenerationResponse createInitial(
             Long memberId,
             String idempotencyKey,
             GuidebookGenerationRequest request) {
+        return admit(() -> createInitialInTransaction(memberId, idempotencyKey, request));
+    }
+
+    private Admission<GuidebookGenerationResponse> createInitialInTransaction(
+            Long memberId, String idempotencyKey, GuidebookGenerationRequest request) {
         Optional<GenerationJob> existingJob =
                 generationJobRepository.findByMemberIdAndIdempotencyKey(
                         memberId,
                         idempotencyKey);
         if (existingJob.isPresent()) {
-            return handleRepeatedRequest(existingJob.get(), request);
+            return new Admission<>(handleRepeatedRequest(existingJob.get(), request), null);
         }
 
         validateTravelCondition(request);
@@ -217,9 +233,8 @@ public class GuidebookGenerationService {
                 idempotencyKey,
                 now);
         GenerationJob savedJob = generationJobRepository.save(job);
-        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(savedJob.getId()));
         // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구한다.
-        return GuidebookGenerationResponse.from(savedJob);
+        return new Admission<>(GuidebookGenerationResponse.from(savedJob), savedJob.getId());
     }
 
     @Transactional(readOnly = true)
@@ -238,8 +253,12 @@ public class GuidebookGenerationService {
         return GenerationStatusResponse.from(job, error, initialRequest(job));
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.NEVER)
     public GuidebookGenerationResponse retry(Long memberId, Long jobId) {
+        return admit(() -> retryInTransaction(memberId, jobId));
+    }
+
+    private Admission<GuidebookGenerationResponse> retryInTransaction(Long memberId, Long jobId) {
         if (!generationJobRepository.existsById(jobId)) {
             throw new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND);
         }
@@ -259,8 +278,20 @@ public class GuidebookGenerationService {
         }
 
         job.retry(LocalDateTime.now(clock));
-        eventPublisher.publishEvent(new GuidebookGenerationRequestedEvent(job.getId()));
-        return GuidebookGenerationResponse.from(job);
+        return new Admission<>(GuidebookGenerationResponse.from(job), job.getId());
+    }
+
+    private <T> T admit(Supplier<Admission<T>> action) {
+        // execute 반환 시 커밋과 자원 정리가 끝난다. AFTER_COMMIT 안에서 HTTP를 호출하지 않는다.
+        Admission<T> admission = writes.execute(status -> action.get());
+        if (admission.jobId() != null) {
+            submissions.ifAvailable(submission -> submission.submit(admission.jobId()));
+        }
+        return admission.response();
+    }
+
+    // 멱등 재요청은 jobId=null로 반환해 AI 접수를 다시 실행하지 않는다.
+    private record Admission<T>(T response, Long jobId) {
     }
 
     private boolean isRetryable(GenerationJob job) {
