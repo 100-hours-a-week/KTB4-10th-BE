@@ -74,6 +74,15 @@ Prometheus는 기본 `backend`와 다중 Outbox 시나리오에서 생성할 수
 `kgb-outbox-loadtest-worker-2`~`4`를 함께 scrape합니다. 추가 Worker를 실행하지 않는 동안 해당
 target이 `DOWN`으로 표시되는 것은 정상이며, `multi` 실행 중 수집된 시계열은 Worker 컨테이너가
 정리된 뒤에도 Prometheus 보존 기간 동안 조회할 수 있습니다.
+
+기존 부하테스트 환경에서 이 설정을 새로 받은 경우 실행 중인 Prometheus 프로세스는 설정 파일
+변경을 자동으로 다시 읽지 않습니다. `multi` 실행 전에 다음 명령으로 한 번 재시작하고 Prometheus
+target 목록에 추가 Worker가 `DOWN` 상태로 표시되는지 확인합니다.
+
+```bash
+docker compose --env-file .env.loadtest -f compose.loadtest.yml restart prometheus
+```
+
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100/ready`
