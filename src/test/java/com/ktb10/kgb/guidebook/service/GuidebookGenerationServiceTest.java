@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +24,7 @@ import com.ktb10.kgb.guidebook.entity.AcquisitionType;
 import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
-import com.ktb10.kgb.guidebook.event.GuidebookGenerationRequestedEvent;
+import com.ktb10.kgb.guidebook.callback.GenerationSubmissionQueue;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.member.entity.Member;
@@ -45,7 +46,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -73,7 +75,10 @@ class GuidebookGenerationServiceTest {
     private CreditWalletRepository creditWalletRepository;
 
     @Mock
-    private ApplicationEventPublisher eventPublisher;
+    private GenerationSubmissionQueue submissions;
+
+    @Mock
+    private PlatformTransactionManager transactionManager;
 
     private ObjectMapper objectMapper;
     private GuidebookGenerationService service;
@@ -88,7 +93,9 @@ class GuidebookGenerationServiceTest {
                 memberPreferenceRepository,
                 memberGuidebookRepository,
                 creditWalletRepository,
-                eventPublisher,
+                new StaticListableBeanFactory(java.util.Map.of("submissions", submissions))
+                        .getBeanProvider(GenerationSubmissionQueue.class),
+                transactionManager,
                 objectMapper,
                 CLOCK);
     }
@@ -156,7 +163,9 @@ class GuidebookGenerationServiceTest {
         assertThat(response.jobType().name()).isEqualTo("REGENERATION");
         assertThat(response.guidebookId()).isEqualTo(50L);
         assertThat(response.currentVersion()).isEqualTo(1);
-        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        var order = inOrder(transactionManager, submissions);
+        order.verify(transactionManager).commit(any());
+        order.verify(submissions).submit(301L);
         verify(creditWalletRepository, never()).findByMemberIdForUpdate(any());
     }
 
@@ -191,7 +200,7 @@ class GuidebookGenerationServiceTest {
                                 .isEqualTo(GuidebookErrorCode.REGENERATION_WINDOW_EXPIRED));
 
         verify(generationJobRepository, never()).save(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(submissions, never()).submit(any());
     }
 
     @Test
@@ -225,7 +234,7 @@ class GuidebookGenerationServiceTest {
                                 .isEqualTo(GuidebookErrorCode.REGENERATION_LIMIT_EXCEEDED));
 
         verify(generationJobRepository, never()).save(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(submissions, never()).submit(any());
     }
 
     @Test
@@ -257,7 +266,7 @@ class GuidebookGenerationServiceTest {
         assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
         assertThat(response.guidebookId()).isNull();
         verify(generationJobRepository).save(any(GenerationJob.class));
-        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        verify(submissions).submit(301L);
     }
 
     @Test
@@ -278,7 +287,7 @@ class GuidebookGenerationServiceTest {
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
         assertThat(job.getAiJobId()).isEqualTo("ai-job-301");
         verify(generationJobRepository, never()).save(any());
-        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+        org.mockito.Mockito.verifyNoInteractions(submissions);
     }
 
     @Test
@@ -297,7 +306,7 @@ class GuidebookGenerationServiceTest {
                 .isEqualTo(GenerationStatus.PENDING);
         assertThat(job.getAttemptCount()).isZero();
         assertThat(job.getAttemptStartedAt()).isNull();
-        org.mockito.Mockito.verifyNoInteractions(eventPublisher);
+        org.mockito.Mockito.verifyNoInteractions(submissions);
     }
 
     @Test
@@ -444,7 +453,7 @@ class GuidebookGenerationServiceTest {
         verify(memberPreferenceRepository, never())
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(any());
         verify(generationJobRepository, never()).save(any());
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(submissions, never()).submit(any());
     }
 
     @Test
@@ -543,7 +552,7 @@ class GuidebookGenerationServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.errorCode())
                                 .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(submissions, never()).submit(any());
     }
 
     @Test
@@ -561,7 +570,7 @@ class GuidebookGenerationServiceTest {
                 .isInstanceOfSatisfying(BusinessException.class, exception ->
                         assertThat(exception.errorCode())
                                 .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
-        verify(eventPublisher).publishEvent(new GuidebookGenerationRequestedEvent(301L));
+        verify(submissions).submit(301L);
         assertThat(job.getAttemptCount()).isEqualTo((short) 1);
     }
 

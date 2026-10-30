@@ -6,7 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.ErrorCode;
-import com.ktb10.kgb.guidebook.callback.GenerationCallbackSubmissionListener;
+import com.ktb10.kgb.guidebook.callback.GenerationSubmissionQueue;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -85,7 +85,7 @@ class GuidebookRegenerationConcurrencyMysqlIntegrationTest {
     private Clock clock;
 
     @MockitoBean
-    private GenerationCallbackSubmissionListener callbackSubmissionListener;
+    private GenerationSubmissionQueue callbackSubmissionListener;
 
     @DynamicPropertySource
     static void mysqlProperties(DynamicPropertyRegistry registry) {

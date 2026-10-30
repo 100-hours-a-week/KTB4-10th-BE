@@ -206,7 +206,11 @@ K6_GENERATION_VUS=2 docker compose \
   --profile loadtest run --rm k6-guidebook
 ```
 
-로컬 `FakeGuidebookAiClient`를 사용하므로 실제 AI 서버 성능이 아니라 생성 접수, polling과 결과 저장 흐름을 측정합니다.
+BE 내부 Fake는 제거됐으므로 HTTP AI의 fake LLM·콜백 설정과 양쪽 AI_CALLBACK_TOKEN을
+실행 환경에 주입해야 합니다. 이 스크립트는 FE 역할로 2초마다 BE 상태를 조회하며,
+BE가 AI를 폴링하는 것은 아닙니다. 전체 제한 약 110초는 AI 큐 대기보다 짧을 수 있습니다.
+트랜잭션 경계 변경의 동일 시나리오 A/B 결과와 한계는
+[AI 접수 부하테스트 기록](../../docs/AI-접수-트랜잭션-부하테스트.md)을 참고합니다.
 
 ### SSE 연결 수명과 과다 연결
 
@@ -367,3 +371,16 @@ docker compose \
 - `results/load-test/*.json`
 - Docker volume
 - 실제 세션, API 키와 DB 접속 정보
+
+## 생성 접수 지속 부하 (단일 BE 메모리 큐)
+
+`guidebook-admission.js`는 기본 10 RPS × 10분 동안 생성 POST를 보내며 완료 폴링은 하지 않는다.
+각 요청은 독립 fixture 회원을 사용하므로 6,001명 이상을 미리 준비하고
+`BASE_URL`, `SESSION_PREFIX`, `RUN_ID`를 주입한다. `RATE`와 `DURATION`으로 조절한다.
+CSRF 발급 GET도 요청당 1회 추가되므로 총 HTTP 요청량은 생성 POST RPS의 약 2배다.
+테스트 fixture 회원 상한은 loadtest 프로필에서 10,000명이다. 인증 우회는 사용하지 않는다.
+
+큐 지표는 `guidebook_generation_queue_waiting`, `guidebook_generation_queue_running`,
+`guidebook_generation_queue_limit`로 노출한다. BE 202 접수와 실제 AI 접수·완료는
+구분해서 확인한다. 3개 AI 워커가 60초씩 처리하면 10분 동안 6,000건을 완료할 수 없다.
+격리 환경 종료 시 메모리 대기열은 유실되므로 결과를 먼저 집계하고 테스트 DB를 보존한다.

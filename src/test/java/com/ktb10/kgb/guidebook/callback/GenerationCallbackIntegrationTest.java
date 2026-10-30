@@ -144,9 +144,6 @@ class GenerationCallbackIntegrationTest {
                 new com.ktb10.kgb.guidebook.client.TourismContentSnapshotQuery.TourismContentSnapshot(
                         701L, "126508", "테스트 장소", "HS", "서울 종로구",
                         37.5, 127.0, null, null, null)));
-        var preparedSubmission = transactions.prepare(job.getId());
-        assertThat(preparedSubmission.deadline()).isEqualTo(NOW.plusSeconds(900));
-        assertThat(preparedSubmission.initialRequest().requestId()).isEqualTo(job.getId() + "-0");
         var result = new com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.GuidebookResult(
                 "서울 여행", "요약", null, "<article>여행</article>", java.util.List.of(
                         new com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse.ItineraryDay(

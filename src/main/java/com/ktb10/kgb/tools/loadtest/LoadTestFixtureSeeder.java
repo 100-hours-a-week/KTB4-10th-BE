@@ -31,7 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LoadTestFixtureSeeder implements ApplicationRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(LoadTestFixtureSeeder.class);
-    private static final int MAX_USER_COUNT = 2_000;
+    private static final int MAX_USER_COUNT = 10_000;
     private static final List<PreferenceCode> DEFAULT_PREFERENCES = List.of(
             PreferenceCode.NATURE,
             PreferenceCode.NATURE_PARK,
@@ -150,7 +150,7 @@ public class LoadTestFixtureSeeder implements ApplicationRunner {
 
     private int validateUserCount(int value) {
         if (value < 1 || value > MAX_USER_COUNT) {
-            throw new IllegalArgumentException("부하 테스트 회원 수는 1 이상 2000 이하여야 합니다.");
+            throw new IllegalArgumentException("부하 테스트 회원 수는 1 이상 10000 이하여야 합니다.");
         }
         return value;
     }
