@@ -70,7 +70,7 @@ public class TourApiSyncService {
                 .map(ContentChangeSet::sourceContentId)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         TourApiDetailSyncService.DetailSyncSummary detailSummary = detailSyncService.synchronize(
-                snapshotRunId,
+                runId,
                 syncDate.minusDays(1),
                 area.raw(),
                 newSourceContentIds);

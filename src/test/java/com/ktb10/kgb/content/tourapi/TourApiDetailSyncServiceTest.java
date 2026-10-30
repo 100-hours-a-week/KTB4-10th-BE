@@ -14,12 +14,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 
 class TourApiDetailSyncServiceTest {
+
+    private static final UUID RUN_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final TourApiClient client = mock(TourApiClient.class);
@@ -74,16 +77,18 @@ class TourApiDetailSyncServiceTest {
         when(client.fetchDetailCommon("200")).thenReturn(response("[]"));
         when(client.fetchDetailIntro("200", "15")).thenReturn(response("[]"));
         when(importer.importDetail(
+                eq(RUN_ID),
                 eq(new TourApiDetailTarget(10L, "100", "12", false)),
                 any(byte[].class),
                 eq(null))).thenReturn(emptyChangeSet("100"));
         when(importer.importDetail(
+                eq(RUN_ID),
                 eq(new TourApiDetailTarget(20L, "200", "15", true)),
                 any(byte[].class),
                 any(byte[].class))).thenReturn(emptyChangeSet("200"));
 
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
-                "run-1",
+                RUN_ID,
                 LocalDate.of(2026, 10, 13),
                 area,
                 Set.of());
@@ -96,10 +101,12 @@ class TourApiDetailSyncServiceTest {
         verify(client).fetchDetailIntro("200", "15");
         verify(client, never()).fetchDetailCommon("300");
         verify(importer).importDetail(
+                eq(RUN_ID),
                 eq(new TourApiDetailTarget(10L, "100", "12", false)),
                 any(byte[].class),
                 eq(null));
         verify(importer).importDetail(
+                eq(RUN_ID),
                 eq(new TourApiDetailTarget(20L, "200", "15", true)),
                 any(byte[].class),
                 any(byte[].class));
@@ -120,7 +127,7 @@ class TourApiDetailSyncServiceTest {
                 """);
 
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
-                "run-2",
+                RUN_ID,
                 LocalDate.of(2026, 10, 13),
                 area,
                 Set.of());
@@ -148,12 +155,13 @@ class TourApiDetailSyncServiceTest {
         when(client.fetchDetailCommon("500")).thenReturn(response("[]"));
         when(client.fetchDetailIntro("500", "15")).thenReturn(response("[]"));
         when(importer.importDetail(
+                eq(RUN_ID),
                 eq(new TourApiDetailTarget(50L, "500", "15", true)),
                 any(byte[].class),
                 any(byte[].class))).thenReturn(emptyChangeSet("500"));
 
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
-                "run-3",
+                RUN_ID,
                 LocalDate.of(2026, 10, 17),
                 area,
                 Set.of("500"));

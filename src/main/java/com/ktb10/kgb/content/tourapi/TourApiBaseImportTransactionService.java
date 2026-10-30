@@ -29,14 +29,17 @@ public class TourApiBaseImportTransactionService {
     private final TourApiImportService importer;
     private final MapContentCacheRefreshService cacheRefreshService;
     private final TourApiCacheRefreshRepository cacheRefreshRepository;
+    private final TourApiContentChangeOccurrenceRepository changeOccurrenceRepository;
 
     public TourApiBaseImportTransactionService(
             TourApiImportService importer,
             MapContentCacheRefreshService cacheRefreshService,
-            TourApiCacheRefreshRepository cacheRefreshRepository) {
+            TourApiCacheRefreshRepository cacheRefreshRepository,
+            TourApiContentChangeOccurrenceRepository changeOccurrenceRepository) {
         this.importer = importer;
         this.cacheRefreshService = cacheRefreshService;
         this.cacheRefreshRepository = cacheRefreshRepository;
+        this.changeOccurrenceRepository = changeOccurrenceRepository;
     }
 
     @Transactional
@@ -53,6 +56,7 @@ public class TourApiBaseImportTransactionService {
         List<MapContentCacheTile> changedTiles = cacheRefreshService.resolveTiles(
                 cacheLocations(summary.changeSets()), syncDate);
         cacheRefreshRepository.save(runId, changedTiles, createdAt);
+        changeOccurrenceRepository.merge(runId, summary.changeSets());
         return summary;
     }
 

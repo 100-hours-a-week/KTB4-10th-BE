@@ -11,6 +11,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,14 +25,37 @@ public class TourApiDetailImportService {
 
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
+    private final TourApiContentChangeOccurrenceRepository changeOccurrenceRepository;
 
-    public TourApiDetailImportService(ObjectMapper objectMapper, JdbcTemplate jdbcTemplate) {
+    public TourApiDetailImportService(
+            ObjectMapper objectMapper,
+            JdbcTemplate jdbcTemplate,
+            TourApiContentChangeOccurrenceRepository changeOccurrenceRepository) {
         this.objectMapper = objectMapper;
         this.jdbcTemplate = jdbcTemplate;
+        this.changeOccurrenceRepository = changeOccurrenceRepository;
     }
 
     @Transactional
     public ContentChangeSet importDetail(
+            TourApiDetailTarget target,
+            byte[] commonRaw,
+            byte[] introRaw) {
+        return importDetailValues(target, commonRaw, introRaw);
+    }
+
+    @Transactional
+    public ContentChangeSet importDetail(
+            UUID runId,
+            TourApiDetailTarget target,
+            byte[] commonRaw,
+            byte[] introRaw) {
+        ContentChangeSet changeSet = importDetailValues(target, commonRaw, introRaw);
+        changeOccurrenceRepository.merge(runId, List.of(changeSet));
+        return changeSet;
+    }
+
+    private ContentChangeSet importDetailValues(
             TourApiDetailTarget target,
             byte[] commonRaw,
             byte[] introRaw) {
