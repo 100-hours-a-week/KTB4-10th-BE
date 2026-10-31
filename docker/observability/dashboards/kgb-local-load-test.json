@@ -281,6 +281,69 @@
       "targets": [{"editorMode": "code", "expr": "jvm_threads_live_threads{application=\"kgb\"}", "legendFormat": "live threads", "range": true, "refId": "A"}],
       "title": "JVM — Live threads",
       "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 65},
+      "id": 27,
+      "panels": [],
+      "title": "Web Push Outbox Worker",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "PENDING·RETRY_WAIT 적체, PROCESSING 수와 가장 오래 기다린 작업의 대기 시간입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "C"}, "properties": [{"id": "unit", "value": "s"}]}]},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 66},
+      "id": 28,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum(kgb_notification_webpush_outbox_waiting{application=\"kgb\"})", "legendFormat": "waiting", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "sum(kgb_notification_webpush_outbox_processing{application=\"kgb\"})", "legendFormat": "processing", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "max(kgb_notification_webpush_outbox_oldest_waiting_seconds{application=\"kgb\"})", "legendFormat": "oldest waiting", "range": true, "refId": "C"}],
+      "title": "Outbox — 적체와 대기 시간",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Worker가 기록한 sent, retry_wait, failed_permanent, cancelled, stale_result_ignored 결과율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "ops"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 66},
+      "id": 29,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "sum by (outcome) (rate(kgb_notification_webpush_outbox_results_total{application=\"kgb\"}[$__rate_interval]))", "legendFormat": "{{outcome}}", "range": true, "refId": "A"}],
+      "title": "Outbox — 처리 결과율",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "DB 선점, 단일 Push 처리, batch 전체 처리 단계의 p95입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0, "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 66},
+      "id": 30,
+      "options": {"legend": {"calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_notification_webpush_outbox_claim_duration_seconds_bucket{application=\"kgb\"}[$__rate_interval])))", "legendFormat": "claim p95", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_notification_webpush_outbox_delivery_duration_seconds_bucket{application=\"kgb\"}[$__rate_interval])))", "legendFormat": "delivery p95", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(kgb_notification_webpush_outbox_batch_duration_seconds_bucket{application=\"kgb\"}[$__rate_interval])))", "legendFormat": "batch p95", "range": true, "refId": "C"}],
+      "title": "Outbox — 처리 단계 p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "한 번에 선점한 작업 수와 Worker 내부 예상하지 못한 오류 증가율입니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "unit", "value": "ops"}]}]},
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 73},
+      "id": 31,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "max(kgb_notification_webpush_outbox_claimed_batch_size_max{application=\"kgb\"})", "legendFormat": "claimed batch max", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "sum(rate(kgb_notification_webpush_outbox_worker_errors_total{application=\"kgb\"}[$__rate_interval]))", "legendFormat": "worker errors", "range": true, "refId": "B"}],
+      "title": "Outbox — Batch와 Worker 오류",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "description": "Outbox 처리 중 DB 커넥션 포화 여부를 판단합니다. pending이 지속되면 batch·polling 조정보다 먼저 DB 선점과 트랜잭션 시간을 확인합니다.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 1, "showPoints": "never"}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 73},
+      "id": 32,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi"}},
+      "targets": [{"editorMode": "code", "expr": "hikaricp_connections_active{application=\"kgb\"}", "legendFormat": "active {{instance}}", "range": true, "refId": "A"}, {"editorMode": "code", "expr": "hikaricp_connections_pending{application=\"kgb\"}", "legendFormat": "pending {{instance}}", "range": true, "refId": "B"}, {"editorMode": "code", "expr": "hikaricp_connections_max{application=\"kgb\"}", "legendFormat": "max {{instance}}", "range": true, "refId": "C"}],
+      "title": "Outbox — HikariCP 포화도",
+      "type": "timeseries"
     }
   ],
   "refresh": "5s",
