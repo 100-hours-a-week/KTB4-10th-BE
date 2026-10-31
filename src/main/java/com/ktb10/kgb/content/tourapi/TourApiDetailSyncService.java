@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -51,7 +52,7 @@ public class TourApiDetailSyncService {
     }
 
     public DetailSyncSummary synchronize(
-            String runId,
+            UUID runId,
             LocalDate targetDate,
             byte[] areaRaw,
             Set<String> newSourceContentIds) {
@@ -137,10 +138,27 @@ public class TourApiDetailSyncService {
     }
 
     ContentChangeSet synchronizeTarget(String runId, TourApiDetailTarget target) {
+        return synchronizeTarget(
+                runId,
+                target,
+                (common, intro) -> importer.importDetail(target, common, intro));
+    }
+
+    private ContentChangeSet synchronizeTarget(UUID runId, TourApiDetailTarget target) {
+        return synchronizeTarget(
+                runId.toString(),
+                target,
+                (common, intro) -> importer.importDetail(runId, target, common, intro));
+    }
+
+    private ContentChangeSet synchronizeTarget(
+            String snapshotRunId,
+            TourApiDetailTarget target,
+            DetailImporter detailImporter) {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= properties.maxAttempts(); attempt++) {
             try {
-                return synchronizeOne(runId, target);
+                return synchronizeOne(snapshotRunId, target, detailImporter);
             } catch (TourApiException exception) {
                 lastFailure = exception;
                 if (!exception.isRetryable() || attempt == properties.maxAttempts()) {
@@ -154,7 +172,10 @@ public class TourApiDetailSyncService {
                 : lastFailure;
     }
 
-    private ContentChangeSet synchronizeOne(String runId, TourApiDetailTarget target) {
+    private ContentChangeSet synchronizeOne(
+            String runId,
+            TourApiDetailTarget target,
+            DetailImporter detailImporter) {
         byte[] common = client.fetchDetailCommon(target.sourceContentId());
         storage.saveDetail(runId, target.sourceContentId(), "detailCommon2", common);
         byte[] intro = null;
@@ -163,7 +184,7 @@ public class TourApiDetailSyncService {
                     target.sourceContentId(), target.sourceContentTypeId());
             storage.saveDetail(runId, target.sourceContentId(), "detailIntro2", intro);
         }
-        return importer.importDetail(target, common, intro);
+        return detailImporter.importDetail(common, intro);
     }
 
     private List<JsonNode> readItems(byte[] raw) {
@@ -222,5 +243,11 @@ public class TourApiDetailSyncService {
             String sourceContentId,
             String sourceContentTypeId,
             boolean event) {
+    }
+
+    @FunctionalInterface
+    private interface DetailImporter {
+
+        ContentChangeSet importDetail(byte[] common, byte[] intro);
     }
 }

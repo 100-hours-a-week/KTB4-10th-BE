@@ -77,7 +77,7 @@ class TourApiSyncServiceTest {
                                 null,
                                 null))));
         when(detailSyncService.synchronize(
-                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(UUID.class),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
                 org.mockito.ArgumentMatchers.eq(area),
                 org.mockito.ArgumentMatchers.eq(Set.of("late-content"))))
@@ -93,7 +93,7 @@ class TourApiSyncServiceTest {
                 org.mockito.ArgumentMatchers.eq(festival),
                 org.mockito.ArgumentMatchers.any());
         verify(detailSyncService).synchronize(
-                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(runId),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
                 org.mockito.ArgumentMatchers.eq(area),
                 org.mockito.ArgumentMatchers.eq(Set.of("late-content")));
