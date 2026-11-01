@@ -10,10 +10,12 @@ import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 /** Java 21 기반 push2u로 VAPID 인증과 payload 암호화를 수행합니다. */
 @Component
+@Profile("!loadtest")
 public class Push2uWebPushGateway implements WebPushGateway {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(Push2uWebPushGateway.class);

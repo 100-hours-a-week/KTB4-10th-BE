@@ -69,6 +69,20 @@ docker compose \
 - 백엔드 API: `http://localhost:8080`
 - health: `http://localhost:8081/actuator/health`
 - Prometheus metrics: `http://localhost:8081/actuator/prometheus`
+
+Prometheus는 기본 `backend`와 다중 Outbox 시나리오에서 생성할 수 있는
+`kgb-outbox-loadtest-worker-2`~`4`를 함께 scrape합니다. 추가 Worker를 실행하지 않는 동안 해당
+target이 `DOWN`으로 표시되는 것은 정상이며, `multi` 실행 중 수집된 시계열은 Worker 컨테이너가
+정리된 뒤에도 Prometheus 보존 기간 동안 조회할 수 있습니다.
+
+기존 부하테스트 환경에서 이 설정을 새로 받은 경우 실행 중인 Prometheus 프로세스는 설정 파일
+변경을 자동으로 다시 읽지 않습니다. `multi` 실행 전에 다음 명령으로 한 번 재시작하고 Prometheus
+target 목록에 추가 Worker가 `DOWN` 상태로 표시되는지 확인합니다.
+
+```bash
+docker compose --env-file .env.loadtest -f compose.loadtest.yml restart prometheus
+```
+
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 - Prometheus: `http://localhost:9090`
 - Loki: `http://localhost:3100/ready`
@@ -239,6 +253,87 @@ SSE는 응답을 장시간 유지하므로 일반적인 짧은 HTTP 요청용 k6
 - 클라이언트 종료 후 기본 35초 동안 heartbeat 정리와 Prometheus 수집을 기다린 뒤 연결 Gauge를 출력한다.
 
 부하 중에는 `http://localhost:3000`의 `KGB Local Load Test` 대시보드에서 SSE 패널을 확인한다. 종료 뒤 `SSE — 현재 연결 수`가 테스트 전 기준선으로 돌아와야 한다. Heap은 한 번 증가할 수 있으므로 동일 시나리오를 최소 세 번 반복하고 GC 이후 기준선이 계속 상승하는지를 본다.
+
+### Web Push Outbox Worker
+
+실제 FCM·Mozilla·Apple Push Service를 호출하지 않고 MySQL Outbox Worker의 처리량, 재시도 적체, 다중 Worker 선점과 lease 복구를 확인한다. `local,loadtest` 프로필에서는 운영 `Push2uWebPushGateway` 대신 결정적인 테스트 Gateway가 활성화된다. 운영 프로필에서는 테스트 Gateway Bean이 생성되지 않는다.
+
+최초에는 100건 정상 처리로 환경을 확인한다.
+
+```bash
+./scripts/load-test/run-web-push-outbox.sh run accepted 100
+```
+
+스크립트는 다음 순서로 동작한다.
+
+1. Worker를 비활성화한 백엔드를 한 번 실행해 회원 fixture와 Flyway 스키마를 준비한다.
+2. 이전 Outbox 부하테스트 데이터만 삭제한다.
+3. 활성 회원·Web Push 구독·알림·PENDING Outbox를 지정한 수만큼 만든다.
+4. 선택한 Push 응답 조건으로 백엔드를 재생성한다.
+5. PENDING·RETRY_WAIT·PROCESSING이 모두 종료 상태가 될 때까지 기다린다.
+6. 상태별 건수, 최대 시도 횟수와 전체 drain 시간을 출력한다.
+
+다음 순서로 한 단계씩 실행한다. 앞 단계에서 drain timeout, Hikari pending 지속 또는 Worker 오류가 발생하면 다음 단계로 올리지 않는다.
+
+```bash
+# 1. 정상 처리량 기준선
+./scripts/load-test/run-web-push-outbox.sh run accepted 100
+./scripts/load-test/run-web-push-outbox.sh run accepted 1000
+./scripts/load-test/run-web-push-outbox.sh run accepted 5000
+
+# 2. Push Service가 200ms 느린 조건
+./scripts/load-test/run-web-push-outbox.sh run slow 1000
+
+# 3. 429 10%, 503 10%, timeout 10%와 재시도
+./scripts/load-test/run-web-push-outbox.sh run mixed 1000
+
+# 4. timeout 지속 시 최대 시도 초과와 종료 상태
+./scripts/load-test/run-web-push-outbox.sh run timeout 100
+
+# 5. 같은 MySQL을 polling하는 Worker 2개
+./scripts/load-test/run-web-push-outbox.sh run multi 5000 2
+
+# 6. PROCESSING 중 Worker 종료 후 10초 lease 복구
+./scripts/load-test/run-web-push-outbox.sh run lease 100
+```
+
+`status`와 `cleanup`은 별도로 사용할 수 있다.
+
+```bash
+./scripts/load-test/run-web-push-outbox.sh status
+./scripts/load-test/run-web-push-outbox.sh cleanup
+```
+
+Grafana의 `Web Push Outbox Worker` 행에서 다음 숫자를 함께 본다.
+
+| 지표 | 의미 | 유의미한 판단 |
+| --- | --- | --- |
+| waiting | PENDING + RETRY_WAIT | 입력 종료 후 계속 증가하면 처리량 부족 또는 재시도 적체 |
+| processing | Worker가 소유한 작업 | batch 크기 근처에서 오래 고정되면 Push 지연 또는 결과 기록 병목 |
+| oldest waiting seconds | 가장 오래 기다린 작업의 나이 | 입력 종료 후에도 상승하면 사용자가 알림을 받는 지연이 계속 커지는 상태 |
+| results rate | sent·retry·failed·cancelled 결과율 | 입력률보다 sent 전환률이 낮은 기간과 retry 비율 확인 |
+| claim p95 | `SKIP LOCKED` batch 선점 시간 | 다중 Worker에서만 증가하면 DB 선점 경합 의심 |
+| delivery p95 | Gateway 호출 + 결과 기록 시간 | slow·timeout 조건에서 예상한 만큼 증가하는지 확인 |
+| batch p95 | 한 polling 회차 처리 시간 | poll 주기보다 계속 길면 다음 회차가 밀리고 적체될 수 있음 |
+| claimed batch max | 실제 batch 사용량 | 항상 설정 상한이면 Worker가 처리 가능한 최대 속도로 계속 동작 중 |
+| Worker errors | 예상하지 못한 내부 오류 | 정상·재시도 시나리오에서는 0이어야 함 |
+| Hikari active·pending | DB connection 사용·대기 | pending이 지속되면 pool 증설보다 claim·결과 transaction과 쿼리부터 확인 |
+
+batch histogram은 2초 timeout을 50건 순차 처리하는 약 100초 배치도 관측할 수 있도록 120초까지
+기록합니다. 이를 넘는 값은 `+Inf` bucket에 포함되므로 p95뿐 아니라 timer의 count·sum과 Worker
+완료 로그를 함께 확인합니다.
+
+문제별 우선 조치는 다음과 같다.
+
+- waiting만 증가하고 CPU·Hikari 여유가 있으면 batch 크기와 Worker 수를 같은 조건에서 한 번씩 조정한다.
+- claim p95와 Hikari pending이 함께 증가하면 Worker 수를 더 늘리지 않는다. 인덱스, `SKIP LOCKED` 선점 쿼리와 짧은 transaction 경계를 먼저 확인한다.
+- delivery p95만 증가하면 DB보다 외부 Push 지연이 원인이다. timeout·backoff·최대 시도를 조정하고 batch thread를 무제한으로 늘리지 않는다.
+- RETRY_WAIT가 급증하되 최종 drain되면 일시 장애 복구는 정상이다. 오래된 대기 시간이 허용 지연을 넘으면 backoff와 입력률을 재검토한다.
+- 다중 Worker에서 `stale_result_ignored`가 증가하면 lease보다 전송 시간이 긴지 확인한다. lease를 무조건 줄이지 말고 timeout보다 충분히 크게 둔다.
+- 다중 Worker 시나리오에서는 Prometheus의 `kgb-outbox-loadtest-worker-2`~`4` target도 함께 확인한다. 실행하지 않은 추가 Worker target이 `DOWN`인 것은 정상이다.
+- 처리량을 올려도 MySQL 선점과 결과 기록이 먼저 포화되면 Redis Streams나 메시지 브로커를 바로 추가하기보다 현재 DB Outbox의 처리 한계와 필요한 목표 처리량을 먼저 비교한다.
+
+로컬 결과의 절대 처리량은 운영 용량으로 사용하지 않는다. 같은 Docker 자원, 데이터 수, batch·poll·lease 설정에서 변경 전후를 비교하는 근거로 사용한다.
 
 ## 7. Smoke test
 
