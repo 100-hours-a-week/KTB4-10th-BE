@@ -83,8 +83,9 @@ public class NotificationService {
             String body,
             NotificationReferenceType referenceType,
             String referenceId) {
+        Member recipient = activeMemberForUpdate(recipientMemberId);
         createNotification(
-                recipientMemberId,
+                recipient,
                 type,
                 title,
                 body,
@@ -104,6 +105,8 @@ public class NotificationService {
             String referenceId,
             String occurrenceKey) {
         LocalDateTime now = LocalDateTime.now(clock);
+        // FK 공유 잠금과 회원 비관적 잠금의 순서를 모든 동시 실행에서 동일하게 맞춥니다.
+        Member recipient = activeMemberForUpdate(recipientMemberId);
         int claimed = notificationOccurrenceRepository.insertIfAbsent(
                 recipientMemberId,
                 type.name(),
@@ -115,7 +118,7 @@ public class NotificationService {
             return false;
         }
         createNotification(
-                recipientMemberId,
+                recipient,
                 type,
                 title,
                 body,
@@ -126,15 +129,14 @@ public class NotificationService {
     }
 
     private void createNotification(
-            Long recipientMemberId,
+            Member recipient,
             NotificationType type,
             String title,
             String body,
             NotificationReferenceType referenceType,
             String referenceId,
             LocalDateTime now) {
-        Member recipient = memberRepository.findActiveByIdForUpdate(recipientMemberId)
-                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+        Long recipientMemberId = recipient.getId();
         Notification notification = notificationRepository.saveAndFlush(Notification.create(
                 recipient,
                 type,
@@ -152,6 +154,11 @@ public class NotificationService {
                 recipientMemberId,
                 NotificationItemResponse.from(notification),
                 recipient.isPushEnabled()));
+    }
+
+    private Member activeMemberForUpdate(Long recipientMemberId) {
+        return memberRepository.findActiveByIdForUpdate(recipientMemberId)
+                .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
     }
 
     private void trimOldNotifications(Long recipientMemberId) {

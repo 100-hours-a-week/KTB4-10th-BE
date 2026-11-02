@@ -84,6 +84,20 @@ public class TourApiContentChangeOccurrenceRepository {
                 SOURCE_PROVIDER);
     }
 
+    @Transactional(readOnly = true)
+    public int countByRunId(UUID runId) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM tour_api_content_change_occurrences
+                WHERE run_id = ? AND source_provider = ?
+                """,
+                Integer.class,
+                runId.toString(),
+                SOURCE_PROVIDER);
+        return count == null ? 0 : count;
+    }
+
     private boolean mergeOne(UUID runId, ContentChangeSet change) {
         Optional<StoredOccurrence> existing = findForUpdate(runId, change.sourceContentId());
         if (existing.isEmpty()) {
