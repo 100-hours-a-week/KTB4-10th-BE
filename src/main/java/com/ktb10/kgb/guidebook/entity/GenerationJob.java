@@ -211,6 +211,19 @@ public class GenerationJob {
         return status == GenerationStatus.PENDING;
     }
 
+    public void preparePublication(String payload, LocalDateTime now) {
+        if (payload == null || payload.isBlank()) {
+            throw new IllegalArgumentException("발행 메시지는 비어 있을 수 없습니다.");
+        }
+        if (messagePayload != null) {
+            throw new IllegalStateException("이미 준비된 메시지는 변경할 수 없습니다.");
+        }
+        Objects.requireNonNull(now);
+        markPublishPending(now);
+        messagePayload = payload;
+        nextPublishAt = now;
+    }
+
     /** 기존 HTTP 접수와 구분되는 MQ 발행 대기 상태로 전환합니다. */
     public void markPublishPending(LocalDateTime now) {
         if (status == GenerationStatus.PUBLISH_PENDING) {
