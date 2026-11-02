@@ -30,6 +30,25 @@ class GenerationMessagePreparationTest {
     private final Clock clock = Clock.systemUTC();
 
     @Test
+    void regenerationRetryKeepsOriginalInputButUsesNewAttemptIdentity() throws Exception {
+        GenerationJob job = GenerationJob.createRegeneration(mock(Member.class), 50L,
+                "{}", "key", LocalDateTime.now(clock));
+        ReflectionTestUtils.setField(job, "id", 124L);
+        String snapshot = "{\"schemaVersion\":1,\"input\":{\"feedback\":\"원본 피드백\"}}";
+        job.preparePublication(snapshot, LocalDateTime.now(clock));
+        job.fail("{\"code\":\"timeout\"}", LocalDateTime.now(clock));
+        job.retry(LocalDateTime.now(clock));
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
+        preparation.prepareRegenerationRetry(job, snapshot);
+        assertThat(job.getMessagePayload()).isEqualTo(snapshot);
+        var message = json.readTree(preparation.buildMessage(job));
+        assertThat(message.path("messageId").asText()).isEqualTo("124-1");
+        assertThat(message.path("jobType").asText()).isEqualTo("REGENERATION");
+        assertThat(message.path("input").path("feedback").asText()).isEqualTo("원본 피드백");
+        org.mockito.Mockito.verifyNoInteractions(mapper);
+    }
+
+    @Test
     void storesCompleteInputAndKeepsItImmutableAcrossPublicationRetries() throws Exception {
         LocalDate date = LocalDate.of(2026, 11, 10);
         var input = new InitialGenerationRequestPayload(
@@ -43,7 +62,7 @@ class GenerationMessagePreparationTest {
                 date, date, "couple", 2,
                 new AiGuidebookRequest.Preferences(List.of(), Map.of(), List.of()), List.of(content));
         when(mapper.mapInput(any())).thenReturn(request);
-        var preparation = new GenerationMessagePreparation(mapper, json, clock);
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
 
         preparation.prepareInitial(job);
 
@@ -75,7 +94,7 @@ class GenerationMessagePreparationTest {
         GenerationJob job = GenerationJob.createInitial(mock(Member.class), "invalid", "key",
                 LocalDateTime.now(clock));
         ReflectionTestUtils.setField(job, "id", 123L);
-        var preparation = new GenerationMessagePreparation(mapper, json, clock);
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
         assertThatThrownBy(() -> preparation.prepareInitial(job)).isInstanceOf(IllegalStateException.class);
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(job.getMessagePayload()).isNull();

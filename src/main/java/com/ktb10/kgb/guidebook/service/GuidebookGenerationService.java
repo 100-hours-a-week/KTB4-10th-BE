@@ -155,10 +155,17 @@ public class GuidebookGenerationService {
             throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
         }
 
-        GenerationJob sourceJob = generationJobRepository
-                .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
-                        guidebookId,
-                        GenerationStatus.COMPLETED)
+        var preparation = messages.getIfAvailable();
+        Optional<GenerationJob> source;
+        if (preparation == null) {
+            source = generationJobRepository
+                    .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
+                            guidebookId, GenerationStatus.COMPLETED);
+        } else {
+            source = generationJobRepository.findFirstByGuidebookIdAndStatusOrderByCompletedAtDescIdDesc(
+                    guidebookId, GenerationStatus.COMPLETED);
+        }
+        GenerationJob sourceJob = source
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT));
         InitialGenerationRequestPayload sourceRequest = resolveSourceRequest(sourceJob);
         InitialGenerationRequestPayload regenerationContext = new InitialGenerationRequestPayload(
@@ -180,8 +187,12 @@ public class GuidebookGenerationService {
                 serialize(payload),
                 idempotencyKey,
                 now);
+        if (preparation != null) {
+            preparation.prepareRegeneration(job, sourceJob, guidebook);
+        }
         GenerationJob savedJob = generationJobRepository.save(job);
-        return new Admission<>(GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion()), savedJob.getId());
+        return new Admission<>(GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion()),
+                preparation == null ? savedJob.getId() : null);
     }
 
     @Transactional(propagation = Propagation.NEVER)
@@ -285,8 +296,18 @@ public class GuidebookGenerationService {
             throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
 
+        String previousSnapshot = job.getMessagePayload();
         job.retry(LocalDateTime.now(clock));
-        boolean outboxPrepared = job.getJobType() == JobType.INITIAL && prepareInitialDelivery(job);
+        boolean outboxPrepared;
+        if (job.getJobType() == JobType.INITIAL) {
+            outboxPrepared = prepareInitialDelivery(job);
+        } else {
+            var preparation = messages.getIfAvailable();
+            outboxPrepared = preparation != null;
+            if (preparation != null) {
+                preparation.prepareRegenerationRetry(job, previousSnapshot);
+            }
+        }
         Long submissionId = outboxPrepared ? null : job.getId();
         return new Admission<>(GuidebookGenerationResponse.from(job), submissionId);
     }
