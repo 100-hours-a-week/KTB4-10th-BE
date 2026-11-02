@@ -43,8 +43,11 @@ import lombok.NoArgsConstructor;
                     name = "ix_generation_jobs_guidebook_created",
                     columnList = "guidebook_id, created_at"),
             @Index(
-                    name = "ix_generation_jobs_next_attempt",
-                    columnList = "status, next_attempt_at"),
+                    name = "ix_generation_jobs_publish_due",
+                    columnList = "status, next_publish_at, id"),
+            @Index(
+                    name = "ix_generation_jobs_publish_claim",
+                    columnList = "status, publish_claim_expires_at"),
             @Index(
                     name = "ix_generation_jobs_lease",
                     columnList = "status, lease_expires_at")
@@ -80,6 +83,28 @@ public class GenerationJob {
     @Column(name = "request_payload", nullable = false, columnDefinition = "json")
     private String requestPayload;
 
+    /** AI에 전달할 전체 입력을 포함한 변경 불가능한 메시지 스냅샷입니다. */
+    @Column(name = "message_payload", columnDefinition = "json")
+    private String messagePayload;
+
+    @Column(name = "publish_attempt_count", nullable = false)
+    private int publishAttemptCount;
+
+    @Column(name = "next_publish_at")
+    private LocalDateTime nextPublishAt;
+
+    @Column(name = "publish_claim_token", length = 36)
+    private String publishClaimToken;
+
+    @Column(name = "publish_claim_expires_at")
+    private LocalDateTime publishClaimExpiresAt;
+
+    @Column(name = "published_at")
+    private LocalDateTime publishedAt;
+
+    @Column(name = "last_publish_error_code", length = 100)
+    private String lastPublishErrorCode;
+
     @Column(name = "error_payload", columnDefinition = "json")
     private String errorPayload;
 
@@ -94,9 +119,6 @@ public class GenerationJob {
 
     @Column(name = "attempt_started_at")
     private LocalDateTime attemptStartedAt;
-
-    @Column(name = "next_attempt_at")
-    private LocalDateTime nextAttemptAt;
 
     @Column(name = "lease_token", length = 36)
     private String leaseToken;
@@ -124,6 +146,14 @@ public class GenerationJob {
 
     @Column(name = "active_member_id", insertable = false, updatable = false)
     private Long activeMemberId;
+
+    /** 동일 시도의 재발행에는 고정되고 사용자 재시도마다 달라지는 메시지 식별자입니다. */
+    public String getMessageId() {
+        if (id == null) {
+            throw new IllegalStateException("메시지 ID는 작업 저장 후 생성할 수 있습니다.");
+        }
+        return id + "-" + attemptCount;
+    }
 
     public static GenerationJob createInitial(
             Member member,
@@ -181,6 +211,27 @@ public class GenerationJob {
         return status == GenerationStatus.PENDING;
     }
 
+    /** 기존 HTTP 접수와 구분되는 MQ 발행 대기 상태로 전환합니다. */
+    public void markPublishPending(LocalDateTime now) {
+        if (status == GenerationStatus.PUBLISH_PENDING) {
+            return;
+        }
+        if (status != GenerationStatus.PENDING || attemptStartedAt != null) {
+            throw new IllegalStateException("접수 전 대기 작업만 MQ 발행 대기로 변경할 수 있습니다.");
+        }
+        updatedAt = Objects.requireNonNull(now);
+        status = GenerationStatus.PUBLISH_PENDING;
+    }
+
+    /** 늦은 발행 확인은 실행 중 또는 종료된 작업의 상태를 되돌리지 않습니다. */
+    public void markQueued(LocalDateTime now) {
+        if (status != GenerationStatus.PUBLISH_PENDING) {
+            return;
+        }
+        updatedAt = Objects.requireNonNull(now);
+        status = GenerationStatus.QUEUED;
+    }
+
     /** 콜백 방식의 전체 제한 시간은 큐 대기 전 접수 시도부터 계산합니다. */
     public void beginCallbackAttempt(LocalDateTime now) {
         if (status == GenerationStatus.PENDING && attemptStartedAt == null) {
@@ -189,7 +240,7 @@ public class GenerationJob {
     }
 
     public boolean cancelForWithdrawal(LocalDateTime canceledAt) {
-        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+        if (!status.isActive()) {
             return false;
         }
         LocalDateTime now = java.util.Objects.requireNonNull(
@@ -197,7 +248,6 @@ public class GenerationJob {
         status = GenerationStatus.CANCELED;
         cancelRequestedAt = now;
         completedAt = now;
-        nextAttemptAt = null;
         leaseToken = null;
         leaseExpiresAt = null;
         leaseVersion = Math.addExact(leaseVersion, 1L);
@@ -209,7 +259,7 @@ public class GenerationJob {
         if (status == GenerationStatus.PROCESSING) {
             return;
         }
-        if (status != GenerationStatus.PENDING) {
+        if (!status.isWaiting()) {
             throw new IllegalStateException("AI 작업을 처리 중으로 변경할 수 없는 상태입니다: " + status);
         }
         status = GenerationStatus.PROCESSING;
@@ -224,7 +274,7 @@ public class GenerationJob {
         if (status == GenerationStatus.COMPLETED) {
             return;
         }
-        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+        if (!status.isActive()) {
             throw new IllegalStateException("완료할 수 없는 생성 작업 상태입니다: " + status);
         }
         guidebookId = Objects.requireNonNull(completedGuidebookId);
@@ -234,7 +284,7 @@ public class GenerationJob {
     }
 
     public void fail(String failurePayload, LocalDateTime failedAt) {
-        if (status != GenerationStatus.PENDING && status != GenerationStatus.PROCESSING) {
+        if (!status.isActive()) {
             throw new IllegalStateException("실패할 수 없는 생성 작업 상태입니다: " + status);
         }
         if (failurePayload == null || failurePayload.isBlank()) {
@@ -259,7 +309,13 @@ public class GenerationJob {
         errorPayload = null;
         startedAt = null;
         attemptStartedAt = null;
-        nextAttemptAt = null;
+        messagePayload = null;
+        publishAttemptCount = 0;
+        nextPublishAt = null;
+        publishClaimToken = null;
+        publishClaimExpiresAt = null;
+        publishedAt = null;
+        lastPublishErrorCode = null;
         completedAt = null;
         updatedAt = Objects.requireNonNull(retriedAt);
     }
