@@ -60,6 +60,8 @@ public class GuidebookGenerationService {
     private static final int MAX_RETRY_COUNT = 3;
     private static final Set<GenerationStatus> ACTIVE_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
+            GenerationStatus.PUBLISH_PENDING,
+            GenerationStatus.QUEUED,
             GenerationStatus.PROCESSING);
 
     private final GenerationJobRepository generationJobRepository;

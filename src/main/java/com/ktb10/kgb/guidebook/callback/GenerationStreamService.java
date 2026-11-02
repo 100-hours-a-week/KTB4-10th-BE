@@ -157,12 +157,18 @@ public class GenerationStreamService {
             return attempt(update) > attempt(previous) ? update : previous;
         }
         if (terminal(previous.status())
-                || (previous.status() == GenerationStatus.PROCESSING && update.status() == GenerationStatus.PENDING)) {
+                || (previous.status() == GenerationStatus.PROCESSING && update.status().isWaiting())
+                || (previous.status() == GenerationStatus.QUEUED
+                    && update.status() == GenerationStatus.PUBLISH_PENDING)) {
             return previous;
         }
         // DB snapshot(sequence=0)은 캐시의 pending보다 앞선 상태일 수 있다.
-        if (previous.status() == GenerationStatus.PENDING && update.status() == GenerationStatus.PROCESSING
+        if (previous.status().isWaiting() && update.status() == GenerationStatus.PROCESSING
                 && update.sequence() == 0) {
+            return update;
+        }
+        if (previous.status() == GenerationStatus.PUBLISH_PENDING
+                && update.status() == GenerationStatus.QUEUED) {
             return update;
         }
         return terminal(update.status()) || update.sequence() > previous.sequence() ? update : previous;

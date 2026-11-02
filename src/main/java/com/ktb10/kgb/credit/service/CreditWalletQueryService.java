@@ -21,6 +21,8 @@ public class CreditWalletQueryService {
 
     private static final Set<GenerationStatus> ACTIVE_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
+            GenerationStatus.PUBLISH_PENDING,
+            GenerationStatus.QUEUED,
             GenerationStatus.PROCESSING);
 
     private final CreditWalletRepository creditWalletRepository;
