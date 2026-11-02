@@ -1,0 +1,136 @@
+#CI-CD 변경
+#최종 Push때에만 해당 파이프라인 작동, lint 검사또한 진행
+name: KGB Backend CI/CD
+
+on:
+  # main Merge 이후 CI/CD 실행
+  push:
+    branches:
+      - main
+
+
+# GitHub Actions 권한
+permissions:
+  contents: read
+  packages: write
+
+  # GitHub OIDC -> AWS IAM Role Assume에 필요
+  id-token: write
+
+
+# 배포는 한 번에 하나씩, 진행 중인 배포는 중단하지 않는다.
+concurrency:
+  group: backend-cd
+  cancel-in-progress: false
+
+jobs:
+
+  # 1. 스테이징에서 검증된 Docker Image를 운영 태그로 Promotion
+  # ==================================================
+  promote-image:
+    name: Promote Image
+
+    runs-on: ubuntu-latest
+
+    # 운영 Image URI를 CD Job으로 전달
+    outputs:
+      uri: ${{ steps.image.outputs.uri }}
+
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ktb4-10-be
+
+    steps:
+
+      # Merge 완료된 main Checkout
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR Login
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 스테이징에서 배포 성공한 이미지 찾기
+      # tree-<트리 해시>: dev 를 그대로 merge 했으면 main 의 트리 해시도 같음
+      # 없으면 (main 에 직접 들어간 변경 등) 검증 안 된 이미지라 배포 중단
+      - name: Find Verified Image
+        id: image
+        run: |
+          TREE=$(git rev-parse HEAD^{tree} | cut -c1-12)
+          TREE_URI="${IMAGE_NAME}:tree-${TREE}"
+
+          if ! docker buildx imagetools inspect "${TREE_URI}" > /dev/null 2>&1; then
+            echo "::error::스테이징에서 검증된 이미지가 없습니다: ${TREE_URI}"
+            exit 1
+          fi
+
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          DATE=$(TZ="Asia/Seoul" date +%Y%m%d)
+          echo "tree_uri=${TREE_URI}" >> "$GITHUB_OUTPUT"
+          echo "uri=${IMAGE_NAME}:${SHORT_SHA}-${DATE}" >> "$GITHUB_OUTPUT"
+
+      # 스테이징 이미지에 prod 태그 추가
+      - name: Promote Image
+        run: |
+          docker buildx imagetools create \
+            -t "${{ steps.image.outputs.uri }}" \
+            "${{ steps.image.outputs.tree_uri }}"
+
+
+  # 2. Backend ECS 배포
+  # ==================================================
+  deploy:
+    name: CD
+
+    # Image Promotion 성공 이후 실행
+    needs: promote-image
+
+    runs-on: ubuntu-latest
+
+    env:
+      ECS_CLUSTER: kgb-prod-cluster
+      ECS_SERVICE: kgb-prod-backend
+      ECS_TASK_FAMILY: kgb-prod-backend
+      ECS_CONTAINER: backend
+      IMAGE: ${{ needs.promote-image.outputs.uri }}
+
+    steps:
+
+      # GitHub OIDC를 통해 AWS IAM Role Assume
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ECS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-2
+
+      # 최신 Task Definition 다운로드
+      - name: Download Task Definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "${ECS_TASK_FAMILY}" \
+            --query taskDefinition > task-definition.json
+
+          echo "Base: $(jq -r '.taskDefinitionArn' task-definition.json)"
+
+      # 이미지 교체
+      - name: Render Task Definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.ECS_CONTAINER }}
+          image: ${{ env.IMAGE }}
+
+      # 새 리비전 등록 후 서비스 업데이트, 안정화까지 대기
+      # 실패 시 ECS Circuit Breaker가 이전 리비전으로 자동 롤백
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          wait-for-service-stability: true
+          wait-for-minutes: 20
