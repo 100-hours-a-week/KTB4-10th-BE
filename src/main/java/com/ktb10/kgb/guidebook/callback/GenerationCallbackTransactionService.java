@@ -7,10 +7,8 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.client.AiClientException;
-import com.ktb10.kgb.guidebook.client.AiFailureType;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
-import com.ktb10.kgb.guidebook.client.GuidebookAiClient;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
@@ -66,35 +64,10 @@ public class GenerationCallbackTransactionService {
                 .expireAfterWrite(settings.timeout().multipliedBy(2)).build();
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Submission submit(Long jobId, GuidebookAiClient client) {
-        Prepared prepared = prepare(jobId);
-        if (prepared == null) {
-            return null;
-        }
-        try {
-            AiGenerationAcceptedResponse accepted = prepared.initialRequest() != null
-                    ? client.requestGeneration(prepared.initialRequest())
-                    : client.requestRegeneration(
-                            prepared.sourceAiJobId(), prepared.regenerationRequest());
-            registerAccepted(prepared, accepted);
-            return new Submission(prepared, null, null);
-        } catch (AiClientException exception) {
-            // 접수 응답만 유실된 경우 AI 콜백으로 복구될 수 있어 작업을 유지합니다.
-            return new Submission(prepared, exception, "ai_callback_submission_uncertain");
-        } catch (RuntimeException exception) {
-            AiClientException failure = new AiClientException(
-                    "AI 콜백 작업 접수에 실패했습니다.", exception,
-                    AiFailureType.UNEXPECTED_ERROR, "/guidebooks-generations", null, 0L);
-            failSubmission(prepared, failure);
-            return new Submission(prepared, failure, "ai_callback_submission_failed");
-        }
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public Prepared prepare(Long jobId) {
         GenerationJob job = locked(jobId);
-        if (!job.isPending() || job.getAiJobId() != null) {
+        if (!job.isPending() || job.getAiJobId() != null || job.getAttemptStartedAt() != null) {
             return null;
         }
         job.beginCallbackAttempt(LocalDateTime.now(clock));
@@ -116,7 +89,7 @@ public class GenerationCallbackTransactionService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void registerAccepted(Prepared prepared, AiGenerationAcceptedResponse accepted) {
         GenerationJob job = locked(prepared.jobId());
         if (!activeAttempt(job, prepared.attempt())) {
@@ -130,12 +103,13 @@ public class GenerationCallbackTransactionService {
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void failSubmission(Prepared prepared, AiClientException exception) {
         GenerationJob job = locked(prepared.jobId());
         if (activeAttempt(job, prepared.attempt()) && job.getAiJobId() == null) {
             job.fail(serialize(GenerationFailurePayload.from(exception)), LocalDateTime.now(clock));
             events.publishEvent(GenerationUpdate.from(job, 0, null, "AI_SUBMISSION_FAILED"));
+            events.publishEvent(new SubmissionFinished(prepared.requestId()));
         }
     }
 
@@ -175,6 +149,9 @@ public class GenerationCallbackTransactionService {
         afterCommit(() -> sequences.asMap().merge(data.requestId(), data.sequence(), Math::max));
         String code = data.status() == AiGenerationStatus.FAILED ? data.error().code() : null;
         events.publishEvent(GenerationUpdate.from(job, data.sequence(), data.progress(), code));
+        if (data.status() == AiGenerationStatus.COMPLETED || data.status() == AiGenerationStatus.FAILED) {
+            events.publishEvent(new SubmissionFinished(data.requestId()));
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -242,6 +219,10 @@ public class GenerationCallbackTransactionService {
         });
     }
 
+    /** 실제 종료 콜백 또는 명확한 접수 실패만 슬롯을 반환한다. 타임아웃은 포함하지 않는다. */
+    public record SubmissionFinished(String requestId) {
+    }
+
     public record Prepared(
             Long jobId, int attempt, Instant deadline,
             AiGuidebookRequest initialRequest, String sourceAiJobId,
@@ -252,6 +233,4 @@ public class GenerationCallbackTransactionService {
         }
     }
 
-    public record Submission(Prepared prepared, AiClientException failure, String failureEvent) {
-    }
 }
