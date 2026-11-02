@@ -31,8 +31,8 @@ class TourApiSyncRunnerTest {
     private final TourApiSyncRunRepository runRepository = mock(TourApiSyncRunRepository.class);
     private final MapContentCacheSynchronizationService cacheSynchronizationService =
             mock(MapContentCacheSynchronizationService.class);
-    private final InterestedContentChangeCandidateSelector notificationCandidateSelector =
-            mock(InterestedContentChangeCandidateSelector.class);
+    private final TourApiContentChangeOccurrenceRepository changeOccurrenceRepository =
+            mock(TourApiContentChangeOccurrenceRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private TourApiSyncRunner runner;
 
@@ -48,7 +48,7 @@ class TourApiSyncRunnerTest {
                 syncService,
                 runRepository,
                 cacheSynchronizationService,
-                notificationCandidateSelector,
+                changeOccurrenceRepository,
                 eventPublisher,
                 properties,
                 clock);
@@ -62,23 +62,16 @@ class TourApiSyncRunnerTest {
                 ContentLifecycleChange.NONE,
                 null,
                 null);
-        InterestedContentChangeCandidate candidate =
-                new InterestedContentChangeCandidate(
-                        "100",
-                        java.util.Set.of(ContentChangedField.DESCRIPTION));
         ImportSummary summary = new ImportSummary(
                 10, 1, 0, 0, 0, 0, 0, 0, java.util.List.of(changeSet));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(notificationCandidateSelector.select(summary.changeSets()))
-                .thenReturn(java.util.List.of(candidate));
+        when(changeOccurrenceRepository.countByRunId(any(UUID.class))).thenReturn(1);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
         verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
-        verify(eventPublisher).publishEvent(new InterestedContentChangesDetectedEvent(
-                SYNC_DATE,
-                java.util.List.of(candidate)));
+        verify(eventPublisher).publishEvent(any(InterestedContentChangesDetectedEvent.class));
     }
 
     @Test
@@ -86,8 +79,7 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(notificationCandidateSelector.select(summary.changeSets()))
-                .thenReturn(java.util.List.of());
+        when(changeOccurrenceRepository.countByRunId(any(UUID.class))).thenReturn(0);
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
@@ -99,8 +91,8 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(notificationCandidateSelector.select(summary.changeSets()))
-                .thenThrow(new IllegalStateException("알림 후보 선별 실패"));
+        when(changeOccurrenceRepository.countByRunId(any(UUID.class)))
+                .thenThrow(new IllegalStateException("변경 이력 조회 실패"));
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 

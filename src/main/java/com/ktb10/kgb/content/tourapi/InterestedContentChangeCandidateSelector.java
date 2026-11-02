@@ -25,24 +25,25 @@ public class InterestedContentChangeCandidateSelector {
             ContentChangedField.STATUS);
 
     public List<InterestedContentChangeCandidate> select(
-            Collection<ContentChangeSet> changeSets) {
-        return changeSets.stream()
-                .filter(change -> change.lifecycleChange() != ContentLifecycleChange.NEW)
+            Collection<TourApiContentChangeOccurrence> occurrences) {
+        return occurrences.stream()
+                .filter(occurrence -> occurrence.lifecycleChange() != ContentLifecycleChange.NEW)
                 .map(this::toCandidate)
                 .flatMap(java.util.Optional::stream)
                 .toList();
     }
 
     private java.util.Optional<InterestedContentChangeCandidate> toCandidate(
-            ContentChangeSet changeSet) {
+            TourApiContentChangeOccurrence occurrence) {
         EnumSet<ContentChangedField> fields = EnumSet.noneOf(ContentChangedField.class);
-        fields.addAll(changeSet.changedFields());
+        fields.addAll(occurrence.changedFields());
         fields.retainAll(NOTIFIABLE_FIELDS);
         if (fields.isEmpty()) {
             return java.util.Optional.empty();
         }
         return java.util.Optional.of(new InterestedContentChangeCandidate(
-                changeSet.sourceContentId(),
+                occurrence.id(),
+                occurrence.sourceContentId(),
                 fields));
     }
 }

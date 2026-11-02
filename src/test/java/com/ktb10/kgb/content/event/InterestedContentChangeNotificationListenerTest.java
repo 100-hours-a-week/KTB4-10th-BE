@@ -7,11 +7,8 @@ import static org.mockito.Mockito.verify;
 
 import com.ktb10.kgb.content.service.InterestedContentChangeNotificationMetrics;
 import com.ktb10.kgb.content.service.InterestedContentChangeNotificationProcessor;
-import com.ktb10.kgb.content.tourapi.ContentChangedField;
-import com.ktb10.kgb.content.tourapi.InterestedContentChangeCandidate;
 import java.time.LocalDate;
-import java.util.List;
-import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
@@ -80,9 +77,8 @@ class InterestedContentChangeNotificationListenerTest {
 
     private InterestedContentChangesDetectedEvent event() {
         return new InterestedContentChangesDetectedEvent(
+                UUID.fromString("7e85cb87-3d65-4dc6-832e-a5303030af31"),
                 LocalDate.of(2026, 10, 15),
-                List.of(new InterestedContentChangeCandidate(
-                        "100",
-                        Set.of(ContentChangedField.DESCRIPTION))));
+                1);
     }
 }

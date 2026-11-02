@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class InterestedContentChangeCandidateSelectorTest {
@@ -13,7 +14,8 @@ class InterestedContentChangeCandidateSelectorTest {
 
     @Test
     void selectsOnlyUserMeaningfulFields() {
-        ContentChangeSet changeSet = changeSet(
+        TourApiContentChangeOccurrence occurrence = occurrence(
+                11L,
                 "100",
                 Set.of(
                         ContentChangedField.DESCRIPTION,
@@ -22,16 +24,18 @@ class InterestedContentChangeCandidateSelectorTest {
                         ContentChangedField.THUMBNAIL_URL),
                 ContentLifecycleChange.NONE);
 
-        List<InterestedContentChangeCandidate> candidates = selector.select(List.of(changeSet));
+        List<InterestedContentChangeCandidate> candidates = selector.select(List.of(occurrence));
 
         assertThat(candidates).containsExactly(new InterestedContentChangeCandidate(
+                11L,
                 "100",
                 Set.of(ContentChangedField.DESCRIPTION, ContentChangedField.START_DATE)));
     }
 
     @Test
     void excludesChangesOnlyUsedForMapOrInternalClassification() {
-        ContentChangeSet changeSet = changeSet(
+        TourApiContentChangeOccurrence occurrence = occurrence(
+                11L,
                 "100",
                 Set.of(
                         ContentChangedField.LOCATION,
@@ -40,51 +44,60 @@ class InterestedContentChangeCandidateSelectorTest {
                         ContentChangedField.SOURCE_CONTENT_TYPE_ID),
                 ContentLifecycleChange.NONE);
 
-        assertThat(selector.select(List.of(changeSet))).isEmpty();
+        assertThat(selector.select(List.of(occurrence))).isEmpty();
     }
 
     @Test
     void excludesNewContentForSeparateDailyDigestPolicy() {
-        ContentChangeSet changeSet = changeSet(
+        TourApiContentChangeOccurrence occurrence = occurrence(
+                11L,
                 "100",
                 Set.of(ContentChangedField.TITLE, ContentChangedField.DESCRIPTION),
                 ContentLifecycleChange.NEW);
 
-        assertThat(selector.select(List.of(changeSet))).isEmpty();
+        assertThat(selector.select(List.of(occurrence))).isEmpty();
     }
 
     @Test
     void excludesChangeSetWithoutChangedFields() {
-        ContentChangeSet changeSet = changeSet(
+        TourApiContentChangeOccurrence occurrence = occurrence(
+                11L,
                 "100",
                 Set.of(),
                 ContentLifecycleChange.NONE);
 
-        assertThat(selector.select(List.of(changeSet))).isEmpty();
+        assertThat(selector.select(List.of(occurrence))).isEmpty();
     }
 
     @Test
     void selectsInactivatedContentAsStatusChange() {
-        ContentChangeSet changeSet = changeSet(
+        TourApiContentChangeOccurrence occurrence = occurrence(
+                11L,
                 "100",
                 Set.of(ContentChangedField.STATUS),
                 ContentLifecycleChange.INACTIVATED);
 
-        assertThat(selector.select(List.of(changeSet)))
+        assertThat(selector.select(List.of(occurrence)))
                 .containsExactly(new InterestedContentChangeCandidate(
+                        11L,
                         "100",
                         Set.of(ContentChangedField.STATUS)));
     }
 
-    private ContentChangeSet changeSet(
+    private TourApiContentChangeOccurrence occurrence(
+            Long occurrenceId,
             String sourceContentId,
             Set<ContentChangedField> fields,
             ContentLifecycleChange lifecycleChange) {
-        return ContentChangeSet.of(
+        return new TourApiContentChangeOccurrence(
+                occurrenceId,
+                UUID.fromString("7e85cb87-3d65-4dc6-832e-a5303030af31"),
                 sourceContentId,
                 fields,
                 lifecycleChange,
                 null,
-                null);
+                null,
+                java.time.LocalDateTime.of(2026, 10, 30, 0, 0),
+                java.time.LocalDateTime.of(2026, 10, 30, 0, 0));
     }
 }

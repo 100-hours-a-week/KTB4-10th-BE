@@ -38,9 +38,10 @@ public class InterestedContentChangeNotificationListener {
             metrics.recordQueueRejected();
             LOGGER.warn(
                     "관심 행사 변경 알림 큐가 가득 차 작업을 등록하지 못했습니다. "
-                            + "syncDate={}, candidates={}",
+                            + "runId={}, syncDate={}, occurrences={}",
+                    event.runId(),
                     event.syncDate(),
-                    event.candidates().size());
+                    event.occurrenceCount());
         }
     }
 
@@ -50,9 +51,11 @@ public class InterestedContentChangeNotificationListener {
         } catch (RuntimeException exception) {
             metrics.recordProcessingFailed();
             LOGGER.error(
-                    "관심 행사 변경 알림 비동기 처리에 실패했습니다. syncDate={}, candidates={}",
+                    "관심 행사 변경 알림 비동기 처리에 실패했습니다. "
+                            + "runId={}, syncDate={}, occurrences={}",
+                    event.runId(),
                     event.syncDate(),
-                    event.candidates().size(),
+                    event.occurrenceCount(),
                     exception);
         }
     }
