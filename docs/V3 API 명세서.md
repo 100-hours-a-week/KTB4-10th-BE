@@ -586,6 +586,7 @@ Body 없음.
 - 최신 created_at DESC,id DESC. 읽은 알림은 없음
 - 회원별 미읽음 알림은 20개만 보관. 새 알림 저장 시 초과분은 가장 오래된 행부터 삭제
 - reference_type/id: 둘 다 값 또는 둘 다 null
+- 신규 행사 묶음 알림은 `type=NEW_EVENTS_ADDED`, `reference_type=EVENT_LIST`, `reference_id=YYYY-MM-DD`를 사용한다. FE는 정보 탭의 `view=new&date={reference_id}` 목록으로 이동하며, 현재 배너와 동일한 신규 행사 조회 API를 재사용한다.
 
 **Request Body**
 
