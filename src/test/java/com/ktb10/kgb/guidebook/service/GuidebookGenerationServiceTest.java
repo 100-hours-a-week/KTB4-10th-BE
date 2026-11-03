@@ -187,7 +187,7 @@ class GuidebookGenerationServiceTest {
         assertThat(response.guidebookId()).isEqualTo(50L);
         assertThat(response.currentVersion()).isEqualTo(1);
         if (outbox) {
-            assertThat(response.status()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+            assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
             verify(preparation).prepareRegeneration(any(), any(), any());
             verify(submissions, never()).submit(any());
         } else {
@@ -327,7 +327,7 @@ class GuidebookGenerationServiceTest {
 
         var response = service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, validRequest());
 
-        assertThat(response.status()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
         verify(transactionManager).commit(any());
         verify(submissions, never()).submit(any());
     }
@@ -682,7 +682,7 @@ class GuidebookGenerationServiceTest {
 
         var response = service.retry(MEMBER_ID, 301L);
 
-        assertThat(response.status()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
         assertThat(job.getMessagePayload()).isEqualTo(snapshot);
         assertThat(job.getMessageId()).isEqualTo("301-1");
         verify(submissions, never()).submit(any());

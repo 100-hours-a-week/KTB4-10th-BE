@@ -9,6 +9,10 @@ public enum GenerationStatus {
     FAILED,
     CANCELED;
 
+    public GenerationStatus toPublicStatus() {
+        return isWaiting() ? PENDING : this;
+    }
+
     public boolean isWaiting() {
         return this == PENDING || this == PUBLISH_PENDING || this == QUEUED;
     }
