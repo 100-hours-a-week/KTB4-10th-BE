@@ -1,6 +1,7 @@
 package com.ktb10.kgb.member.repository;
 
 import com.ktb10.kgb.member.entity.Member;
+import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.member.entity.OauthProvider;
 import jakarta.persistence.LockModeType;
 import java.util.List;
@@ -24,6 +25,14 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
             + "where member.deletedAt is null and member.id > :afterId "
             + "order by member.id")
     List<Long> findNonDeletedMemberIdsAfter(
+            @Param("afterId") Long afterId,
+            Pageable pageable);
+
+    @Query("select member.id from Member member "
+            + "where member.status = :status and member.deletedAt is null "
+            + "and member.id > :afterId order by member.id")
+    List<Long> findMemberIdsByStatusAfter(
+            @Param("status") MemberStatus status,
             @Param("afterId") Long afterId,
             Pageable pageable);
 

@@ -97,6 +97,8 @@ notification:
     observability-log-interval-millis: ${NOTIFICATION_SSE_OBSERVABILITY_LOG_INTERVAL_MILLIS:300000}
   trip-starting:
     cron: "${NOTIFICATION_TRIP_STARTING_CRON:0 0 9 * * *}"
+  new-events:
+    cron: "${NOTIFICATION_NEW_EVENTS_CRON:0 0 9 * * *}"
 
 webpush:
   vapid:

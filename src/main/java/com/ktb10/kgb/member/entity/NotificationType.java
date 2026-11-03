@@ -4,5 +4,6 @@ package com.ktb10.kgb.member.entity;
 public enum NotificationType {
     TRIP_STARTING,
     GUIDEBOOK_COMPLETED,
-    EVENT_CHANGED
+    EVENT_CHANGED,
+    NEW_EVENTS_ADDED
 }
