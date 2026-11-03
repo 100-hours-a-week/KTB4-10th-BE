@@ -22,7 +22,7 @@ public record GuidebookRegenerationResponse(
         return new GuidebookRegenerationResponse(
                 job.getId(),
                 job.getJobType(),
-                job.getStatus(),
+                job.getStatus().toPublicStatus(),
                 job.getGuidebookId(),
                 currentVersion);
     }

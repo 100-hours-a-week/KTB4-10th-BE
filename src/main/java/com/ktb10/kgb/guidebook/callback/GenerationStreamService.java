@@ -177,7 +177,9 @@ public class GenerationStreamService {
     private void send(SseEmitter emitter, GenerationUpdate update) throws IOException {
         emitter.send(SseEmitter.event().name("generation-status")
                 .id(update.requestId() + ":" + update.sequence())
-                .reconnectTime(3000).data(update));
+                .reconnectTime(3000).data(new GenerationUpdate(
+                        update.memberId(), update.jobId(), update.requestId(), update.sequence(),
+                        update.status().toPublicStatus(), update.progress(), update.guidebookId(), update.code())));
     }
 
     private int attempt(GenerationUpdate update) {

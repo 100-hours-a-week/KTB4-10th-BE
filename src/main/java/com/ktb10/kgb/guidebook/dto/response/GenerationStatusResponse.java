@@ -33,7 +33,7 @@ public record GenerationStatusResponse(
         return new GenerationStatusResponse(
                 job.getId(),
                 job.getJobType(),
-                job.getStatus(),
+                job.getStatus().toPublicStatus(),
                 job.getGuidebookId(),
                 job.getAttemptCount().intValue(),
                 initialRequest,
