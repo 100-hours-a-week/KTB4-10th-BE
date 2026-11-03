@@ -92,6 +92,18 @@ public class TourApiSyncRunRepository {
         return owned != null && owned == 1;
     }
 
+    public boolean hasSuccessfulRun(LocalDate syncDate) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM tour_api_sync_runs
+                WHERE sync_date = ? AND status = 'SUCCESS'
+                """,
+                Integer.class,
+                syncDate);
+        return count != null && count > 0;
+    }
+
     public void recordAttempt(UUID runId, int attempt, Instant now) {
         jdbcTemplate.update(
                 """
