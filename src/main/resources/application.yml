@@ -99,6 +99,8 @@ notification:
     cron: "${NOTIFICATION_TRIP_STARTING_CRON:0 0 9 * * *}"
   new-events:
     cron: "${NOTIFICATION_NEW_EVENTS_CRON:0 0 9 * * *}"
+  content-changes:
+    cron: "${NOTIFICATION_CONTENT_CHANGES_CRON:0 0 9 * * *}"
 
 webpush:
   vapid:

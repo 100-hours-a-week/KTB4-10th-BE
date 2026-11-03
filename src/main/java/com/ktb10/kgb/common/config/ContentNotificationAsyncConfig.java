@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
-/** 관심 행사 변경 알림을 TourAPI 스케줄러와 분리된 제한 큐에서 실행합니다. */
+/** 오전 9시 행사 변경 알림을 TourAPI 스케줄러와 분리된 제한 큐에서 실행합니다. */
 @Configuration
 public class ContentNotificationAsyncConfig {
 

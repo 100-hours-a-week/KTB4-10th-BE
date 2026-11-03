@@ -9,7 +9,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
+import com.ktb10.kgb.content.event.TourApiSyncCompletedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,8 +31,6 @@ class TourApiSyncRunnerTest {
     private final TourApiSyncRunRepository runRepository = mock(TourApiSyncRunRepository.class);
     private final MapContentCacheSynchronizationService cacheSynchronizationService =
             mock(MapContentCacheSynchronizationService.class);
-    private final TourApiContentChangeOccurrenceRepository changeOccurrenceRepository =
-            mock(TourApiContentChangeOccurrenceRepository.class);
     private final ApplicationEventPublisher eventPublisher = mock(ApplicationEventPublisher.class);
     private TourApiSyncRunner runner;
 
@@ -48,14 +46,13 @@ class TourApiSyncRunnerTest {
                 syncService,
                 runRepository,
                 cacheSynchronizationService,
-                changeOccurrenceRepository,
                 eventPublisher,
                 properties,
                 clock);
     }
 
     @Test
-    void publishesInterestedContentChangesAfterSuccessfulRun() {
+    void publishesSyncCompletedEventAfterSuccessfulRun() {
         ContentChangeSet changeSet = ContentChangeSet.of(
                 "100",
                 java.util.Set.of(ContentChangedField.DESCRIPTION),
@@ -66,24 +63,20 @@ class TourApiSyncRunnerTest {
                 10, 1, 0, 0, 0, 0, 0, 0, java.util.List.of(changeSet));
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(changeOccurrenceRepository.countByRunId(any(UUID.class))).thenReturn(1);
-
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
         verify(runRepository).complete(any(UUID.class), any(ImportSummary.class), any());
-        verify(eventPublisher).publishEvent(any(InterestedContentChangesDetectedEvent.class));
+        verify(eventPublisher).publishEvent(any(TourApiSyncCompletedEvent.class));
     }
 
     @Test
-    void doesNotPublishEventWhenNoNotificationCandidateExists() {
+    void publishesSyncCompletedEventEvenWhenNoContentChanged() {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(changeOccurrenceRepository.countByRunId(any(UUID.class))).thenReturn(0);
-
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 
-        verify(eventPublisher, never()).publishEvent(any());
+        verify(eventPublisher).publishEvent(any(TourApiSyncCompletedEvent.class));
     }
 
     @Test
@@ -91,8 +84,9 @@ class TourApiSyncRunnerTest {
         ImportSummary summary = new ImportSummary(10, 1, 0, 0, 0, 0, 0, 0);
         when(runRepository.tryStart(any(), any(), any(), any())).thenReturn(true);
         when(syncService.synchronize(any(UUID.class), eq(SYNC_DATE))).thenReturn(summary);
-        when(changeOccurrenceRepository.countByRunId(any(UUID.class)))
-                .thenThrow(new IllegalStateException("변경 이력 조회 실패"));
+        org.mockito.Mockito.doThrow(new IllegalStateException("이벤트 발행 실패"))
+                .when(eventPublisher)
+                .publishEvent(any(TourApiSyncCompletedEvent.class));
 
         assertThat(runner.runIfDue(SYNC_DATE)).isTrue();
 

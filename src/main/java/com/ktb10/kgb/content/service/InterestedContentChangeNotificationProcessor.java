@@ -1,6 +1,6 @@
 package com.ktb10.kgb.content.service;
 
-import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
+import com.ktb10.kgb.content.event.ContentChangesDetectedEvent;
 import com.ktb10.kgb.content.repository.InterestedContentNotificationQuery;
 import com.ktb10.kgb.content.repository.InterestedContentNotificationTarget;
 import com.ktb10.kgb.content.tourapi.InterestedContentChangeCandidate;
@@ -47,7 +47,7 @@ public class InterestedContentChangeNotificationProcessor {
     }
 
     /** 같은 runId를 다시 처리해도 회원별 occurrence는 한 번만 생성됩니다. */
-    public ProcessingResult process(InterestedContentChangesDetectedEvent event) {
+    public ProcessingResult process(ContentChangesDetectedEvent event) {
         Map<String, InterestedContentChangeCandidate> candidates = candidateSelector.select(
                         changeOccurrenceRepository.findAllByRunId(event.runId()))
                 .stream()
