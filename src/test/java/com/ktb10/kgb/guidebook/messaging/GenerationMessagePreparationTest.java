@@ -38,7 +38,7 @@ class GenerationMessagePreparationTest {
         job.preparePublication(snapshot, LocalDateTime.now(clock));
         job.fail("{\"code\":\"timeout\"}", LocalDateTime.now(clock));
         job.retry(LocalDateTime.now(clock));
-        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class), mock(org.springframework.context.ApplicationEventPublisher.class));
         preparation.prepareRegenerationRetry(job, snapshot);
         assertThat(job.getMessagePayload()).isEqualTo(snapshot);
         var message = json.readTree(preparation.buildMessage(job));
@@ -62,7 +62,7 @@ class GenerationMessagePreparationTest {
                 date, date, "couple", 2,
                 new AiGuidebookRequest.Preferences(List.of(), Map.of(), List.of()), List.of(content));
         when(mapper.mapInput(any())).thenReturn(request);
-        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class), mock(org.springframework.context.ApplicationEventPublisher.class));
 
         preparation.prepareInitial(job);
 
@@ -94,7 +94,7 @@ class GenerationMessagePreparationTest {
         GenerationJob job = GenerationJob.createInitial(mock(Member.class), "invalid", "key",
                 LocalDateTime.now(clock));
         ReflectionTestUtils.setField(job, "id", 123L);
-        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class));
+        var preparation = new GenerationMessagePreparation(mapper, json, clock, mock(RegenerationInputSnapshot.class), mock(org.springframework.context.ApplicationEventPublisher.class));
         assertThatThrownBy(() -> preparation.prepareInitial(job)).isInstanceOf(IllegalStateException.class);
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PENDING);
         assertThat(job.getMessagePayload()).isNull();

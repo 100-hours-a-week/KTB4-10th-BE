@@ -1,4 +1,8 @@
 spring:
+  rabbitmq:
+    publisher-confirm-type: correlated
+    publisher-returns: true
+
   application:
     name: kgb
 
