@@ -4,13 +4,13 @@ import java.time.LocalDate;
 import java.util.Objects;
 import java.util.UUID;
 
-/** TourAPI 동기화 성공 후 영속 변경 이력 기반 알림 처리를 요청합니다. */
-public record InterestedContentChangesDetectedEvent(
+/** 오전 9시 일일 행사 변경 알림 처리를 요청합니다. */
+public record ContentChangesDetectedEvent(
         UUID runId,
         LocalDate syncDate,
         int occurrenceCount) {
 
-    public InterestedContentChangesDetectedEvent {
+    public ContentChangesDetectedEvent {
         Objects.requireNonNull(runId, "동기화 실행 ID는 필수입니다.");
         Objects.requireNonNull(syncDate, "동기화 기준일은 필수입니다.");
         if (occurrenceCount < 1) {

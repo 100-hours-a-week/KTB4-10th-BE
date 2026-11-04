@@ -3,6 +3,7 @@ package com.ktb10.kgb.content.tourapi;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -93,15 +94,18 @@ public class TourApiSyncRunRepository {
     }
 
     public boolean hasSuccessfulRun(LocalDate syncDate) {
-        Integer count = jdbcTemplate.queryForObject(
+        return findSuccessfulRunId(syncDate).isPresent();
+    }
+
+    public Optional<UUID> findSuccessfulRunId(LocalDate syncDate) {
+        return jdbcTemplate.query(
                 """
-                SELECT COUNT(*)
+                SELECT run_id
                 FROM tour_api_sync_runs
                 WHERE sync_date = ? AND status = 'SUCCESS'
                 """,
-                Integer.class,
-                syncDate);
-        return count != null && count > 0;
+                (resultSet, rowNumber) -> UUID.fromString(resultSet.getString("run_id")),
+                syncDate).stream().findFirst();
     }
 
     public void recordAttempt(UUID runId, int attempt, Instant now) {

@@ -2,7 +2,7 @@ package com.ktb10.kgb.content;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
+import com.ktb10.kgb.content.event.ContentChangesDetectedEvent;
 import com.ktb10.kgb.content.service.InterestedContentChangeNotificationProcessor;
 import com.ktb10.kgb.member.repository.NotificationOccurrenceRepository;
 import com.ktb10.kgb.member.repository.NotificationRepository;
@@ -80,7 +80,7 @@ class InterestedContentChangeNotificationMysqlIntegrationTest {
         Long contentId = insertEvent("event-100", "서울 불꽃축제");
         insertFavorite(memberId, contentId);
         insertOccurrence(runId, "event-100", "[\"DESCRIPTION\",\"START_DATE\"]");
-        InterestedContentChangesDetectedEvent event = event(runId);
+        ContentChangesDetectedEvent event = event(runId);
 
         List<InterestedContentChangeNotificationProcessor.ProcessingResult> results =
                 runConcurrently(event, 2);
@@ -124,7 +124,7 @@ class InterestedContentChangeNotificationMysqlIntegrationTest {
     }
 
     private List<InterestedContentChangeNotificationProcessor.ProcessingResult> runConcurrently(
-            InterestedContentChangesDetectedEvent event,
+            ContentChangesDetectedEvent event,
             int instanceCount) throws Exception {
         CountDownLatch ready = new CountDownLatch(instanceCount);
         CountDownLatch start = new CountDownLatch(1);
@@ -244,7 +244,7 @@ class InterestedContentChangeNotificationMysqlIntegrationTest {
                 NOW);
     }
 
-    private InterestedContentChangesDetectedEvent event(UUID runId) {
-        return new InterestedContentChangesDetectedEvent(runId, SYNC_DATE, 1);
+    private ContentChangesDetectedEvent event(UUID runId) {
+        return new ContentChangesDetectedEvent(runId, SYNC_DATE, 1);
     }
 }

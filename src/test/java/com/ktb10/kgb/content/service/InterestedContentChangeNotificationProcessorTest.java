@@ -8,7 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
+import com.ktb10.kgb.content.event.ContentChangesDetectedEvent;
 import com.ktb10.kgb.content.repository.InterestedContentNotificationQuery;
 import com.ktb10.kgb.content.repository.InterestedContentNotificationTarget;
 import com.ktb10.kgb.content.tourapi.ContentChangedField;
@@ -51,7 +51,7 @@ class InterestedContentChangeNotificationProcessorTest {
 
     @Test
     void createsIdempotentNotificationForEachMemberAndOccurrence() {
-        InterestedContentChangesDetectedEvent event = event(2);
+        ContentChangesDetectedEvent event = event(2);
         TourApiContentChangeOccurrence first = occurrence(11L, "100");
         TourApiContentChangeOccurrence second = occurrence(12L, "200");
         when(occurrenceRepository.findAllByRunId(RUN_ID)).thenReturn(List.of(first, second));
@@ -91,7 +91,7 @@ class InterestedContentChangeNotificationProcessorTest {
 
     @Test
     void skipsRunWithoutUserMeaningfulChange() {
-        InterestedContentChangesDetectedEvent event = event(1);
+        ContentChangesDetectedEvent event = event(1);
         TourApiContentChangeOccurrence occurrence = occurrence(11L, "100");
         when(occurrenceRepository.findAllByRunId(RUN_ID)).thenReturn(List.of(occurrence));
         when(candidateSelector.select(List.of(occurrence))).thenReturn(List.of());
@@ -105,7 +105,7 @@ class InterestedContentChangeNotificationProcessorTest {
 
     @Test
     void continuesWithNextMemberWhenOneNotificationFails() {
-        InterestedContentChangesDetectedEvent event = event(1);
+        ContentChangesDetectedEvent event = event(1);
         TourApiContentChangeOccurrence occurrence = occurrence(11L, "100");
         when(occurrenceRepository.findAllByRunId(RUN_ID)).thenReturn(List.of(occurrence));
         when(candidateSelector.select(List.of(occurrence)))
@@ -141,8 +141,8 @@ class InterestedContentChangeNotificationProcessorTest {
         verify(metrics).recordCreated();
     }
 
-    private InterestedContentChangesDetectedEvent event(int occurrenceCount) {
-        return new InterestedContentChangesDetectedEvent(
+    private ContentChangesDetectedEvent event(int occurrenceCount) {
+        return new ContentChangesDetectedEvent(
                 RUN_ID,
                 LocalDate.of(2026, 10, 15),
                 occurrenceCount);

@@ -1,6 +1,6 @@
 package com.ktb10.kgb.content.tourapi;
 
-import com.ktb10.kgb.content.event.InterestedContentChangesDetectedEvent;
+import com.ktb10.kgb.content.event.TourApiSyncCompletedEvent;
 import com.ktb10.kgb.content.service.MapContentCacheSynchronizationService;
 import java.time.Clock;
 import java.time.Instant;
@@ -19,7 +19,6 @@ public class TourApiSyncRunner {
     private final TourApiSyncService syncService;
     private final TourApiSyncRunRepository runRepository;
     private final MapContentCacheSynchronizationService cacheSynchronizationService;
-    private final TourApiContentChangeOccurrenceRepository changeOccurrenceRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final TourApiSchedulerProperties properties;
     private final Clock clock;
@@ -28,14 +27,12 @@ public class TourApiSyncRunner {
             TourApiSyncService syncService,
             TourApiSyncRunRepository runRepository,
             MapContentCacheSynchronizationService cacheSynchronizationService,
-            TourApiContentChangeOccurrenceRepository changeOccurrenceRepository,
             ApplicationEventPublisher eventPublisher,
             TourApiSchedulerProperties properties,
             Clock clock) {
         this.syncService = syncService;
         this.runRepository = runRepository;
         this.cacheSynchronizationService = cacheSynchronizationService;
-        this.changeOccurrenceRepository = changeOccurrenceRepository;
         this.eventPublisher = eventPublisher;
         this.properties = properties;
         this.clock = clock;
@@ -107,24 +104,18 @@ public class TourApiSyncRunner {
                 summary.inactiveContents(),
                 summary.sourceEvents(),
                 summary.importedEvents());
-        publishContentChangeNotification(runId, syncDate);
+        publishSyncCompleted(runId, syncDate);
         return true;
     }
 
-    private void publishContentChangeNotification(
+    private void publishSyncCompleted(
             UUID runId,
             LocalDate syncDate) {
         try {
-            int occurrenceCount = changeOccurrenceRepository.countByRunId(runId);
-            if (occurrenceCount > 0) {
-                eventPublisher.publishEvent(new InterestedContentChangesDetectedEvent(
-                        runId,
-                        syncDate,
-                        occurrenceCount));
-            }
+            eventPublisher.publishEvent(new TourApiSyncCompletedEvent(runId, syncDate));
         } catch (RuntimeException failure) {
             LOGGER.error(
-                    "TourAPI 동기화 성공 후 변경 알림 작업 등록에 실패했습니다. "
+                    "TourAPI 동기화 성공 이벤트 발행에 실패했습니다. "
                             + "runId={}, syncDate={}",
                     runId,
                     syncDate,
