@@ -21,7 +21,7 @@ public record GuidebookGenerationResponse(
         return new GuidebookGenerationResponse(
                 job.getId(),
                 job.getJobType(),
-                job.getStatus(),
+                job.getStatus().toPublicStatus(),
                 job.getGuidebookId());
     }
 }

@@ -244,6 +244,8 @@ Accept: text/event-stream
 
 ACTIVE 서비스 세션과 작업 소유권을 검증한다. 알림 push_enabled와 무관하게 구독한다.
 이벤트 이름은 generation-status이며 초기 연결/재연결 시 DB 상태 snapshot을 전송한다.
+초기·재연결 스냅샷과 실시간 이벤트 모두 FE 전송 시 PUBLISH_PENDING과 QUEUED를 PENDING으로 매핑한다.
+DB 상태와 서버 내부 이벤트의 순서 비교에는 원래 상태를 유지한다.
 
 ```json
 {

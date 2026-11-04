@@ -13,6 +13,115 @@ class GenerationJobTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 18, 12, 0);
 
     @Test
+    void onlyCurrentClaimCanConfirmPublication() {
+        GenerationJob job = initialJob();
+        job.preparePublication("{}", NOW);
+        job.claimPublication("old", NOW.plusSeconds(60));
+        job.claimPublication("current", NOW.plusSeconds(120));
+        job.finishPublication(0, "old", null, NOW.plusSeconds(61));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        job.finishPublication(0, "current", "MQ_CONFIRM_TIMEOUT", NOW.plusSeconds(62));
+        assertThat(job.getNextPublishAt()).isAfter(NOW.plusSeconds(62));
+        assertThat(job.getPublishClaimToken()).isNull();
+        job.claimPublication("retry", NOW.plusSeconds(180));
+        job.finishPublication(0, "retry", null, NOW.plusSeconds(70));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.QUEUED);
+        assertThat(job.getAttemptCount()).isZero();
+    }
+
+    @Test
+    void existingHttpJobsHaveNoOutboxMessageOrClaim() {
+        GenerationJob initial = initialJob();
+        GenerationJob regeneration = GenerationJob.createRegeneration(
+                member(), 50L, "{}", "regeneration-key", NOW);
+        for (GenerationJob job : java.util.List.of(initial, regeneration)) {
+            assertThatThrownBy(job::getMessageId).isInstanceOf(IllegalStateException.class);
+            assertThat(job.getMessagePayload()).isNull();
+            assertThat(job.getPublishAttemptCount()).isZero();
+            assertThat(job.getNextPublishAt()).isNull();
+            assertThat(job.getPublishClaimToken()).isNull();
+            assertThat(job.getPublishClaimExpiresAt()).isNull();
+            assertThat(job.getPublishedAt()).isNull();
+            assertThat(job.getLastPublishErrorCode()).isNull();
+        }
+    }
+
+    @Test
+    void messageIdentityUsesBackendJobAndUserAttemptAndRetryClearsPublication() {
+        GenerationJob job = initialJob();
+        org.springframework.test.util.ReflectionTestUtils.setField(job, "id", 123L);
+        org.springframework.test.util.ReflectionTestUtils.setField(job, "messagePayload", "{}");
+        org.springframework.test.util.ReflectionTestUtils.setField(job, "publishAttemptCount", 2);
+        org.springframework.test.util.ReflectionTestUtils.setField(job, "publishClaimToken", "old-claim");
+        org.springframework.test.util.ReflectionTestUtils.setField(job, "publishedAt", NOW);
+        assertThat(job.getMessageId()).isEqualTo("123-0");
+        job.fail("{\"code\":\"timeout\"}", NOW);
+        job.retry(NOW.plusSeconds(1));
+        assertThat(job.getMessageId()).isEqualTo("123-1");
+        assertThat(job.getMessagePayload()).isNull();
+        assertThat(job.getPublishAttemptCount()).isZero();
+        assertThat(job.getPublishClaimToken()).isNull();
+        assertThat(job.getPublishedAt()).isNull();
+    }
+
+    @Test
+    void queuesMqJobAndDoesNotRegressAfterProcessing() {
+        GenerationJob job = initialJob();
+        job.markPublishPending(NOW);
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        job.markQueued(NOW.plusSeconds(1));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.QUEUED);
+        job.markProcessing(NOW.plusSeconds(2));
+        job.markQueued(NOW.plusSeconds(3));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        job.complete(50L, NOW.plusMinutes(1));
+        job.markQueued(NOW.plusMinutes(2));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.COMPLETED);
+    }
+
+    @Test
+    void acceptsProcessingBeforePublishConfirmation() {
+        GenerationJob job = initialJob();
+        job.markPublishPending(NOW);
+        job.markProcessing(NOW.plusSeconds(1));
+        job.markQueued(NOW.plusSeconds(2));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+    }
+
+    @Test
+    void mqWaitingJobsCanFailOrBeCanceled() {
+        for (boolean queued : new boolean[]{false, true}) {
+            GenerationJob failed = initialJob();
+            failed.markPublishPending(NOW);
+            if (queued) {
+                failed.markQueued(NOW);
+            }
+            failed.fail("{\"code\":\"timeout\"}", NOW);
+            assertThat(failed.getStatus()).isEqualTo(GenerationStatus.FAILED);
+            failed.retry(NOW.plusSeconds(1));
+            failed.markPublishPending(NOW.plusSeconds(1));
+            assertThat(failed.getStatus()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+
+            GenerationJob canceled = initialJob();
+            canceled.markPublishPending(NOW);
+            if (queued) {
+                canceled.markQueued(NOW);
+            }
+            assertThat(canceled.cancelForWithdrawal(NOW)).isTrue();
+            canceled.markQueued(NOW.plusSeconds(1));
+            assertThat(canceled.getStatus()).isEqualTo(GenerationStatus.CANCELED);
+        }
+    }
+
+    @Test
+    void cannotPublishAnAlreadyStartedHttpAttempt() {
+        GenerationJob job = initialJob();
+        job.beginCallbackAttempt(NOW);
+        assertThatThrownBy(() -> job.markPublishPending(NOW))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void createsPendingInitialJob() {
         GenerationJob job = initialJob();
 

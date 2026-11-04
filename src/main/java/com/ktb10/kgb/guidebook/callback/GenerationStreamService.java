@@ -157,12 +157,18 @@ public class GenerationStreamService {
             return attempt(update) > attempt(previous) ? update : previous;
         }
         if (terminal(previous.status())
-                || (previous.status() == GenerationStatus.PROCESSING && update.status() == GenerationStatus.PENDING)) {
+                || (previous.status() == GenerationStatus.PROCESSING && update.status().isWaiting())
+                || (previous.status() == GenerationStatus.QUEUED
+                    && update.status() == GenerationStatus.PUBLISH_PENDING)) {
             return previous;
         }
         // DB snapshot(sequence=0)은 캐시의 pending보다 앞선 상태일 수 있다.
-        if (previous.status() == GenerationStatus.PENDING && update.status() == GenerationStatus.PROCESSING
+        if (previous.status().isWaiting() && update.status() == GenerationStatus.PROCESSING
                 && update.sequence() == 0) {
+            return update;
+        }
+        if (previous.status() == GenerationStatus.PUBLISH_PENDING
+                && update.status() == GenerationStatus.QUEUED) {
             return update;
         }
         return terminal(update.status()) || update.sequence() > previous.sequence() ? update : previous;
@@ -171,7 +177,9 @@ public class GenerationStreamService {
     private void send(SseEmitter emitter, GenerationUpdate update) throws IOException {
         emitter.send(SseEmitter.event().name("generation-status")
                 .id(update.requestId() + ":" + update.sequence())
-                .reconnectTime(3000).data(update));
+                .reconnectTime(3000).data(new GenerationUpdate(
+                        update.memberId(), update.jobId(), update.requestId(), update.sequence(),
+                        update.status().toPublicStatus(), update.progress(), update.guidebookId(), update.code())));
     }
 
     private int attempt(GenerationUpdate update) {

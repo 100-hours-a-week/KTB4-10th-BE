@@ -26,6 +26,7 @@ import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.JobType;
 import com.ktb10.kgb.guidebook.entity.MemberGuidebook;
 import com.ktb10.kgb.guidebook.error.GuidebookErrorCode;
+import com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
 import com.ktb10.kgb.guidebook.repository.MemberGuidebookRepository;
 import com.ktb10.kgb.guidebook.service.GuidebookRegenerationPolicy.RegenerationAvailability;
@@ -60,6 +61,8 @@ public class GuidebookGenerationService {
     private static final int MAX_RETRY_COUNT = 3;
     private static final Set<GenerationStatus> ACTIVE_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
+            GenerationStatus.PUBLISH_PENDING,
+            GenerationStatus.QUEUED,
             GenerationStatus.PROCESSING);
 
     private final GenerationJobRepository generationJobRepository;
@@ -68,6 +71,7 @@ public class GuidebookGenerationService {
     private final MemberGuidebookRepository memberGuidebookRepository;
     private final CreditWalletRepository creditWalletRepository;
     private final ObjectProvider<GenerationSubmissionQueue> submissions;
+    private final ObjectProvider<GenerationMessagePreparation> messages;
     private final TransactionTemplate writes;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -79,6 +83,7 @@ public class GuidebookGenerationService {
             MemberGuidebookRepository memberGuidebookRepository,
             CreditWalletRepository creditWalletRepository,
             ObjectProvider<GenerationSubmissionQueue> submissions,
+            ObjectProvider<GenerationMessagePreparation> messages,
             PlatformTransactionManager transactionManager,
             ObjectMapper objectMapper,
             Clock clock) {
@@ -88,6 +93,7 @@ public class GuidebookGenerationService {
         this.memberGuidebookRepository = memberGuidebookRepository;
         this.creditWalletRepository = creditWalletRepository;
         this.submissions = submissions;
+        this.messages = messages;
         this.writes = new TransactionTemplate(transactionManager);
         this.objectMapper = objectMapper;
         this.clock = clock;
@@ -149,10 +155,17 @@ public class GuidebookGenerationService {
             throw new BusinessException(GuidebookErrorCode.PREFERENCE_INVALID);
         }
 
-        GenerationJob sourceJob = generationJobRepository
-                .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
-                        guidebookId,
-                        GenerationStatus.COMPLETED)
+        var preparation = messages.getIfAvailable();
+        Optional<GenerationJob> source;
+        if (preparation == null) {
+            source = generationJobRepository
+                    .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
+                            guidebookId, GenerationStatus.COMPLETED);
+        } else {
+            source = generationJobRepository.findFirstByGuidebookIdAndStatusOrderByCompletedAtDescIdDesc(
+                    guidebookId, GenerationStatus.COMPLETED);
+        }
+        GenerationJob sourceJob = source
                 .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT));
         InitialGenerationRequestPayload sourceRequest = resolveSourceRequest(sourceJob);
         InitialGenerationRequestPayload regenerationContext = new InitialGenerationRequestPayload(
@@ -174,8 +187,12 @@ public class GuidebookGenerationService {
                 serialize(payload),
                 idempotencyKey,
                 now);
+        if (preparation != null) {
+            preparation.prepareRegeneration(job, sourceJob, guidebook);
+        }
         GenerationJob savedJob = generationJobRepository.save(job);
-        return new Admission<>(GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion()), savedJob.getId());
+        return new Admission<>(GuidebookRegenerationResponse.from(savedJob, guidebook.getVersion()),
+                preparation == null ? savedJob.getId() : null);
     }
 
     @Transactional(propagation = Propagation.NEVER)
@@ -232,9 +249,11 @@ public class GuidebookGenerationService {
                 requestPayload,
                 idempotencyKey,
                 now);
+        boolean outboxPrepared = prepareInitialDelivery(job);
         GenerationJob savedJob = generationJobRepository.save(job);
         // TODO: #42 UNIQUE 충돌을 기존 작업 조회로 복구한다.
-        return new Admission<>(GuidebookGenerationResponse.from(savedJob), savedJob.getId());
+        Long submissionId = outboxPrepared ? null : savedJob.getId();
+        return new Admission<>(GuidebookGenerationResponse.from(savedJob), submissionId);
     }
 
     @Transactional(readOnly = true)
@@ -277,8 +296,29 @@ public class GuidebookGenerationService {
             throw new BusinessException(GuidebookErrorCode.RETRY_INVALID_STATE);
         }
 
+        String previousSnapshot = job.getMessagePayload();
         job.retry(LocalDateTime.now(clock));
-        return new Admission<>(GuidebookGenerationResponse.from(job), job.getId());
+        boolean outboxPrepared;
+        if (job.getJobType() == JobType.INITIAL) {
+            outboxPrepared = prepareInitialDelivery(job);
+        } else {
+            var preparation = messages.getIfAvailable();
+            outboxPrepared = preparation != null;
+            if (preparation != null) {
+                preparation.prepareRegenerationRetry(job, previousSnapshot);
+            }
+        }
+        Long submissionId = outboxPrepared ? null : job.getId();
+        return new Admission<>(GuidebookGenerationResponse.from(job), submissionId);
+    }
+
+    private boolean prepareInitialDelivery(GenerationJob job) {
+        var preparation = messages.getIfAvailable();
+        if (preparation == null) {
+            return false;
+        }
+        preparation.prepareInitial(job);
+        return true;
     }
 
     private <T> T admit(Supplier<Admission<T>> action) {

@@ -178,8 +178,7 @@ public class GenerationCallbackTransactionService {
 
     private boolean activeAttempt(GenerationJob job, int attempt) {
         return job.getAttemptCount() == attempt
-                && (job.getStatus() == GenerationStatus.PENDING
-                || job.getStatus() == GenerationStatus.PROCESSING);
+                && job.getStatus().isActive();
     }
 
     private void bindAiJob(GenerationJob job, String aiJobId) {

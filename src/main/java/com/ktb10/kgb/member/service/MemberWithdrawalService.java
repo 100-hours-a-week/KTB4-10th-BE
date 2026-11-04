@@ -28,6 +28,8 @@ public class MemberWithdrawalService {
 
     private static final EnumSet<GenerationStatus> ACTIVE_GENERATION_STATUSES = EnumSet.of(
             GenerationStatus.PENDING,
+            GenerationStatus.PUBLISH_PENDING,
+            GenerationStatus.QUEUED,
             GenerationStatus.PROCESSING);
     private static final String DEIDENTIFIED_SUBJECT_PREFIX = "withdrawn:";
     private static final String CREDIT_REVOKE_KEY_PREFIX = "withdrawal-revoke:";

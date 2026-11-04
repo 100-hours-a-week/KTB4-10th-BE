@@ -26,6 +26,14 @@ public class AiGuidebookRequestMapper {
             InitialGenerationRequestPayload payload,
             long jobId,
             int attemptCount) {
+        return mapWithRequestId(payload, jobId + "-" + attemptCount);
+    }
+
+    public AiGuidebookRequest mapInput(InitialGenerationRequestPayload payload) {
+        return mapWithRequestId(payload, null);
+    }
+
+    private AiGuidebookRequest mapWithRequestId(InitialGenerationRequestPayload payload, String requestId) {
         GuidebookGenerationRequest request = payload.request();
         List<String> largeCategory = new ArrayList<>();
         Map<String, List<String>> midCategory = new LinkedHashMap<>();
@@ -48,7 +56,7 @@ public class AiGuidebookRequestMapper {
         }
 
         return new AiGuidebookRequest(
-                jobId + "-" + attemptCount,
+                requestId,
                 new AiGuidebookRequest.Region(request.province(), request.city()),
                 request.startDate(),
                 request.endDate(),
