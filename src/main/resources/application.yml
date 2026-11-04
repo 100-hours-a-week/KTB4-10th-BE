@@ -59,6 +59,11 @@ server:
         path: /
 
 management:
+  health:
+    rabbit:
+      # MQ 경로는 전환 중 선택 기능이므로 브로커 부재가 API readiness를 실패시키지 않습니다.
+      # 실제 AI 소비를 운영 활성화할 때 RabbitMQ readiness 정책을 별도로 추가합니다.
+      enabled: false
   server:
     port: ${MANAGEMENT_SERVER_PORT:8081}
   endpoints:
