@@ -14,6 +14,12 @@ import org.springframework.data.repository.query.Param;
 
 public interface GenerationJobRepository extends JpaRepository<GenerationJob, Long> {
 
+    @Query(value = "SELECT * FROM generation_jobs "
+            + "WHERE status = 'PUBLISH_PENDING' AND next_publish_at <= :now "
+            + "AND (publish_claim_expires_at IS NULL OR publish_claim_expires_at <= :now) "
+            + "ORDER BY next_publish_at, id LIMIT 1 FOR UPDATE SKIP LOCKED", nativeQuery = true)
+    Optional<GenerationJob> findNextPublicationForUpdate(@Param("now") java.time.LocalDateTime now);
+
     Optional<GenerationJob> findByMemberIdAndIdempotencyKey(
             Long memberId, String idempotencyKey);
 

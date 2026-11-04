@@ -1,7 +1,7 @@
 # AI MQ 재생성 입력 스냅샷 (#308 후속)
 
 관련 요구사항: BR-GDE-16, FR-GDE-07/08/09. PR #316의 저장 전 입력 스냅샷 구조를 확장한다.
-실제 RabbitMQ 발행과 AI 소비는 아직 구현하지 않는다. 기본 HTTP 경로와 사용자 정책은 유지한다.
+RabbitMQ 발행기는 이 후속 단계에서 구현한다. AI 소비는 아직 구현하지 않으며, 기본 HTTP 경로와 사용자 정책은 유지한다.
 
 ## 입력 원본
 
@@ -26,7 +26,7 @@
 - 원본 후보 스냅샷이 없는 기존 HTTP 작업은 활성화된 MQ 경로에서 409로 거절한다.
   원본이 없는 것을 최신 후보로 조용히 대체하지 않는다. 기존 작업의 전환 정책은 후속 결정이다.
 - 기본 false 설정에서는 기존 ai_job_id 기반 HTTP 재생성을 유지한다.
-- 발행기/AI 소비 구현 전 운영 활성화하지 않는다.
+- AI 소비·실행 복구 구현 전 운영 활성화하지 않는다.
 - 최종 전환 후 HTTP 경로와 경로 선택 설정/분기를 제거한다.
 - FE 공개 상태는 기존과 동일하다. 접수·조회·SSE에서 내부 대기 상태는 PENDING으로 반환한다.
   기존 작업의 전환 오류 안내는 운영 활성화 전에 별도로 검토한다.
@@ -65,6 +65,30 @@ flowchart TD
     U --> E
 ```
 
-buildMessage(job)는 구현됐지만 현재 요청 흐름에서 호출하지 않는다.
-후속 발행기가 저장된 입력에 jobId/attempt/messageId/jobType을 붙여 MQ에 보낼 때 사용한다.
+buildMessage(job)는 요청 접수 흐름에서 호출하지 않는다.
+발행기가 저장된 입력에 jobId/attempt/messageId/jobType을 붙여 MQ에 보낼 때 사용한다.
 위 도식의 트랜잭션은 맨 처음부터 COMMIT까지 전체를 감싸며 save 뒤에 시작되는 것이 아니다.
+
+## 발행기 흐름
+
+`GenerationOutboxPublisher`는 접수 트랜잭션의 AFTER_COMMIT 이벤트로 즉시 한 번 깨어나고,
+500ms 폴링으로 누락된 이벤트·재발행 예약·만료 선점을 회수한다. 이벤트는 지연을 줄이는 신호일 뿐
+전달 보장의 근거가 아니다.
+
+```mermaid
+sequenceDiagram
+    participant R as 접수 트랜잭션
+    participant P as GenerationOutboxPublisher
+    participant DB as generation_jobs
+    participant MQ as RabbitMQ
+
+    R->>DB: message_payload 저장, PUBLISH_PENDING
+    R-->>P: AFTER_COMMIT wakeup
+    P->>DB: Tx 1: SKIP LOCKED 선점·토큰/만료시각 저장 후 커밋
+    P->>MQ: Tx 밖에서 persistent 메시지 발행·confirm/return 대기
+    P->>DB: Tx 2: 같은 시도·토큰이면 QUEUED, 실패면 backoff 예약
+```
+
+발행 확인 직전/직후 프로세스가 종료되면 같은 `messageId`가 재발행될 수 있다. 따라서 후속 AI 소비자는
+`messageId` 기준 중복 처리를 해야 한다. 선점 토큰은 만료된 선점을 다른 인스턴스가 회수한 뒤
+이전 발행기의 늦은 결과가 현재 작업 상태를 덮어쓰지 못하게 한다.

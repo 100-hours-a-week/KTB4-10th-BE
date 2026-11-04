@@ -245,6 +245,30 @@ public class GenerationJob {
         status = GenerationStatus.QUEUED;
     }
 
+    public void claimPublication(String token, LocalDateTime expiresAt) {
+        publishClaimToken = Objects.requireNonNull(token);
+        publishClaimExpiresAt = Objects.requireNonNull(expiresAt);
+        publishAttemptCount++;
+    }
+
+    public void finishPublication(int attempt, String token, String error, LocalDateTime now) {
+        if (status != GenerationStatus.PUBLISH_PENDING || attemptCount != attempt
+                || !Objects.equals(publishClaimToken, token)) {
+            return;
+        }
+        publishClaimToken = null;
+        publishClaimExpiresAt = null;
+        lastPublishErrorCode = error;
+        if (error == null) {
+            publishedAt = now;
+            nextPublishAt = null;
+            markQueued(now);
+        } else {
+            nextPublishAt = now.plusSeconds(Math.min(60, 1L << Math.min(6, publishAttemptCount)));
+            updatedAt = now;
+        }
+    }
+
     /** 콜백 방식의 전체 제한 시간은 큐 대기 전 접수 시도부터 계산합니다. */
     public void beginCallbackAttempt(LocalDateTime now) {
         if (status == GenerationStatus.PENDING && attemptStartedAt == null) {

@@ -13,6 +13,23 @@ class GenerationJobTest {
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 9, 18, 12, 0);
 
     @Test
+    void onlyCurrentClaimCanConfirmPublication() {
+        GenerationJob job = initialJob();
+        job.preparePublication("{}", NOW);
+        job.claimPublication("old", NOW.plusSeconds(60));
+        job.claimPublication("current", NOW.plusSeconds(120));
+        job.finishPublication(0, "old", null, NOW.plusSeconds(61));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        job.finishPublication(0, "current", "MQ_CONFIRM_TIMEOUT", NOW.plusSeconds(62));
+        assertThat(job.getNextPublishAt()).isAfter(NOW.plusSeconds(62));
+        assertThat(job.getPublishClaimToken()).isNull();
+        job.claimPublication("retry", NOW.plusSeconds(180));
+        job.finishPublication(0, "retry", null, NOW.plusSeconds(70));
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.QUEUED);
+        assertThat(job.getAttemptCount()).isZero();
+    }
+
+    @Test
     void existingHttpJobsHaveNoOutboxMessageOrClaim() {
         GenerationJob initial = initialJob();
         GenerationJob regeneration = GenerationJob.createRegeneration(
