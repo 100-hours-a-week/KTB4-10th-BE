@@ -114,34 +114,35 @@ public class GenerationCallbackTransactionService {
     }
 
     @Transactional
-    public void receive(GenerationCallbackEnvelope envelope) {
+    public CallbackHandlingResult receive(GenerationCallbackEnvelope envelope) {
         GenerationCallbackEnvelope.Data data = envelope.data();
         GenerationJob job = locked(data.backendJobId());
         if (job.getAttemptCount() != data.attempt()) {
-            return;
+            return CallbackHandlingResult.ignored(job.getStatus());
         }
         if (job.getAiJobId() != null && !job.getAiJobId().equals(data.jobId())) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
         if (!activeAttempt(job, data.attempt())) {
-            return;
+            return CallbackHandlingResult.ignored(job.getStatus());
         }
         if (job.getAttemptStartedAt() == null) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
         if (!Instant.now(clock).isBefore(deadline(job))) {
             failTimeout(job);
-            return;
+            return CallbackHandlingResult.handled(
+                    job.getStatus(), "GENERATION_TIMEOUT");
         }
         if (data.status() == AiGenerationStatus.PENDING
                 && job.getStatus() == GenerationStatus.PROCESSING) {
-            return;
+            return CallbackHandlingResult.ignored(job.getStatus());
         }
         Long previous = sequences.getIfPresent(data.requestId());
         if (previous != null && data.sequence() <= previous
                 && data.status() != AiGenerationStatus.COMPLETED
                 && data.status() != AiGenerationStatus.FAILED) {
-            return;
+            return CallbackHandlingResult.ignored(job.getStatus());
         }
         // request_id가 먼저 DB에 존재하므로 AI 202보다 빠른 콜백도 매핑할 수 있습니다.
         bindAiJob(job, data.jobId());
@@ -151,6 +152,22 @@ public class GenerationCallbackTransactionService {
         events.publishEvent(GenerationUpdate.from(job, data.sequence(), data.progress(), code));
         if (data.status() == AiGenerationStatus.COMPLETED || data.status() == AiGenerationStatus.FAILED) {
             events.publishEvent(new SubmissionFinished(data.requestId()));
+        }
+        return CallbackHandlingResult.handled(job.getStatus(), code);
+    }
+
+    public record CallbackHandlingResult(
+            boolean handled,
+            GenerationStatus status,
+            String errorCode) {
+
+        private static CallbackHandlingResult handled(
+                GenerationStatus status, String errorCode) {
+            return new CallbackHandlingResult(true, status, errorCode);
+        }
+
+        private static CallbackHandlingResult ignored(GenerationStatus status) {
+            return new CallbackHandlingResult(false, status, null);
         }
     }
 

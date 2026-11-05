@@ -50,11 +50,23 @@ public class GenerationUpdateRelay {
             timers.cancel(update.requestId());
         }
         try {
+            String deliveryMode;
             if (redisEnabled) {
                 redis.getObject().convertAndSend(channel, json.writeValueAsString(update));
+                deliveryMode = "redis";
             } else {
                 streams.publish(update);
+                deliveryMode = "local_sse";
             }
+            LOGGER.atInfo()
+                    .addKeyValue("event", "generation_update_relayed")
+                    .addKeyValue("backendJobId", update.jobId())
+                    .addKeyValue("requestId", update.requestId())
+                    .addKeyValue("sequence", update.sequence())
+                    .addKeyValue("status", update.status())
+                    .addKeyValue("guidebookId", update.guidebookId())
+                    .addKeyValue("deliveryMode", deliveryMode)
+                    .log("생성 상태 실시간 전달을 처리했습니다.");
         } catch (RuntimeException | JsonProcessingException exception) {
             LOGGER.warn("생성 상태 실시간 전달에 실패했습니다. requestId={}",
                     update.requestId(), exception);
