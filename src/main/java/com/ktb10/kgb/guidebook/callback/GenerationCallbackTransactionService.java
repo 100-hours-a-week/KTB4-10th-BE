@@ -114,34 +114,34 @@ public class GenerationCallbackTransactionService {
     }
 
     @Transactional
-    public void receive(GenerationCallbackEnvelope envelope) {
+    public boolean receive(GenerationCallbackEnvelope envelope) {
         GenerationCallbackEnvelope.Data data = envelope.data();
         GenerationJob job = locked(data.backendJobId());
         if (job.getAttemptCount() != data.attempt()) {
-            return;
+            return false;
         }
         if (job.getAiJobId() != null && !job.getAiJobId().equals(data.jobId())) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
         if (!activeAttempt(job, data.attempt())) {
-            return;
+            return false;
         }
         if (job.getAttemptStartedAt() == null) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
         if (!Instant.now(clock).isBefore(deadline(job))) {
             failTimeout(job);
-            return;
+            return true;
         }
         if (data.status() == AiGenerationStatus.PENDING
                 && job.getStatus() == GenerationStatus.PROCESSING) {
-            return;
+            return false;
         }
         Long previous = sequences.getIfPresent(data.requestId());
         if (previous != null && data.sequence() <= previous
                 && data.status() != AiGenerationStatus.COMPLETED
                 && data.status() != AiGenerationStatus.FAILED) {
-            return;
+            return false;
         }
         // request_id가 먼저 DB에 존재하므로 AI 202보다 빠른 콜백도 매핑할 수 있습니다.
         bindAiJob(job, data.jobId());
@@ -152,6 +152,7 @@ public class GenerationCallbackTransactionService {
         if (data.status() == AiGenerationStatus.COMPLETED || data.status() == AiGenerationStatus.FAILED) {
             events.publishEvent(new SubmissionFinished(data.requestId()));
         }
+        return true;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
