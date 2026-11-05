@@ -166,6 +166,7 @@ jobs:
           service: ${{ env.ECS_SERVICE }}
           wait-for-service-stability: true
           wait-for-minutes: 10
+          wait-max-delay-seconds: 30   # 최대 30초 간격으로 상태 확인
 
 
   # 3. CI + Staging 배포 모두 성공한 이미지에만 tree 태그 추가
