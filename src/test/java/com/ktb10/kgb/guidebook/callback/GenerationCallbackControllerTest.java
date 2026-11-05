@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
+import com.ktb10.kgb.guidebook.entity.GenerationStatus;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -31,7 +32,9 @@ class GenerationCallbackControllerTest {
                         new GenerationCallbackEnvelope.Progress("arranging", "일정을 구성하고 있어요."),
                         null,
                         null));
-        when(transactions.receive(envelope)).thenReturn(true);
+        when(transactions.receive(envelope)).thenReturn(
+                new GenerationCallbackTransactionService.CallbackHandlingResult(
+                        true, GenerationStatus.PROCESSING, null));
 
         assertThat(controller.receive(envelope).getStatusCode().value()).isEqualTo(204);
 
@@ -47,8 +50,46 @@ class GenerationCallbackControllerTest {
                             org.assertj.core.groups.Tuple.tuple("aiJobId", "ai-job-301"),
                             org.assertj.core.groups.Tuple.tuple("sequence", 2L),
                             org.assertj.core.groups.Tuple.tuple(
-                                    "status", AiGenerationStatus.PROCESSING));
+                                    "receivedStatus", AiGenerationStatus.PROCESSING),
+                            org.assertj.core.groups.Tuple.tuple(
+                                    "status", GenerationStatus.PROCESSING),
+                            org.assertj.core.groups.Tuple.tuple("errorCode", null));
         });
+    }
+
+    @Test
+    void logsFinalTimeoutStateInsteadOfReceivedCallbackStatus() {
+        GenerationCallbackTransactionService transactions =
+                mock(GenerationCallbackTransactionService.class);
+        GenerationCallbackController controller = new GenerationCallbackController(transactions);
+        ListAppender<ILoggingEvent> logs = captureLogs();
+        GenerationCallbackEnvelope envelope = new GenerationCallbackEnvelope(
+                "guidebook_completed",
+                new GenerationCallbackEnvelope.Data(
+                        UUID.randomUUID(),
+                        "301-0",
+                        3L,
+                        "ai-job-301",
+                        AiGenerationStatus.COMPLETED,
+                        null,
+                        null,
+                        null));
+        when(transactions.receive(envelope)).thenReturn(
+                new GenerationCallbackTransactionService.CallbackHandlingResult(
+                        true, GenerationStatus.FAILED, "GENERATION_TIMEOUT"));
+
+        assertThat(controller.receive(envelope).getStatusCode().value()).isEqualTo(204);
+
+        assertThat(logs.list).singleElement().satisfies(event ->
+                assertThat(event.getKeyValuePairs())
+                        .extracting(pair -> pair.key, pair -> pair.value)
+                        .contains(
+                                org.assertj.core.groups.Tuple.tuple(
+                                        "receivedStatus", AiGenerationStatus.COMPLETED),
+                                org.assertj.core.groups.Tuple.tuple(
+                                        "status", GenerationStatus.FAILED),
+                                org.assertj.core.groups.Tuple.tuple(
+                                        "errorCode", "GENERATION_TIMEOUT")));
     }
 
     private ListAppender<ILoggingEvent> captureLogs() {

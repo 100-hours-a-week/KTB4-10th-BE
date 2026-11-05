@@ -21,7 +21,9 @@ public class GenerationCallbackController {
 
     @PostMapping("/internal/v1/ai/generation-events")
     public ResponseEntity<Void> receive(@Valid @RequestBody GenerationCallbackEnvelope envelope) {
-        if (transactions.receive(envelope)) {
+        GenerationCallbackTransactionService.CallbackHandlingResult result =
+                transactions.receive(envelope);
+        if (result.handled()) {
             GenerationCallbackEnvelope.Data data = envelope.data();
             LOGGER.atInfo()
                     .addKeyValue("event", "ai_generation_callback_applied")
@@ -29,7 +31,9 @@ public class GenerationCallbackController {
                     .addKeyValue("requestId", data.requestId())
                     .addKeyValue("aiJobId", data.jobId())
                     .addKeyValue("sequence", data.sequence())
-                    .addKeyValue("status", data.status())
+                    .addKeyValue("receivedStatus", data.status())
+                    .addKeyValue("status", result.status())
+                    .addKeyValue("errorCode", result.errorCode())
                     .log("AI 생성 콜백을 반영했습니다.");
         }
         return ResponseEntity.noContent().build();
