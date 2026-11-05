@@ -271,6 +271,33 @@ class GuidebookInitialSubmissionMysqlIntegrationTest {
         assertThat(creditTransactionRepository.count()).isZero();
     }
 
+    @Test
+    void explicitUpstream4xxFailsImmediatelyAndReleasesMemberActiveJob() {
+        given(guidebookAiClient.requestGeneration(any())).willThrow(new AiClientException(
+                "AI 요청 검증 실패",
+                new IllegalStateException("private upstream response"),
+                AiFailureType.UPSTREAM_4XX,
+                "/guidebooks-generations",
+                400,
+                100L));
+        Long jobId = persistJob();
+        Long memberId = new TransactionTemplate(transactionManager).execute(status ->
+                generationJobRepository.findById(jobId).orElseThrow().getMember().getId());
+
+        submissions.submit(jobId);
+
+        GenerationJob failedJob = generationJobRepository.findById(jobId).orElseThrow();
+        assertThat(failedJob.getStatus()).isEqualTo(GenerationStatus.FAILED);
+        assertThat(failedJob.getAiJobId()).isNull();
+        assertThat(failedJob.getErrorPayload())
+                .contains("AI_SUBMISSION_FAILED", "upstream_4xx", "false")
+                .doesNotContain("private upstream response");
+        assertThat(generationJobRepository.existsByMemberIdAndStatusIn(
+                memberId,
+                List.of(GenerationStatus.PENDING, GenerationStatus.PROCESSING))).isFalse();
+        assertThat(creditTransactionRepository.count()).isZero();
+    }
+
     private Long persistJob() {
         return new TransactionTemplate(transactionManager).execute(status -> {
             Member member = memberRepository.save(Member.register(
