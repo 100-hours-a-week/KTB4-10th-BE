@@ -101,6 +101,22 @@ class GenerationCallbackSubmissionServiceTest {
     }
 
     @Test
+    void explicitUpstream4xxFailsSubmissionInsteadOfWaitingForTimeout() {
+        var prepared = prepared();
+        var failure = new AiClientException("invalid candidate", null,
+                AiFailureType.UPSTREAM_4XX, "/guidebooks-generations", 400, 1);
+        when(transactions.prepare(301L)).thenReturn(prepared);
+        when(clients.getObject()).thenReturn(client);
+        when(client.requestGeneration(request)).thenThrow(failure);
+
+        submissions.submit(301L);
+
+        verify(transactions).failSubmission(prepared, failure);
+        verify(transactions, never()).registerAccepted(any(), any());
+        verify(errors).logFailure("ai_callback_submission_rejected", 301L, null, failure);
+    }
+
+    @Test
     void timerRegistrationFailureStopsBeforeHttpAndFailsTheClaimedAttempt() {
         var prepared = prepared();
         when(transactions.prepare(301L)).thenReturn(prepared);

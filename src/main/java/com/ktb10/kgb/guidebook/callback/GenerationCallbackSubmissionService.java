@@ -53,7 +53,8 @@ public class GenerationCallbackSubmissionService {
                     ? client.requestGeneration(prepared.initialRequest())
                     : client.requestRegeneration(prepared.sourceAiJobId(), prepared.regenerationRequest());
         } catch (AiClientException exception) {
-            if (Integer.valueOf(503).equals(exception.getUpstreamStatus())) {
+            if (exception.getFailureType() == AiFailureType.UPSTREAM_4XX
+                    || Integer.valueOf(503).equals(exception.getUpstreamStatus())) {
                 transactions.failSubmission(prepared, exception);
                 errors.logFailure("ai_callback_submission_rejected", jobId, null, exception);
                 return;

@@ -34,10 +34,12 @@ public class AiGuidebookContentQuery {
             String city,
             LocalDate startDate,
             LocalDate endDate) {
-        Object[] arguments = new Object[ALLOWED_PLACE_CLASSIFICATION_CODES.size() + 3];
+        Object[] arguments = new Object[ALLOWED_PLACE_CLASSIFICATION_CODES.size() + 5];
         arguments[0] = province;
         arguments[1] = city;
-        int index = 2;
+        arguments[2] = endDate;
+        arguments[3] = startDate;
+        int index = 4;
         for (String code : ALLOWED_PLACE_CLASSIFICATION_CODES) {
             arguments[index++] = code;
         }
@@ -68,7 +70,13 @@ public class AiGuidebookContentQuery {
                   AND content.status = 'ACTIVE'
                   AND content.deleted_at IS NULL
                   AND (
-                      content.classification_code_1 = 'EV'
+                      (
+                          content.classification_code_1 = 'EV'
+                          AND event.start_date IS NOT NULL
+                          AND event.end_date IS NOT NULL
+                          AND event.start_date <= ?
+                          AND event.end_date >= ?
+                      )
                       OR content.classification_code_2 IN (%s)
                   )
                 ORDER BY content.id

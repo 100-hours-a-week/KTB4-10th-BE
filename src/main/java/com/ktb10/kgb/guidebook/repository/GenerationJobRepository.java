@@ -31,6 +31,9 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
 
     boolean existsByIdAndMemberId(Long id, Long memberId);
 
+    List<GenerationJob> findAllByStatusInAndAttemptStartedAtIsNotNull(
+            Collection<GenerationStatus> statuses);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select job from GenerationJob job "
             + "where job.member.id = :memberId and job.status in :statuses order by job.id")
