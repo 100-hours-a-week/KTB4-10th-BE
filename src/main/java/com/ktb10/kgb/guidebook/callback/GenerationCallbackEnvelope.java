@@ -72,7 +72,7 @@ public record GenerationCallbackEnvelope(
     }
 
     public record Progress(
-            @NotBlank @Pattern(regexp = "queued|arranging|writing|rendering") String step,
+            @NotBlank @Pattern(regexp = "queued|checking|arranging|writing|rendering") String step,
             @NotBlank @Size(max = 200) String message) {
     }
 }
