@@ -186,6 +186,7 @@ public class GenerationCallbackTransactionService {
                 "message", "가이드북 생성 제한 시간을 초과했습니다.",
                 "retryable", true)), LocalDateTime.now(clock));
         events.publishEvent(GenerationUpdate.from(job, 0, null, "GENERATION_TIMEOUT"));
+        events.publishEvent(new SubmissionFinished(requestId(job)));
     }
 
     private GenerationJob locked(Long id) {
