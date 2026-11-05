@@ -78,11 +78,14 @@ sequence는 재시도·재생성 횟수가 아니다. 실패 재시도는 reques
 }
 ```
 
-BE가 허용하는 step은 queued(pending), arranging/writing/rendering(processing)이다.
-AI 팀 제안의 기본 흐름은 arranging(1) → writing(2) → completed(3)이며 queued와
-rendering 전송은 필수가 아니다. pending을 보내면 message=guidebook_pending을 쓴다.
-실제 단계가 바뀔 때만 전송하고 임의 퍼센트를 만들지 않는다. 진행 전송 실패가 AI
-계산이나 최종 콜백을 막아서는 안 된다. 화면 문구는 AI·FE와 맞춘다.
+BE가 허용하는 step은 queued(pending), checking/arranging/writing/rendering(processing)이다.
+현재 AI의 최초 생성 흐름은 checking(1) → arranging(2) → writing(3) → completed(4)이며,
+재생성은 checking을 생략한다. queued와 rendering 전송은 현재 필수가 아니다. pending을
+보내면 message=guidebook_pending을 쓴다. 실제 단계가 바뀔 때만 전송하고 임의 퍼센트를
+만들지 않는다. 진행 callback은 서로 독립적으로 전송될 수 있으므로 도착 순서는 보장하지
+않는다. BE는 같은 attempt의 낮거나 같은 sequence인 비종료 callback을 204로 멱등 처리하되
+DB 상태와 생성 SSE 최신 진행률을 되돌리지 않는다. 진행 전송 실패가 AI 계산이나 최종
+callback을 막아서는 안 된다. 화면 문구는 AI·FE와 맞춘다.
 
 ### 완료
 

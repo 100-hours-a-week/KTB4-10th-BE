@@ -210,7 +210,7 @@ class GenerationCallbackIntegrationTest {
     @Test
     void bindsAiJobBeforeAcceptedResponseAndIgnoresOutOfOrderProgress() throws Exception {
         send(progress(2, "writing")).andExpect(status().isNoContent());
-        send(progress(1, "arranging")).andExpect(status().isNoContent());
+        send(progress(1, "checking")).andExpect(status().isNoContent());
         GenerationJob stored = jobs.findById(job.getId()).orElseThrow();
         assertThat(stored.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
         assertThat(stored.getAiJobId()).isEqualTo(aiJobId());

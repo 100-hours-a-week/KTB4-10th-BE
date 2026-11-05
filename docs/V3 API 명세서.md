@@ -1286,6 +1286,10 @@ Body 없음.
 
 두 경로는 모드 선택 없이 제공하며 AI_CALLBACK_TOKEN은 필수다. 콜백 본문은 기존 message/data/job_id/status/result/error에
 event_id/request_id/sequence/progress를 추가한 형태다. SSE 이벤트명은 generation-status다.
+진행 step은 queued/checking/arranging/writing/rendering을 허용한다. 현재 AI 최초 생성은
+checking → arranging → writing 순서로 전송하고 재생성은 checking을 생략한다. 독립 전송으로
+도착 순서가 바뀔 수 있으므로 같은 attempt의 낮거나 같은 비종료 sequence는 204로 무시하며
+DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 생성·재생성·재시도 POST는 작업 저장 커밋·자원 정리 후 단일 BE 무제한 메모리 큐에 적재하고
 202를 반환한다. 기본 3개 슬롯의 워커가 트랜잭션 밖에서 AI에 접수하며 AI ID는 별도
 트랜잭션으로 저장한다. 실제 완료·실패 콜백 커밋 또는 명확한 접수 실패 뒤 다음 작업을 보낸다.
