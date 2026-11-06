@@ -4,18 +4,22 @@ import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.error.ErrorDetail;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
+import com.ktb10.kgb.content.dto.MapContentFilter;
 import com.ktb10.kgb.content.dto.MapContentItemResponse;
+import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentListResponse;
 import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
 import com.ktb10.kgb.content.dto.MapMarkerResponse;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
+import com.ktb10.kgb.content.repository.MapGuidebookContentQuery;
 import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,16 +37,19 @@ public class MapContentService {
     private static final double EARTH_RADIUS_KILOMETERS = 6_371.0088;
 
     private final MapContentRadiusClusterer radiusClusterer;
+    private final MapGuidebookContentQuery guidebookContentQuery;
     private final MapContentPersonalizationQuery personalizationQuery;
     private final MapContentCommonCache commonCache;
     private final MapPerformanceMetrics performanceMetrics;
 
     public MapContentService(
             MapContentRadiusClusterer radiusClusterer,
+            MapGuidebookContentQuery guidebookContentQuery,
             MapContentPersonalizationQuery personalizationQuery,
             MapContentCommonCache commonCache,
             MapPerformanceMetrics performanceMetrics) {
         this.radiusClusterer = radiusClusterer;
+        this.guidebookContentQuery = guidebookContentQuery;
         this.personalizationQuery = personalizationQuery;
         this.commonCache = commonCache;
         this.performanceMetrics = performanceMetrics;
@@ -56,21 +63,40 @@ public class MapContentService {
             double north,
             double east,
             int zoom) {
+        return getMarkers(
+                memberId, south, west, north, east, zoom, MapContentFilter.ALL, null);
+    }
+
+    @Transactional(readOnly = true)
+    public MapMarkerResponse getMarkers(
+            Long memberId,
+            double south,
+            double west,
+            double north,
+            double east,
+            int zoom,
+            MapContentFilter filter,
+            Long guidebookId) {
         validateBounds(south, west, north, east);
         validateZoom(zoom);
+        validateFilter(filter, guidebookId);
+
+        List<MapContentCommonData> contents = selectContents(
+                memberId, south, west, north, east, filter, guidebookId);
+
+        if (filter == MapContentFilter.GUIDEBOOK) {
+            return MapMarkerResponse.marker(personalizeMarkers(memberId, contents));
+        }
 
         boolean wideBounds = diagonalKilometers(south, west, north, east)
                 > DETAIL_MAX_DIAGONAL_KILOMETERS;
         if (zoom <= CLUSTER_MAX_ZOOM || wideBounds) {
             int clusterZoom = wideBounds ? Math.min(zoom, CLUSTER_MAX_ZOOM) : zoom;
-            List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(
-                    commonCache.get(south, west, north, east), clusterZoom);
+            List<MapContentRadiusClusterer.Result> results = radiusClusterer.cluster(contents, clusterZoom);
             return MapMarkerResponse.cluster(
                     results.stream().map(MapContentRadiusClusterer.Result::cluster).toList());
         }
 
-        List<MapContentCommonData> contents = commonCache.get(
-                south, west, north, east);
         return MapMarkerResponse.marker(personalizeMarkers(memberId, contents));
     }
 
@@ -82,9 +108,25 @@ public class MapContentService {
             double north,
             double east,
             String cursor) {
-        validateBounds(south, west, north, east);
+        return getBottomSheetContents(
+                memberId, south, west, north, east, MapContentFilter.ALL, null, cursor);
+    }
 
-        List<MapContentCommonData> sortedContents = commonCache.get(south, west, north, east)
+    @Transactional(readOnly = true)
+    public MapContentListResponse getBottomSheetContents(
+            Long memberId,
+            double south,
+            double west,
+            double north,
+            double east,
+            MapContentFilter filter,
+            Long guidebookId,
+            String cursor) {
+        validateBounds(south, west, north, east);
+        validateFilter(filter, guidebookId);
+
+        List<MapContentCommonData> sortedContents = selectContents(
+                memberId, south, west, north, east, filter, guidebookId)
                 .stream()
                 .sorted(Comparator
                         .comparingDouble((MapContentCommonData content) -> distanceSquared(
@@ -93,7 +135,7 @@ public class MapContentService {
                                 (west + east) / 2.0))
                         .thenComparing(MapContentCommonData::id))
                 .toList();
-        int boundsHash = Objects.hash(south, west, north, east);
+        int boundsHash = Objects.hash(south, west, north, east, filter, guidebookId);
         int offset = decodeCursor(cursor, boundsHash);
         if (offset > sortedContents.size()) {
             throw validationError("cursor", "out_of_range");
@@ -107,6 +149,53 @@ public class MapContentService {
                 personalize(memberId, page),
                 nextCursor,
                 hasMore);
+    }
+
+    private List<MapContentCommonData> selectContents(
+            Long memberId,
+            double south,
+            double west,
+            double north,
+            double east,
+            MapContentFilter filter,
+            Long guidebookId) {
+        List<MapContentCommonData> contents = commonCache.get(south, west, north, east);
+        return switch (filter) {
+            case ALL -> contents;
+            case PLACE -> filterByType(contents, ContentType.PLACE);
+            case EVENT -> filterByType(contents, ContentType.EVENT);
+            case GUIDEBOOK -> {
+                Set<Long> guidebookContentIds = guidebookContentQuery
+                        .findActiveContentIds(memberId, guidebookId)
+                        .orElseThrow(() -> new BusinessException(CommonErrorCode.RESOURCE_NOT_FOUND));
+                yield contents.stream()
+                        .filter(content -> guidebookContentIds.contains(content.id()))
+                        .toList();
+            }
+        };
+    }
+
+    private List<MapContentCommonData> filterByType(
+            List<MapContentCommonData> contents,
+            ContentType contentType) {
+        return contents.stream()
+                .filter(content -> content.contentType() == contentType)
+                .toList();
+    }
+
+    private void validateFilter(MapContentFilter filter, Long guidebookId) {
+        if (filter == null) {
+            throw validationError("filter", "required");
+        }
+        if (filter == MapContentFilter.GUIDEBOOK) {
+            if (guidebookId == null || guidebookId <= 0) {
+                throw validationError("guidebook_id", "required_positive");
+            }
+            return;
+        }
+        if (guidebookId != null) {
+            throw validationError("guidebook_id", "only_allowed_for_guidebook_filter");
+        }
     }
 
     private List<MapContentItemResponse> personalize(

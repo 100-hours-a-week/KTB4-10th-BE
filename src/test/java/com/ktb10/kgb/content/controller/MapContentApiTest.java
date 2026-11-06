@@ -16,11 +16,14 @@ import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import com.ktb10.kgb.content.repository.MapContentQuery;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapGuidebookContentQuery;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import com.ktb10.kgb.content.service.MapContentCommonCache;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +49,9 @@ class MapContentApiTest {
 
     @MockitoBean
     private MapContentQuery mapContentQuery;
+
+    @MockitoBean
+    private MapGuidebookContentQuery guidebookContentQuery;
 
     @MockitoBean
     private MapContentPersonalizationQuery personalizationQuery;
@@ -151,6 +157,73 @@ class MapContentApiTest {
                 .andExpect(jsonPath("$.data.clusters.length()").value(1))
                 .andExpect(jsonPath("$.data.clusters[0].count").value(2))
                 .andExpect(jsonPath("$.data.markers").isEmpty());
+    }
+
+    @Test
+    void filtersMarkerResponseByContentType() throws Exception {
+        when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(
+                        new MapContentCommonData(
+                                101L, "place-1", "장소", ContentType.PLACE, "주소",
+                                37.4, 127.1, null, null),
+                        new MapContentCommonData(
+                                102L, "event-1", "행사", ContentType.EVENT, "주소",
+                                37.41, 127.11, null, null)));
+
+        mockMvc.perform(get("/api/v1/map/markers")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "37.35")
+                        .param("west", "127.05")
+                        .param("north", "37.45")
+                        .param("east", "127.15")
+                        .param("zoom", "16")
+                        .param("filter", "EVENT"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.markers.length()").value(1))
+                .andExpect(jsonPath("$.data.markers[0].content_id").value("event-1"));
+    }
+
+    @Test
+    void returnsGuidebookMarkersWithoutClustering() throws Exception {
+        when(commonCache.get(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
+                .thenReturn(List.of(
+                        new MapContentCommonData(
+                                101L, "guide-place", "일정 장소", ContentType.PLACE, "주소",
+                                37.4, 127.1, null, null),
+                        new MapContentCommonData(
+                                102L, "other-place", "다른 장소", ContentType.PLACE, "주소",
+                                37.41, 127.11, null, null)));
+        when(guidebookContentQuery.findActiveContentIds(1L, 10L))
+                .thenReturn(Optional.of(Set.of(101L)));
+
+        mockMvc.perform(get("/api/v1/map/markers")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "33.0")
+                        .param("west", "124.0")
+                        .param("north", "39.0")
+                        .param("east", "132.0")
+                        .param("zoom", "6")
+                        .param("filter", "GUIDEBOOK")
+                        .param("guidebook_id", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("MARKER"))
+                .andExpect(jsonPath("$.data.clusters").isEmpty())
+                .andExpect(jsonPath("$.data.markers.length()").value(1))
+                .andExpect(jsonPath("$.data.markers[0].content_id").value("guide-place"));
+    }
+
+    @Test
+    void rejectsGuidebookFilterWithoutGuidebookId() throws Exception {
+        mockMvc.perform(get("/api/v1/map/markers")
+                        .with(authentication(authenticatedMember()))
+                        .param("south", "37.0")
+                        .param("west", "127.0")
+                        .param("north", "38.0")
+                        .param("east", "128.0")
+                        .param("zoom", "16")
+                        .param("filter", "GUIDEBOOK"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("COMMON_VALIDATION_ERROR"));
     }
 
     @Test
