@@ -5,12 +5,14 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.content.dto.ContentDetailResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
+import com.ktb10.kgb.content.model.ContentSearchCategory;
 import com.ktb10.kgb.content.repository.ContentReadRepository;
 import com.ktb10.kgb.content.repository.ContentReadRepository.ContentDetailProjection;
+import com.ktb10.kgb.content.repository.ContentSearchQuery;
 import com.ktb10.kgb.content.repository.FavoriteContentQuery;
+import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import java.time.YearMonth;
 import java.time.format.DateTimeParseException;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -21,35 +23,63 @@ public class ContentReadService {
 
     private final ContentReadRepository contentReadRepository;
     private final FavoriteContentQuery favoriteContentQuery;
+    private final ContentSearchQuery contentSearchQuery;
+    private final MapContentPersonalizationQuery personalizationQuery;
 
     public ContentReadService(
             ContentReadRepository contentReadRepository,
-            FavoriteContentQuery favoriteContentQuery) {
+            FavoriteContentQuery favoriteContentQuery,
+            ContentSearchQuery contentSearchQuery,
+            MapContentPersonalizationQuery personalizationQuery) {
         this.contentReadRepository = contentReadRepository;
         this.favoriteContentQuery = favoriteContentQuery;
+        this.contentSearchQuery = contentSearchQuery;
+        this.personalizationQuery = personalizationQuery;
     }
 
     @Transactional(readOnly = true)
-    public ContentListResponse getEvents(
+    public ContentListResponse getContents(
+            Long memberId,
+            ContentSearchCategory category,
             String rawQuery,
             String rawRegionCode,
             String rawMonth,
             int page,
             int size) {
-        String query = StringUtils.hasText(rawQuery) ? rawQuery.trim() : null;
+        String query = normalizeQuery(category, rawQuery);
         String regionCode = normalizeRegionCode(rawRegionCode);
         YearMonth month = parseMonth(rawMonth);
-        var result = contentReadRepository.findEvents(
+        var result = contentSearchQuery.findContents(
+                category,
                 query,
                 regionCode,
                 month == null ? null : month.atDay(1),
                 month == null ? null : month.atEndOfMonth(),
-                PageRequest.of(page - 1, size));
-        var items = result.getContent().stream()
-                .map(ContentListItemResponse::from)
+                page,
+                size);
+        var personalization = personalizationQuery.findByMemberAndContentIds(
+                memberId,
+                result.items().stream().map(item -> item.id()).toList());
+        var items = result.items().stream()
+                .map(item -> ContentListItemResponse.from(item, personalization))
                 .toList();
+        int totalPages = (int) Math.ceil((double) result.totalItems() / size);
         return new ContentListResponse(
-                items, page, size, result.getTotalElements(), result.getTotalPages());
+                items, page, size, result.totalItems(), totalPages);
+    }
+
+    private String normalizeQuery(ContentSearchCategory category, String rawQuery) {
+        String query = rawQuery == null ? null : rawQuery.trim();
+        if (!StringUtils.hasText(query)) {
+            if (category == ContentSearchCategory.EVENT) {
+                return null;
+            }
+            throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
+        }
+        if (query.codePointCount(0, query.length()) > 10) {
+            throw new BusinessException(CommonErrorCode.COMMON_VALIDATION_ERROR);
+        }
+        return query;
     }
 
     private String normalizeRegionCode(String rawRegionCode) {

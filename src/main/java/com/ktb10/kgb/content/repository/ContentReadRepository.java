@@ -4,67 +4,12 @@ import com.ktb10.kgb.content.entity.TourismContentReadEntity;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 /** 정보 탭 행사 목록과 상세를 projection으로 조회합니다. */
 public interface ContentReadRepository extends JpaRepository<TourismContentReadEntity, Long> {
-
-    @Query(
-            value =
-                    """
-                    SELECT content.source_content_id AS contentId,
-                           content.title AS title,
-                           province.administrative_code AS regionCode,
-                           province.name AS regionName,
-                           content.address AS address,
-                           content.thumbnail_url AS thumbnailUrl,
-                           event.start_date AS startDate,
-                           event.end_date AS endDate
-                    FROM tourism_contents content
-                    JOIN regions region ON region.id = content.region_id
-                    JOIN regions province
-                      ON province.id = COALESCE(region.parent_id, region.id)
-                    JOIN event_details event ON event.content_id = content.id
-                    WHERE content.status = 'ACTIVE'
-                      AND content.deleted_at IS NULL
-                      AND content.classification_code_1 = 'EV'
-                      AND (:query IS NULL OR LOCATE(:query, content.title) > 0)
-                      AND (:regionCode IS NULL OR province.administrative_code = :regionCode)
-                      AND (:monthStart IS NULL OR (
-                            event.start_date <= :monthEnd
-                            AND event.end_date >= :monthStart
-                      ))
-                    ORDER BY content.created_at DESC, content.id DESC
-                    """,
-            countQuery =
-                    """
-                    SELECT COUNT(*)
-                    FROM tourism_contents content
-                    JOIN regions region ON region.id = content.region_id
-                    JOIN regions province
-                      ON province.id = COALESCE(region.parent_id, region.id)
-                    JOIN event_details event ON event.content_id = content.id
-                    WHERE content.status = 'ACTIVE'
-                      AND content.deleted_at IS NULL
-                      AND content.classification_code_1 = 'EV'
-                      AND (:query IS NULL OR LOCATE(:query, content.title) > 0)
-                      AND (:regionCode IS NULL OR province.administrative_code = :regionCode)
-                      AND (:monthStart IS NULL OR (
-                            event.start_date <= :monthEnd
-                            AND event.end_date >= :monthStart
-                      ))
-                    """,
-            nativeQuery = true)
-    Page<ContentListProjection> findEvents(
-            @Param("query") String query,
-            @Param("regionCode") String regionCode,
-            @Param("monthStart") LocalDate monthStart,
-            @Param("monthEnd") LocalDate monthEnd,
-            Pageable pageable);
 
     @Query(
             value =
