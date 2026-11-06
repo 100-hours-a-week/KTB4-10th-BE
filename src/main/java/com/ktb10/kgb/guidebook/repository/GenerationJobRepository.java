@@ -17,6 +17,9 @@ public interface GenerationJobRepository extends JpaRepository<GenerationJob, Lo
     Optional<GenerationJob> findByMemberIdAndIdempotencyKey(
             Long memberId, String idempotencyKey);
 
+    Optional<GenerationJob> findFirstByGuidebookIdAndStatusOrderByCompletedAtDescIdDesc(
+            Long guidebookId, GenerationStatus status);
+
     Optional<GenerationJob> findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
             Long guidebookId, GenerationStatus status);
 

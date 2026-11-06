@@ -3,10 +3,14 @@ package com.ktb10.kgb.guidebook.messaging;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.ktb10.kgb.common.error.BusinessException;
+import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
+import com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload;
 import com.ktb10.kgb.guidebook.entity.GenerationJob;
+import com.ktb10.kgb.guidebook.entity.Guidebook;
 import com.ktb10.kgb.guidebook.entity.JobType;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -23,11 +27,42 @@ public class GenerationMessagePreparation {
     private final AiGuidebookRequestMapper mapper;
     private final ObjectMapper json;
     private final Clock clock;
+    private final RegenerationInputSnapshot regeneration;
 
-    public GenerationMessagePreparation(AiGuidebookRequestMapper mapper, ObjectMapper json, Clock clock) {
+    public GenerationMessagePreparation(AiGuidebookRequestMapper mapper, ObjectMapper json, Clock clock,
+            RegenerationInputSnapshot regeneration) {
         this.mapper = mapper;
         this.json = json;
         this.clock = clock;
+        this.regeneration = regeneration;
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void prepareRegeneration(GenerationJob job, GenerationJob source, Guidebook guidebook) {
+        if (job.getJobType() != JobType.REGENERATION) {
+            throw new IllegalArgumentException("재생성 작업만 지원합니다.");
+        }
+        try {
+            var request = json.readValue(job.getRequestPayload(), RegenerationRequestPayload.class);
+            ObjectNode snapshot = json.createObjectNode();
+            snapshot.put("schemaVersion", 1);
+            snapshot.set("input", regeneration.build(source, guidebook, request.request().feedback()));
+            job.preparePublication(json.writeValueAsString(snapshot), LocalDateTime.now(clock));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("재생성 메시지를 구성할 수 없습니다.", exception);
+        }
+    }
+
+    /** 사용자 재시도도 최초 접수 때의 원본 일정과 후보를 유지합니다. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void prepareRegenerationRetry(GenerationJob job, String previousSnapshot) {
+        if (job.getJobType() != JobType.REGENERATION) {
+            throw new IllegalArgumentException("재생성 작업만 지원합니다.");
+        }
+        if (previousSnapshot == null) {
+            throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
+        }
+        job.preparePublication(previousSnapshot, LocalDateTime.now(clock));
     }
 
     @Transactional(propagation = Propagation.MANDATORY)

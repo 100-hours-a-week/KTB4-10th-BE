@@ -102,8 +102,23 @@ class GuidebookGenerationServiceTest {
                 CLOCK);
     }
 
-    @Test
-    void createsPendingRegenerationJobForExistingGuidebook() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void createsPendingRegenerationJobForExistingGuidebook(boolean outbox) throws Exception {
+        var preparation = org.mockito.Mockito.mock(
+                com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class);
+        if (outbox) {
+            ReflectionTestUtils.setField(service, "messages",
+                    new StaticListableBeanFactory(java.util.Map.of("messages", preparation))
+                            .getBeanProvider(com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class));
+            org.mockito.Mockito.doAnswer(invocation -> {
+                GenerationJob pending = invocation.getArgument(0);
+                assertThat(pending.getId()).isNull();
+                verify(transactionManager, never()).commit(any());
+                pending.preparePublication("{\"schemaVersion\":1,\"input\":{}}", LocalDateTime.now(CLOCK));
+                return null;
+            }).when(preparation).prepareRegeneration(any(), any(), any());
+        }
         Member member = member();
         Guidebook guidebook = Guidebook.create(
                 "경주 여행",
@@ -145,10 +160,16 @@ class GuidebookGenerationServiceTest {
         given(memberPreferenceRepository
                 .findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
                 .willReturn(preferences(member));
-        given(generationJobRepository
-                .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
-                        50L, GenerationStatus.COMPLETED))
-                .willReturn(Optional.of(sourceJob));
+        if (outbox) {
+            ReflectionTestUtils.setField(sourceJob, "aiJobId", null);
+            given(generationJobRepository.findFirstByGuidebookIdAndStatusOrderByCompletedAtDescIdDesc(
+                    50L, GenerationStatus.COMPLETED)).willReturn(Optional.of(sourceJob));
+        } else {
+            given(generationJobRepository
+                    .findFirstByGuidebookIdAndStatusAndAiJobIdIsNotNullOrderByCompletedAtDescIdDesc(
+                            50L, GenerationStatus.COMPLETED))
+                    .willReturn(Optional.of(sourceJob));
+        }
         given(generationJobRepository.save(any(GenerationJob.class)))
                 .willAnswer(invocation -> {
                     GenerationJob job = invocation.getArgument(0);
@@ -165,9 +186,15 @@ class GuidebookGenerationServiceTest {
         assertThat(response.jobType().name()).isEqualTo("REGENERATION");
         assertThat(response.guidebookId()).isEqualTo(50L);
         assertThat(response.currentVersion()).isEqualTo(1);
-        var order = inOrder(transactionManager, submissions);
-        order.verify(transactionManager).commit(any());
-        order.verify(submissions).submit(301L);
+        if (outbox) {
+            assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
+            verify(preparation).prepareRegeneration(any(), any(), any());
+            verify(submissions, never()).submit(any());
+        } else {
+            var order = inOrder(transactionManager, submissions);
+            order.verify(transactionManager).commit(any());
+            order.verify(submissions).submit(301L);
+        }
         verify(creditWalletRepository, never()).findByMemberIdForUpdate(any());
     }
 
@@ -300,7 +327,7 @@ class GuidebookGenerationServiceTest {
 
         var response = service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, validRequest());
 
-        assertThat(response.status()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
         verify(transactionManager).commit(any());
         verify(submissions, never()).submit(any());
     }
@@ -632,6 +659,34 @@ class GuidebookGenerationServiceTest {
                                 .isEqualTo(GuidebookErrorCode.RETRY_INVALID_STATE));
         verify(submissions).submit(301L);
         assertThat(job.getAttemptCount()).isEqualTo((short) 1);
+    }
+
+    @Test
+    void regenerationRetryPassesOriginalSnapshotWithoutHttpSubmission() {
+        String snapshot = "{\"schemaVersion\":1,\"input\":{\"feedback\":\"기존 요청\"}}";
+        GenerationJob job = GenerationJob.createRegeneration(member(), 50L, "{}", "regen-key",
+                LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.preparePublication(snapshot, LocalDateTime.now(CLOCK));
+        job.fail("{\"code\":\"GENERATION_FAILED\",\"retryable\":true}", LocalDateTime.now(CLOCK));
+        var mapper = org.mockito.Mockito.mock(com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper.class);
+        var inputs = org.mockito.Mockito.mock(com.ktb10.kgb.guidebook.messaging.RegenerationInputSnapshot.class);
+        var preparation = new com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation(
+                mapper, objectMapper, CLOCK, inputs);
+        ReflectionTestUtils.setField(service, "messages",
+                new StaticListableBeanFactory(java.util.Map.of("messages", preparation))
+                        .getBeanProvider(com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class));
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findByIdForUpdate(301L)).willReturn(Optional.of(job));
+
+        var response = service.retry(MEMBER_ID, 301L);
+
+        assertThat(response.status()).isEqualTo(GenerationStatus.PENDING);
+        assertThat(job.getMessagePayload()).isEqualTo(snapshot);
+        assertThat(job.getMessageId()).isEqualTo("301-1");
+        verify(submissions, never()).submit(any());
+        org.mockito.Mockito.verifyNoInteractions(mapper, inputs);
     }
 
     private GuidebookGenerationRequest validRequest() {
