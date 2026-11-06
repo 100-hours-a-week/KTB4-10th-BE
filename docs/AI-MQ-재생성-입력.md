@@ -5,18 +5,6 @@ RabbitMQ 발행기는 이 후속 단계에서 구현한다. AI 소비는 아직 
 전환 중에는 RabbitMQ가 API 기동 필수 의존성이 아니므로 기본 health/readiness에서 Rabbit health contributor를 제외한다.
 실제 AI 소비를 운영 활성화할 때는 브로커 장애를 어떻게 readiness에 반영할지 별도로 정한다.
 
-로컬 발행 검증에서는 단일 RabbitMQ와 영구 볼륨을 사용하고 quorum 선언을 유지한다.
-`AI_GENERATION_OUTBOX_ENABLED=true`와 `SPRING_RABBITMQ_HOST/PORT/USERNAME/PASSWORD`를
-BE 실행 환경에 주입하면 `guidebook.generation`을 선언하고 발행기를 활성화한다.
-AI consumer 연결 전에는 발행 메시지가 큐에 대기하며 DB 내부 상태는 QUEUED로 남는다.
-
-최초 발행은 default exchange가 아니라 `guidebook.generation.exchange`의
-`guidebook.generation` routing key를 사용한다. 소비자가 메시지를 NACK하면 메인 큐의
-dead-letter 설정이 `guidebook.generation.retry` 큐로 보내고, 설정된 지연 시간이 지나면
-메인 exchange로 되돌린다. 재시도 한도를 넘거나 복구할 수 없는 메시지는 소비자가
-`guidebook.generation.dlx`의 `guidebook.generation.failed` routing key로 발행하여
-`guidebook.generation.dlq`에 격리한다.
-
 ## 입력 원본
 
 - MQ 준비 경로에서는 최근 COMPLETED 작업을 completed_at DESC, id DESC로 선택한다.
@@ -106,77 +94,3 @@ sequenceDiagram
 발행 확인 직전/직후 프로세스가 종료되면 같은 `messageId`가 재발행될 수 있다. 따라서 후속 AI 소비자는
 `messageId` 기준 중복 처리를 해야 한다. 선점 토큰은 만료된 선점을 다른 인스턴스가 회수한 뒤
 이전 발행기의 늦은 결과가 현재 작업 상태를 덮어쓰지 못하게 한다.
-
-## AI consumer 전달 계약
-
-BE는 최초 생성과 재생성을 같은 `guidebook.generation` 큐에 발행한다. AI consumer는
-`jobType`으로 처리기를 구분한다. 발행 메시지의 공통 외피는 다음과 같다.
-
-```json
-{
-  "schemaVersion": 1,
-  "messageId": "123-0",
-  "jobId": 123,
-  "attempt": 0,
-  "jobType": "INITIAL",
-  "input": {
-    "request_id": "123-0"
-  }
-}
-```
-
-- `messageId`: `{BE jobId}-{attempt}`. 자동 재발행과 RabbitMQ 재전달에서는 바뀌지 않는다.
-- `jobId`: BE `generation_jobs.id`. 콜백의 `backend_job_id`와 동일하다.
-- `attempt`: 사용자 수동 재시도 회차. 이전 회차의 늦은 콜백은 BE가 무시한다.
-- `jobType`: `INITIAL` 또는 `REGENERATION`.
-- `input`: 최초 생성은 여행 조건·취향·후보를 포함한다. 재생성은 이에 더해
-  `source_job_id`, `source_guidebook_version`, `title`, `feedback`, `previous_plan`을 포함한다.
-
-### 전달 보장과 멱등성
-
-전달 보장은 at-least-once다. publisher confirm 응답 유실, BE 재기동, consumer 연결 종료로 같은
-`messageId`가 여러 번 전달될 수 있다. AI는 작업 저장소에서 `messageId`를 UNIQUE로 관리한다.
-
-1. 처음 본 `messageId`이면 AI 작업을 영속화한다.
-2. 작업 영속화가 커밋된 뒤 RabbitMQ ACK를 보낸다.
-3. 이미 PROCESSING 또는 COMPLETED인 `messageId`이면 새 LLM 작업을 만들지 않고 ACK한다.
-4. PROCESSING 작업이 실행 주체와 함께 유실될 수 있다면 lease/heartbeat 만료 후 회수 정책을 AI가 둔다.
-5. 사용자 수동 재시도는 `attempt`와 `messageId`가 바뀌므로 새로운 작업으로 처리한다.
-
-LLM 실행 완료까지 RabbitMQ delivery를 unacked로 잡아두지 않는다. 메시지 ACK는 LLM 완료가 아니라
-AI 내부 작업의 안전한 접수를 의미한다. 실제 진행·성공·실패는 기존 콜백
-`POST /internal/v1/ai/generation-events`로 전달한다.
-
-### ACK, retry, DLQ
-
-| 상황 | AI consumer 처리 |
-| --- | --- |
-| 메시지 검증 성공, AI 작업 저장 성공 | ACK |
-| 같은 `messageId`가 이미 저장됨 | 상태 확인 후 중복 실행 없이 ACK |
-| DB 연결 실패 등 접수 단계의 일시 오류 | NACK, `requeue=false` |
-| JSON/schemaVersion/jobType 오류 | DLX에 명시적으로 발행 후 ACK |
-| 접수 재시도 한도 초과 | DLX에 명시적으로 발행 후 ACK |
-| ACK 이후 LLM 실행 실패·타임아웃 | MQ 재시도 대신 FAILED 콜백 |
-
-메인 큐의 NACK는 `guidebook.generation.retry`로 이동하고
-`AI_GENERATION_RABBIT_RETRY_DELAY`가 지난 뒤 메인 큐로 복귀한다. consumer는 RabbitMQ의
-`x-death` 헤더로 접수 재시도 횟수를 판단한다. 최대 횟수는 AI 운영 정책으로 확정하되 무한 NACK를
-허용하지 않는다. DLQ 발행은 publisher confirm을 확인한 뒤 원본 메시지를 ACK하여 격리 과정의
-유실을 막는다.
-
-### 실행 타임아웃과 콜백
-
-- MQ 접수 재시도는 AI가 작업을 영속화하기 전의 일시 장애만 대상으로 한다.
-- AI 작업 영속화 이후 LLM 오류·실행 타임아웃은 같은 `messageId`를 새로 실행하지 않고 FAILED 콜백한다.
-- 콜백에는 `backend_job_id=jobId`, `attempt`, 작업 단계 또는 최종 결과를 사용한다.
-- BE는 현재 회차와 종료 상태를 다시 확인하므로 이전 회차·중복 최종 콜백은 결과를 덮어쓰지 않는다.
-- BE의 전체 생성 제한 시간 기본값은 15분이며, AI 내부 모델 호출 제한과는 별개다.
-
-### 초기 소비 설정 권장값
-
-- manual ACK
-- consumer concurrency 1
-- prefetch 1
-- 접수 재시도 횟수 제한 적용
-- `messageId`, `jobId`, `attempt`, `jobType`, `x-death`를 구조화 로그에 기록
-- DLQ 적재 건수와 메인 큐 대기량 모니터링
