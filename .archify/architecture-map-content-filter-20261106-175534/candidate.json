@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "지도 콘텐츠 필터 조회 아키텍처",
+    "subtitle": "공통 타일 캐시를 재사용하고 가이드북 일정 장소만 교집합으로 조회",
+    "locale": "ko",
+    "output": ".archify/architecture-map-content-filter-20261106-175534/map-content-filter.html",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "repository": {
+      "url": "git@github.com:100-hours-a-week/KTB4-10th-BE.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "7c587b83e449c5a0c730c4dd15dbfc7970a90a7b"
+    },
+    "viewBox": [1060, 650],
+    "legend": {
+      "mode": "all"
+    },
+    "views": [
+      {
+        "id": "request-flow",
+        "label": "조회 흐름",
+        "focus": ["client", "controller", "service", "cache", "guidebook-query", "personalization", "mysql"],
+        "note": "일반 필터는 캐시를 사용하고, 가이드북은 일정 장소 ID와 캐시 결과의 교집합을 반환합니다."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "frontend",
+      "label": "지도 화면",
+      "sublabel": "마커 + 바텀시트",
+      "pos": [15, 265],
+      "size": [120, 76],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/controller/MapContentController.java",
+          "line": 32,
+          "end_line": 60,
+          "label": "지도 조회 API"
+        }
+      ]
+    },
+    {
+      "id": "controller",
+      "type": "backend",
+      "label": "MapContentController",
+      "sublabel": "bounds · zoom · filter · guidebook_id",
+      "pos": [245, 265],
+      "size": [165, 76],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/controller/MapContentController.java",
+          "line": 17,
+          "end_line": 60,
+          "label": "요청 경계"
+        }
+      ]
+    },
+    {
+      "id": "service",
+      "type": "backend",
+      "label": "MapContentService",
+      "sublabel": "필터 · 클러스터 · 페이지 · 개인화",
+      "tag": "조회 오케스트레이션",
+      "pos": [480, 265],
+      "size": [165, 86],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/service/MapContentService.java",
+          "line": 70,
+          "end_line": 175,
+          "label": "필터 조회 흐름"
+        }
+      ]
+    },
+    {
+      "id": "cache",
+      "type": "database",
+      "label": "공통 타일 캐시",
+      "sublabel": "0.5° Caffeine snapshot",
+      "pos": [730, 85],
+      "size": [170, 76],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/service/MapContentCommonCache.java",
+          "line": 85,
+          "end_line": 135,
+          "label": "경계 조회와 갱신"
+        }
+      ]
+    },
+    {
+      "id": "guidebook-query",
+      "type": "backend",
+      "label": "MapGuidebookContentQuery",
+      "sublabel": "가이드북 일정 장소 ID 조회",
+      "pos": [730, 265],
+      "size": [190, 76],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/repository/MapGuidebookContentQuery.java",
+          "line": 9,
+          "end_line": 49,
+          "label": "활성 일정 장소 SQL"
+        }
+      ]
+    },
+    {
+      "id": "personalization",
+      "type": "backend",
+      "label": "개인화 일괄 조회",
+      "sublabel": "즐겨찾기 · 가이드북 포함 여부",
+      "pos": [730, 445],
+      "size": [190, 76],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/repository/MapContentPersonalizationQuery.java",
+          "line": 10,
+          "end_line": 69,
+          "label": "개인화 SQL"
+        }
+      ]
+    },
+    {
+      "id": "mysql",
+      "type": "database",
+      "label": "MySQL",
+      "sublabel": "일정 · 즐겨찾기",
+      "pos": [940, 355],
+      "size": [110, 82],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/repository/MapGuidebookContentQuery.java",
+          "line": 19,
+          "end_line": 49,
+          "label": "일정 관계 조회"
+        },
+        {
+          "path": "src/main/java/com/ktb10/kgb/content/repository/MapContentPersonalizationQuery.java",
+          "line": 27,
+          "end_line": 69,
+          "label": "사용자 관계 조회"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Spring Boot 지도 콘텐츠 조회 모듈",
+      "wraps": ["controller", "service", "cache", "guidebook-query", "personalization"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "from": "client",
+      "to": "controller",
+      "label": "지도 조회",
+      "route": "straight"
+    },
+    {
+      "from": "controller",
+      "to": "service",
+      "label": "필터 조건",
+      "route": "straight"
+    },
+    {
+      "from": "service",
+      "to": "cache",
+      "label": "ALL · PLACE · EVENT",
+      "variant": "emphasis",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "service",
+      "to": "guidebook-query",
+      "label": "GUIDEBOOK",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "from": "guidebook-query",
+      "to": "mysql",
+      "label": "활성 보관·일정",
+      "route": "orthogonal-h"
+    },
+    {
+      "from": "service",
+      "to": "personalization",
+      "label": "현재 페이지 콘텐츠 ID",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "personalization",
+      "to": "mysql",
+      "label": "사용자 관계",
+      "route": "orthogonal-h"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "필터 선택",
+      "items": [
+        "ALL·PLACE·EVENT는 동일 타일 캐시에서 타입만 선별",
+        "GUIDEBOOK은 가장 가까운 여행의 일정 장소 ID와 교집합"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "표현 규칙",
+      "items": [
+        "가이드북은 줌 레벨과 관계없이 개별 핀으로 반환",
+        "일반 콘텐츠만 줌·영역에 따라 클러스터링"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "동일 결과 집합",
+      "items": [
+        "지도 마커와 바텀시트가 같은 필터 조건을 사용",
+        "바텀시트는 페이지 결과에만 개인화를 일괄 결합"
+      ]
+    }
+  ]
+}
