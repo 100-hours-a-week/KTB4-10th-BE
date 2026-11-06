@@ -2,6 +2,7 @@ package com.ktb10.kgb.content.controller;
 
 import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
+import com.ktb10.kgb.content.dto.MapContentFilter;
 import com.ktb10.kgb.content.dto.MapContentListResponse;
 import com.ktb10.kgb.content.dto.MapMarkerResponse;
 import com.ktb10.kgb.content.service.MapContentService;
@@ -35,9 +36,11 @@ public class MapContentController {
             @RequestParam double west,
             @RequestParam double north,
             @RequestParam double east,
-            @RequestParam int zoom) {
+            @RequestParam int zoom,
+            @RequestParam(defaultValue = "ALL") MapContentFilter filter,
+            @RequestParam(name = "guidebook_id", required = false) Long guidebookId) {
         MapMarkerResponse response = mapContentService.getMarkers(
-                member.memberId(), south, west, north, east, zoom);
+                member.memberId(), south, west, north, east, zoom, filter, guidebookId);
         return ResponseEntity.ok(ApiResponse.success(MARKER_SUCCESS_MESSAGE, response));
     }
 
@@ -48,9 +51,11 @@ public class MapContentController {
             @RequestParam double west,
             @RequestParam double north,
             @RequestParam double east,
+            @RequestParam(defaultValue = "ALL") MapContentFilter filter,
+            @RequestParam(name = "guidebook_id", required = false) Long guidebookId,
             @RequestParam(required = false) String cursor) {
         MapContentListResponse response = mapContentService.getBottomSheetContents(
-                member.memberId(), south, west, north, east, cursor);
+                member.memberId(), south, west, north, east, filter, guidebookId, cursor);
         return ResponseEntity.ok(ApiResponse.success(CONTENT_SUCCESS_MESSAGE, response));
     }
 }

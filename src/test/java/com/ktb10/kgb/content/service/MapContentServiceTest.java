@@ -10,16 +10,19 @@ import static org.mockito.Mockito.when;
 import com.ktb10.kgb.common.error.BusinessException;
 import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.common.observability.MapPerformanceMetrics;
+import com.ktb10.kgb.content.dto.MapContentFilter;
 import com.ktb10.kgb.content.dto.MapContentItemResponse.ContentType;
 import com.ktb10.kgb.content.dto.MapContentListResponse;
 import com.ktb10.kgb.content.dto.MapMarkerItemResponse;
 import com.ktb10.kgb.content.dto.MapMarkerResponse;
 import com.ktb10.kgb.content.dto.MapMarkerResponse.Mode;
 import com.ktb10.kgb.content.repository.MapContentCommonData;
+import com.ktb10.kgb.content.repository.MapGuidebookContentQuery;
 import com.ktb10.kgb.content.repository.MapContentPersonalization;
 import com.ktb10.kgb.content.repository.MapContentPersonalizationQuery;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class MapContentServiceTest {
 
     @Mock
+    private MapGuidebookContentQuery guidebookContentQuery;
+    @Mock
     private MapContentPersonalizationQuery personalizationQuery;
     @Mock
     private MapContentCommonCache commonCache;
@@ -41,6 +46,7 @@ class MapContentServiceTest {
     void setUp() {
         mapContentService = new MapContentService(
                 new MapContentRadiusClusterer(),
+                guidebookContentQuery,
                 personalizationQuery,
                 commonCache,
                 new MapPerformanceMetrics(new SimpleMeterRegistry()));
@@ -136,6 +142,82 @@ class MapContentServiceTest {
     }
 
     @Test
+    void filtersPlacesAndEventsBeforeCreatingMapResponse() {
+        MapContentCommonData place = commonContent(1L);
+        MapContentCommonData event = eventContent(2L);
+        when(commonCache.get(37.35, 127.05, 37.45, 127.15))
+                .thenReturn(List.of(place, event));
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(1L)))
+                .thenReturn(MapContentPersonalization.empty());
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(2L)))
+                .thenReturn(MapContentPersonalization.empty());
+
+        MapMarkerResponse places = mapContentService.getMarkers(
+                1L, 37.35, 127.05, 37.45, 127.15, 16,
+                MapContentFilter.PLACE, null);
+        MapContentListResponse events = mapContentService.getBottomSheetContents(
+                1L, 37.35, 127.05, 37.45, 127.15,
+                MapContentFilter.EVENT, null, null);
+
+        assertThat(places.markers()).extracting(MapMarkerItemResponse::contentId)
+                .containsExactly("1");
+        assertThat(events.items()).extracting(item -> item.contentId())
+                .containsExactly("2");
+    }
+
+    @Test
+    void returnsGuidebookContentsAsMarkersWithoutClusteringAtWideZoom() {
+        List<MapContentCommonData> contents = List.of(
+                commonContent(1L, 37.4, 127.1),
+                commonContent(2L, 37.5, 127.2),
+                eventContent(3L));
+        when(commonCache.get(33.0, 124.0, 39.0, 132.0)).thenReturn(contents);
+        when(guidebookContentQuery.findActiveContentIds(1L, 10L))
+                .thenReturn(Optional.of(Set.of(1L, 3L)));
+        when(personalizationQuery.findByMemberAndContentIds(1L, List.of(1L, 3L)))
+                .thenReturn(new MapContentPersonalization(Set.of(), Set.of(1L, 3L)));
+
+        MapMarkerResponse response = mapContentService.getMarkers(
+                1L, 33.0, 124.0, 39.0, 132.0, 6,
+                MapContentFilter.GUIDEBOOK, 10L);
+
+        assertThat(response.mode()).isEqualTo(Mode.MARKER);
+        assertThat(response.clusters()).isEmpty();
+        assertThat(response.markers()).extracting(MapMarkerItemResponse::contentId)
+                .containsExactly("1", "3");
+    }
+
+    @Test
+    void rejectsGuidebookFilterWithoutValidGuidebookId() {
+        assertValidationFailure(() -> mapContentService.getMarkers(
+                1L, 37.35, 127.05, 37.45, 127.15, 16,
+                MapContentFilter.GUIDEBOOK, null));
+        assertValidationFailure(() -> mapContentService.getMarkers(
+                1L, 37.35, 127.05, 37.45, 127.15, 16,
+                MapContentFilter.GUIDEBOOK, 0L));
+    }
+
+    @Test
+    void rejectsGuidebookIdForOtherFilters() {
+        assertValidationFailure(() -> mapContentService.getMarkers(
+                1L, 37.35, 127.05, 37.45, 127.15, 16,
+                MapContentFilter.PLACE, 10L));
+    }
+
+    @Test
+    void rejectsGuidebookThatMemberDoesNotActivelyKeep() {
+        when(commonCache.get(37.35, 127.05, 37.45, 127.15)).thenReturn(List.of());
+        when(guidebookContentQuery.findActiveContentIds(1L, 10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> mapContentService.getMarkers(
+                1L, 37.35, 127.05, 37.45, 127.15, 16,
+                MapContentFilter.GUIDEBOOK, 10L))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode())
+                                .isEqualTo(CommonErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    @Test
     void returnsBottomSheetContentsTenAtATimeAndPersonalizesOnlyCurrentPage() {
         List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 12)
                 .mapToObj(index -> commonContent((long) index, 37.4, 127.1 + index * 0.001))
@@ -175,6 +257,23 @@ class MapContentServiceTest {
     }
 
     @Test
+    void rejectsBottomSheetCursorCreatedForDifferentFilter() {
+        when(commonCache.get(37.0, 127.0, 38.0, 128.0)).thenReturn(
+                java.util.stream.IntStream.rangeClosed(1, 12)
+                        .mapToObj(index -> commonContent((long) index))
+                        .toList());
+        when(personalizationQuery.findByMemberAndContentIds(eq(1L), anyList()))
+                .thenReturn(MapContentPersonalization.empty());
+        String cursor = mapContentService.getBottomSheetContents(
+                1L, 37.0, 127.0, 38.0, 128.0,
+                MapContentFilter.PLACE, null, null).nextCursor();
+
+        assertValidationFailure(() -> mapContentService.getBottomSheetContents(
+                1L, 37.0, 127.0, 38.0, 128.0,
+                MapContentFilter.EVENT, null, cursor));
+    }
+
+    @Test
     void capsClusterZoomForNationwideBounds() {
         List<MapContentCommonData> contents = java.util.stream.IntStream.rangeClosed(1, 12)
                 .mapToObj(index -> commonContent(
@@ -211,6 +310,19 @@ class MapContentServiceTest {
                 "주소",
                 latitude,
                 longitude,
+                "https://example.com/" + contentId + ".jpg",
+                null);
+    }
+
+    private MapContentCommonData eventContent(Long contentId) {
+        return new MapContentCommonData(
+                contentId,
+                String.valueOf(contentId),
+                "행사 " + contentId,
+                ContentType.EVENT,
+                "주소",
+                37.4,
+                127.1,
                 "https://example.com/" + contentId + ".jpg",
                 null);
     }
