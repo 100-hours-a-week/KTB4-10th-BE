@@ -68,8 +68,8 @@
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
 | API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT),region_code,month |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom. 광역·중간 줌은 clusters, 상세 줌은 최소 markers 반환 |
-| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
+| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom,filter,guidebook_id. 가이드북 필터는 항상 최소 markers 반환 |
+| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,filter,guidebook_id,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
 | API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 예 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
 | API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | V2 회원별 관심 장소 커서 조회 |
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
@@ -949,12 +949,17 @@ Body 없음.
 |---|---|---|
 | GET | `/map/markers` | 세션 쿠키 필수 |
 
-- Query south,west,north,east는 모두 필수이며 V1은 반경 조회를 제공하지 않음
+- Query `south`, `west`, `north`, `east`는 모두 필수이며 V1은 반경 조회를 제공하지 않음
+- Query `filter`는 `ALL`, `PLACE`, `EVENT`, `GUIDEBOOK` 중 하나이며 생략하면 `ALL`
+- `PLACE`는 행사(`classification_code_1=EV`)가 아닌 장소만, `EVENT`는 행사만 반환
+- `GUIDEBOOK`은 양의 정수 `guidebook_id`가 필수이며 로그인 회원이 삭제하지 않고 보관 중인 가이드북만 조회 가능
+- `guidebook_id`는 `filter=GUIDEBOOK`에서만 허용
 - 좌표 Number: 위도 -90~90, 경도 -180~180
 - bounds 조합은 south<north, west<east이어야 함
 - bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)
 - zoom: 필수 Integer. FE가 카카오맵 레벨을 변환한 값으로 전달
 - zoom 14 이하는 `CLUSTER`, 15 이상은 `MARKER` 모드로 응답
+- 단, `GUIDEBOOK`은 줌과 bounds 대각선 길이에 관계없이 일정 장소를 클러스터링하지 않고 `MARKER` 모드로 응답
 - `CLUSTER` 모드는 화면상 120px 반경으로 콘텐츠를 묶고 모든 클러스터를 반환
 - `MARKER` 모드는 현재 bounds의 ACTIVE·미삭제 콘텐츠를 지도 표시에 필요한 최소 필드로 반환
 - `MARKER` 모드의 `thumbnail_url`은 바텀시트 목록을 먼저 조회하지 않아도 마커 선택 카드에 표시할 대표 이미지 URL이며, 이미지가 없으면 `null`
@@ -993,9 +998,10 @@ Body 없음.
 |---|---|---|
 | 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식 또는 범위 오류 |
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 404 | RESOURCE_NOT_FOUND | `GUIDEBOOK` 대상이 없거나 로그인 회원이 활성 보관 중이지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds와 zoom을 전달한다. 줌 14 이하이거나 화면 대각선이 20km를 넘으면 서버가 0.5도 고정 타일 스냅샷에서 bounds 내 콘텐츠를 읽고 기본 화면상 120px 반경으로 묶어 모든 클러스터를 반환하며, 그 외에는 최소 필드의 개별 마커를 반환한다.
+**V1 구현 기준:** 최초 중심은 카카오 판교 아지트(`37.3952969470752`, `127.110449292622`)이고 줌은 16~17이다. 프론트가 카카오맵의 현재 bounds와 zoom을 전달한다. `ALL`, `PLACE`, `EVENT`는 줌 14 이하이거나 화면 대각선이 20km를 넘으면 서버가 0.5도 고정 타일 스냅샷에서 필터 결과를 읽고 기본 화면상 120px 반경으로 묶어 모든 클러스터를 반환하며, 그 외에는 최소 필드의 개별 마커를 반환한다. `GUIDEBOOK`은 같은 타일 스냅샷과 일정 콘텐츠 ID의 교집합을 사용하되 항상 개별 마커를 반환한다.
 
 ### API-CON-03-1 지도 바텀시트 목록
 
@@ -1004,10 +1010,14 @@ Body 없음.
 | GET | `/map/contents` | 세션 쿠키 필수 |
 
 - Query `south`, `west`, `north`, `east`는 필수이며 `cursor`는 첫 페이지에서 생략한다.
+- Query `filter`는 `ALL`, `PLACE`, `EVENT`, `GUIDEBOOK` 중 하나이며 생략하면 `ALL`이다.
+- `PLACE`는 행사(`classification_code_1=EV`)가 아닌 장소만, `EVENT`는 행사만 반환한다.
+- `GUIDEBOOK`은 양의 정수 `guidebook_id`가 필수이며 로그인 회원이 삭제하지 않고 보관 중인 가이드북 일정의 관광 콘텐츠만 반환한다.
+- `guidebook_id`는 `filter=GUIDEBOOK`에서만 허용한다.
 - 페이지 크기는 서버가 10개로 고정하며 클라이언트 크기 파라미터를 받지 않는다.
 - bounds가 걸치는 0.5도 타일이 500개를 초과하면 400(`COMMON_VALIDATION_ERROR`)을 반환한다.
 - 현재 bounds 중심과 가까운 순서, 동률이면 내부 콘텐츠 ID 순서로 정렬한다.
-- `next_cursor`는 같은 bounds에서만 사용할 수 있는 불투명 커서다.
+- `next_cursor`는 같은 bounds, `filter`, `guidebook_id` 조합에서만 사용할 수 있는 불투명 커서다.
 - 사용자가 실제 목록 끝에 도달했을 때만 다음 커서를 요청한다.
 - 공통 콘텐츠는 마지막 정상 타일 스냅샷에서만 읽고 현재 10개에 대해서만 개인화 정보를 조회한다.
 - `overview`, `phone`, `homepage_url`은 장소와 행사 모두 `String|null`이다.
@@ -1039,6 +1049,13 @@ Body 없음.
   }
 }
 ```
+
+| 오류 HTTP | error.code | 조건 |
+|---|---|---|
+| 400 | COMMON_VALIDATION_ERROR | 필드·쿼리 자료형, 형식, 범위, 필터와 가이드북 ID 조합 또는 커서가 유효하지 않음 |
+| 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 404 | RESOURCE_NOT_FOUND | `GUIDEBOOK` 대상이 없거나 로그인 회원이 활성 보관 중이지 않음 |
+| 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-CON-03-2 일자별 신규 행사 목록
 

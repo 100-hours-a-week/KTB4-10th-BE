@@ -38,7 +38,8 @@
 
 | 유즈케이스 | Method | Path | 접근 | 현재 동작 | 관련 검증 |
 | --- | --- | --- | --- | --- | --- |
-| 사용자가 현재 지도 영역의 관광 콘텐츠를 본다 | GET | `/map/contents` | 세션 | 남·서·북·동 경계와 zoom을 받아 cluster 또는 개별 콘텐츠를 반환한다. | `MapContentApiTest`, `MapContentQueryTest` |
+| 사용자가 현재 지도 영역의 마커를 본다 | GET | `/map/markers` | 세션 | bounds·zoom과 단일 `filter`를 받아 cluster 또는 개별 마커를 반환한다. `GUIDEBOOK`은 본인이 활성 보관 중인 `guidebook_id`가 필요하며 항상 개별 마커다. | `MapContentApiTest`, `MapContentServiceTest`, `MapGuidebookContentQueryMysqlIntegrationTest` |
+| 사용자가 현재 지도 영역의 바텀시트 목록을 본다 | GET | `/map/contents` | 세션 | bounds와 동일한 단일 `filter`를 적용해 중심 거리순 10개를 반환한다. 커서는 bounds·filter·guidebook_id 조합에 종속된다. | `MapContentApiTest`, `MapContentServiceTest`, `MapGuidebookContentQueryMysqlIntegrationTest` |
 | 사용자가 장소를 관심 목록에 추가한다 | PUT | `/members/me/favorites/{contentId}` | 세션+CSRF | `ACTIVE` 관광 콘텐츠를 중복 없이 관심 목록에 추가한다. | `FavoriteContentApiTest`, `FavoriteContentMysqlIntegrationTest` |
 | 사용자가 관심 장소를 해제한다 | DELETE | `/members/me/favorites/{contentId}` | 세션+CSRF | 본인의 관심 관계를 삭제한다. | `FavoriteContentApiTest` |
 
