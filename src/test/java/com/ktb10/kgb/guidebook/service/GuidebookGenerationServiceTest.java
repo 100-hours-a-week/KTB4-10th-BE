@@ -95,6 +95,8 @@ class GuidebookGenerationServiceTest {
                 creditWalletRepository,
                 new StaticListableBeanFactory(java.util.Map.of("submissions", submissions))
                         .getBeanProvider(GenerationSubmissionQueue.class),
+                new StaticListableBeanFactory().getBeanProvider(
+                        com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class),
                 transactionManager,
                 objectMapper,
                 CLOCK);
@@ -267,6 +269,64 @@ class GuidebookGenerationServiceTest {
         assertThat(response.guidebookId()).isNull();
         verify(generationJobRepository).save(any(GenerationJob.class));
         verify(submissions).submit(301L);
+    }
+
+    @Test
+    void outboxPreparationRunsBeforeCommitAndDoesNotSubmitToHttpQueue() {
+        var preparation = org.mockito.Mockito.mock(
+                com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class);
+        ReflectionTestUtils.setField(service, "messages",
+                new StaticListableBeanFactory(java.util.Map.of("messages", preparation))
+                        .getBeanProvider(com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class));
+        Member member = member();
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
+        given(memberPreferenceRepository.findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
+        given(generationJobRepository.save(any(GenerationJob.class))).willAnswer(invocation -> {
+            GenerationJob job = invocation.getArgument(0);
+            ReflectionTestUtils.setField(job, "id", 301L);
+            return job;
+        });
+        org.mockito.Mockito.doAnswer(invocation -> {
+            verify(transactionManager, never()).commit(any());
+            verify(generationJobRepository, never()).save(any());
+            GenerationJob job = invocation.getArgument(0);
+            assertThat(job.getId()).isNull();
+            job.preparePublication("{\"messageId\":\"301-0\"}", LocalDateTime.now(CLOCK));
+            return null;
+        }).when(preparation).prepareInitial(any());
+
+        var response = service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, validRequest());
+
+        assertThat(response.status()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
+        verify(transactionManager).commit(any());
+        verify(submissions, never()).submit(any());
+    }
+
+    @Test
+    void outboxPreparationFailureRollsBackAdmission() {
+        var preparation = org.mockito.Mockito.mock(
+                com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class);
+        ReflectionTestUtils.setField(service, "messages",
+                new StaticListableBeanFactory(java.util.Map.of("messages", preparation))
+                        .getBeanProvider(com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class));
+        Member member = member();
+        given(memberRepository.findActiveByIdForUpdate(MEMBER_ID)).willReturn(Optional.of(member));
+        given(creditWalletRepository.findByMemberIdForUpdate(MEMBER_ID))
+                .willReturn(Optional.of(walletWithBalance(member, 1)));
+        given(memberPreferenceRepository.findAllByMemberIdOrderByPreferenceTypeAscPreferenceCodeAscIdAsc(MEMBER_ID))
+                .willReturn(preferences(member));
+        org.mockito.Mockito.doThrow(new IllegalStateException("snapshot failed"))
+                .when(preparation).prepareInitial(any());
+
+        assertThatThrownBy(() -> service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, validRequest()))
+                .isInstanceOf(IllegalStateException.class);
+        verify(transactionManager).rollback(any());
+        verify(transactionManager, never()).commit(any());
+        verify(generationJobRepository, never()).save(any());
+        verify(submissions, never()).submit(any());
     }
 
     @Test
