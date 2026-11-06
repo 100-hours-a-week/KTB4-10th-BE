@@ -66,7 +66,7 @@
 | API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
 | API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
 | API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
-| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT),region_code,month |
+| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT\|PLACE\|ALL),region_code,month |
 | API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom,filter,guidebook_id. 가이드북 필터는 항상 최소 markers 반환 |
 | API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,filter,guidebook_id,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
@@ -856,14 +856,18 @@ Body 없음.
 |---|---|---|
 | GET | `/contents` | 세션 쿠키 필수 |
 
-- Query q: 선택 String, 최대 10자; 빈 값=전체
-- category: 현재 `EVENT`만 지원하며 생략 시 `EVENT`
+- Query q: 제목 부분 일치 String. 앞뒤 공백 제거 후 최대 10자이며 `ALL`·`PLACE`에서는 필수, `EVENT`에서는 생략 시 전체 행사
+- category: `EVENT|PLACE|ALL`; 기존 정보 탭 호환을 위해 생략 시 `EVENT`
 - region_code: 선택 String, 가이드북 생성과 동일한 16개 서비스 광역 `PROVINCE`의 행정구역 코드; 생략=전체 지역
 - month: 선택 `YYYY-MM`; 생략=전체 월
 - page Integer ≥1 기본1; size 1~20 기본20
 - 검색어 유무와 관계없이 `tourism_contents.created_at DESC, id DESC` 고정 정렬
 - q, region_code, month는 AND로 적용하며 결과 없음은 items=[]
 - month는 행사 시작일·종료일이 선택 월과 하루라도 겹치면 포함
+- `EVENT`는 현재 진행 중이거나 예정된 행사만, `PLACE`는 서비스 허용 분류만 제공
+- 장소·행사 모두 유효한 WGS84 좌표가 있는 콘텐츠만 제공
+- `%`, `_`를 포함한 q는 SQL 와일드카드가 아닌 일반 제목 문자로 처리
+- 로그인 회원 기준 `is_favorite`, `is_in_guidebook`을 현재 페이지 ID 집합으로 일괄 조회
 
 **Request Body**
 
@@ -875,7 +879,7 @@ Body 없음.
 {
   "message": "content_list_success",
   "data": {
-    "items": [{"content_id":"101","title":"수원 국가유산 야행","category":"EVENT","region":{"administrative_code":"41","name":"경기도"},"address":"경기도 수원시","thumbnail_url":null,"event_period":{"start_date":"2026-08-14","end_date":"2026-08-30"}}],
+    "items": [{"content_id":"101","title":"수원 국가유산 야행","category":"EVENT","content_type":"EVENT","region":{"administrative_code":"41","name":"경기도"},"address":"경기도 수원시","latitude":37.2,"longitude":127.0,"thumbnail_url":null,"event_period":{"start_date":"2026-08-14","end_date":"2026-08-30"},"is_favorite":true,"is_in_guidebook":false}],
     "page": 1,
     "size": 20,
     "total_items": 1,
@@ -890,7 +894,7 @@ Body 없음.
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-검색은 `title` 부분 일치이며 검색어 유무와 관계없이 DB 등록 최신순이다. 지역은 광역 권역 기준이며, 월은 행사 기간 중첩 조건으로 적용한다. 현재 정보 탭은 행사만 제공하고 장소·카테고리 필터는 후속 범위다.
+검색은 `title` 부분 일치이며 검색어 유무와 관계없이 DB 등록 최신순이다. 지역은 광역 권역 기준이며, 월은 행사 기간 중첩 조건으로 적용한다. 정보 탭은 기본값 `EVENT`를 사용하고 지도 검색은 `ALL`과 검색어를 사용한다. 지역명 후보는 FE가 서비스 광역 권역 기준정보에서 검색해 콘텐츠 결과보다 먼저 표시한다.
 
 ### API-CON-02 관광 콘텐츠 상세
 

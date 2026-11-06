@@ -13,6 +13,7 @@ import com.ktb10.kgb.content.dto.ContentListResponse.ContentEventPeriodResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentListItemResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse.ContentRegionResponse;
 import com.ktb10.kgb.content.dto.ContentDetailResponse;
+import com.ktb10.kgb.content.model.ContentSearchCategory;
 import com.ktb10.kgb.content.service.ContentReadService;
 import com.ktb10.kgb.member.entity.MemberStatus;
 import java.time.LocalDate;
@@ -44,13 +45,16 @@ class ContentReadApiTest {
 
     @Test
     void returnsEventList() throws Exception {
-        when(contentReadService.getEvents(null, null, null, 1, 20))
+        when(contentReadService.getContents(
+                        1L, ContentSearchCategory.EVENT, null, null, null, 1, 20))
                 .thenReturn(new ContentListResponse(
                 List.of(new ContentListItemResponse(
-                        "event-1", "수원 야행", "EVENT",
-                        new ContentRegionResponse("41", "경기도"), "수원시", null,
+                        "event-1", "수원 야행", "EVENT", "EVENT",
+                        new ContentRegionResponse("41", "경기도"), "수원시",
+                        37.2, 127.0, null,
                         new ContentEventPeriodResponse(
-                                LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 30)))),
+                                LocalDate.of(2026, 8, 14), LocalDate.of(2026, 8, 30)),
+                        false, false)),
                 1, 20, 1, 1));
 
         mockMvc.perform(get("/api/v1/contents")
@@ -65,7 +69,9 @@ class ContentReadApiTest {
 
     @Test
     void forwardsRegionAndMonthFilters() throws Exception {
-        when(contentReadService.getEvents("야행", "11", "2026-10", 1, 20))
+        when(contentReadService.getContents(
+                        1L, ContentSearchCategory.EVENT,
+                        "야행", "11", "2026-10", 1, 20))
                 .thenReturn(new ContentListResponse(List.of(), 1, 20, 0, 0));
 
         mockMvc.perform(get("/api/v1/contents")
@@ -75,7 +81,9 @@ class ContentReadApiTest {
                         .param("month", "2026-10"))
                 .andExpect(status().isOk());
 
-        verify(contentReadService).getEvents("야행", "11", "2026-10", 1, 20);
+        verify(contentReadService).getContents(
+                1L, ContentSearchCategory.EVENT,
+                "야행", "11", "2026-10", 1, 20);
     }
 
     @Test
@@ -124,7 +132,7 @@ class ContentReadApiTest {
     void rejectsInvalidListParameters() throws Exception {
         mockMvc.perform(get("/api/v1/contents")
                         .with(authentication(authenticatedMember()))
-                        .param("category", "PLACE")
+                        .param("category", "UNKNOWN")
                         .param("page", "0")
                         .param("size", "21"))
                 .andExpect(status().isBadRequest());
