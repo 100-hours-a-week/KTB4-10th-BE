@@ -41,11 +41,19 @@ class AiGuidebookContentQueryTest {
         assertThat(result).isEmpty();
         assertThat(sqlCaptor.getValue()).contains(
                 "content.classification_code_1 = 'EV'",
+                "event.start_date IS NOT NULL",
+                "event.end_date IS NOT NULL",
+                "event.start_date <= ?",
+                "event.end_date >= ?",
                 "content.classification_code_2 IN (",
                 "ORDER BY content.id",
                 "LIMIT ?");
         assertThat(argumentsCaptor.getValue())
-                .startsWith("충청북도", "청주시")
+                .startsWith(
+                        "충청북도",
+                        "청주시",
+                        LocalDate.of(2026, 10, 14),
+                        LocalDate.of(2026, 10, 12))
                 .containsSubsequence(TourismContentCategoryPolicy.allowedSourceCodes().toArray())
                 .endsWith(100);
     }

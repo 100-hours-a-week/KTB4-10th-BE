@@ -67,10 +67,11 @@ class AiGuidebookContentQueryMysqlIntegrationTest {
         insertContent("urban-park", "VE", "VE03", null);
         insertContent("unused-culture", "VE", "VE05", "제외 대상");
         insertContent("unknown", "ZZ", "ZZ99", "제외 대상");
-        insertEvent("event", "행사 개요");
+        insertEvent("event", "행사 개요", "2026-10-16", "2026-10-17");
 
         var result = query.findAll(
-                "서울특별시", "종로구", LocalDate.now(), LocalDate.now().plusDays(1));
+                "서울특별시", "종로구",
+                LocalDate.of(2026, 10, 16), LocalDate.of(2026, 10, 17));
 
         assertThat(result)
                 .extracting(Content::contentId)
@@ -81,7 +82,33 @@ class AiGuidebookContentQueryMysqlIntegrationTest {
         assertThat(result.get(1).overview()).isEmpty();
     }
 
-    private void insertEvent(String sourceContentId, String overview) {
+    @Test
+    void excludesEventsWithoutDetailOrOutsideTravelPeriodButKeepsPlaces() {
+        insertContent("place", "NA", "NA04", "장소");
+        insertContent("event-without-detail", "EV", null, "상세 없는 행사");
+        insertEvent("event-before", "기간 이전 행사", "2026-10-01", "2026-10-15");
+        insertEvent("event-after", "기간 이후 행사", "2026-10-18", "2026-10-20");
+        insertEvent("event-start-boundary", "종료일 시작 행사", "2026-10-17", "2026-10-18");
+        insertEvent("event-end-boundary", "시작일 종료 행사", "2026-10-15", "2026-10-16");
+
+        var result = query.findAll(
+                "서울특별시", "종로구",
+                LocalDate.of(2026, 10, 16), LocalDate.of(2026, 10, 17));
+
+        assertThat(result)
+                .extracting(Content::contentId)
+                .containsExactly("place", "event-start-boundary", "event-end-boundary");
+        assertThat(result)
+                .filteredOn(content -> content.contentType()
+                        == com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest.ContentType.EVENT)
+                .allSatisfy(content -> assertThat(content.eventPeriod()).isNotNull());
+    }
+
+    private void insertEvent(
+            String sourceContentId,
+            String overview,
+            String startDate,
+            String endDate) {
         insertContent(sourceContentId, "EV", null, overview);
         Long contentId = jdbcTemplate.queryForObject(
                 "SELECT id FROM tourism_contents WHERE source_content_id = ?",
@@ -89,8 +116,8 @@ class AiGuidebookContentQueryMysqlIntegrationTest {
                 sourceContentId);
         jdbcTemplate.update("""
                 INSERT INTO event_details (content_id, start_date, end_date, updated_at)
-                VALUES (?, '2026-10-16', '2026-10-17', ?)
-                """, contentId, LocalDateTime.now());
+                VALUES (?, ?, ?, ?)
+                """, contentId, startDate, endDate, LocalDateTime.now());
     }
 
     private void insertContent(

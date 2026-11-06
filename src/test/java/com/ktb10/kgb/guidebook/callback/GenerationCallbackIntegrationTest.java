@@ -32,6 +32,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
@@ -47,6 +49,7 @@ import org.springframework.test.web.servlet.MockMvc;
         "kgb.scheduling.enabled=false"
 })
 @AutoConfigureMockMvc
+@RecordApplicationEvents
 class GenerationCallbackIntegrationTest {
 
     private static final Instant NOW = Instant.parse("2026-10-28T00:00:00Z");
@@ -82,6 +85,8 @@ class GenerationCallbackIntegrationTest {
     private com.ktb10.kgb.credit.repository.CreditWalletRepository wallets;
     @Autowired
     private com.ktb10.kgb.guidebook.repository.GuidebookRepository guidebooks;
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     private GenerationJob job;
     private Member member;
@@ -272,6 +277,10 @@ class GenerationCallbackIntegrationTest {
         transactions.expire(job.getId(), 0);
         assertThat(jobs.findById(job.getId()).orElseThrow().getErrorPayload())
                 .contains("GENERATION_TIMEOUT");
+        assertThat(applicationEvents.stream(
+                        GenerationCallbackTransactionService.SubmissionFinished.class))
+                .extracting(GenerationCallbackTransactionService.SubmissionFinished::requestId)
+                .contains(job.getId() + "-0");
     }
 
     @Test
