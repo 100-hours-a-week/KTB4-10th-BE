@@ -102,7 +102,8 @@ public class GenerationOutboxPublisher {
         properties.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
         var correlation = new CorrelationData(claim.token());
         try {
-            rabbit.send("", GenerationRabbitConfiguration.QUEUE,
+            rabbit.send(GenerationRabbitConfiguration.EXCHANGE,
+                    GenerationRabbitConfiguration.ROUTING_KEY,
                     new Message(claim.payload().getBytes(StandardCharsets.UTF_8), properties), correlation);
             var confirm = correlation.getFuture().get(5, TimeUnit.SECONDS);
             if (correlation.getReturned() != null) {

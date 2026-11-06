@@ -71,7 +71,8 @@ class GenerationOutboxPublisherTest {
             correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
             return null;
         }).when(rabbit).send(
-                eq(""), eq(GenerationRabbitConfiguration.QUEUE), any(Message.class),
+                eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY), any(Message.class),
                 any(CorrelationData.class));
 
         publisher.publishNext();
@@ -82,7 +83,8 @@ class GenerationOutboxPublisherTest {
         assertThat(job.getNextPublishAt()).isNull();
         verify(transactions, times(2)).commit(transactionStatus);
         var messageCaptor = org.mockito.ArgumentCaptor.forClass(Message.class);
-        verify(rabbit).send(eq(""), eq(GenerationRabbitConfiguration.QUEUE),
+        verify(rabbit).send(eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY),
                 messageCaptor.capture(), any(CorrelationData.class));
         assertThat(messageCaptor.getValue().getMessageProperties().getMessageId())
                 .isEqualTo("123-0");
@@ -90,7 +92,8 @@ class GenerationOutboxPublisherTest {
                 .isEqualTo(MessageDeliveryMode.PERSISTENT);
         var order = inOrder(transactions, rabbit);
         order.verify(transactions).commit(transactionStatus);
-        order.verify(rabbit).send(eq(""), eq(GenerationRabbitConfiguration.QUEUE),
+        order.verify(rabbit).send(eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY),
                 any(Message.class), any(CorrelationData.class));
         order.verify(transactions).commit(transactionStatus);
     }
@@ -102,7 +105,8 @@ class GenerationOutboxPublisherTest {
         when(jobs.findByIdForUpdate(123L)).thenReturn(Optional.of(job));
         when(messages.buildMessage(job)).thenReturn("{}");
         doThrow(new AmqpException("broker unavailable")).when(rabbit).send(
-                eq(""), eq(GenerationRabbitConfiguration.QUEUE), any(Message.class),
+                eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY), any(Message.class),
                 any(CorrelationData.class));
 
         publisher.publishNext();
@@ -145,7 +149,8 @@ class GenerationOutboxPublisherTest {
             correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
             return null;
         }).when(rabbit).send(
-                eq(""), eq(GenerationRabbitConfiguration.QUEUE), any(Message.class),
+                eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY), any(Message.class),
                 any(CorrelationData.class));
 
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -157,7 +162,8 @@ class GenerationOutboxPublisherTest {
         }
 
         verify(jobs).findNextPublicationForUpdate(NOW);
-        verify(rabbit).send(eq(""), eq(GenerationRabbitConfiguration.QUEUE),
+        verify(rabbit).send(eq(GenerationRabbitConfiguration.EXCHANGE),
+                eq(GenerationRabbitConfiguration.ROUTING_KEY),
                 any(Message.class), any(CorrelationData.class));
     }
 
