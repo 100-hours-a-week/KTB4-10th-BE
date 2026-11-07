@@ -32,9 +32,9 @@ public class GenerationOutboxPublisher {
     private static final int MAX_DRAIN_COUNT = 50;
     private static final long MAX_DRAIN_NANOS = TimeUnit.SECONDS.toNanos(1);
     private static final String INVALID_SNAPSHOT_ERROR = "MQ_INVALID_SNAPSHOT";
-    private static final String INVALID_SNAPSHOT_FAILURE_PAYLOAD = """
-            {"code":"GENERATION_REQUEST_INVALID","message":"생성 요청 데이터를 처리할 수 없습니다.","retryable":false}
-            """;
+    private static final String INVALID_SNAPSHOT_FAILURE_PAYLOAD =
+            "{\"code\":\"GENERATION_REQUEST_INVALID\","
+                    + "\"message\":\"생성 요청 데이터를 처리할 수 없습니다.\",\"retryable\":false}";
 
     private final GenerationJobRepository jobs;
     private final GenerationMessagePreparation messages;

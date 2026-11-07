@@ -112,5 +112,15 @@ sequenceDiagram
 - RabbitMQ DLQ는 발행 전 Outbox 오류가 아니라 후속 Consumer가 최대 처리 재시도를 초과한
   메시지에 사용한다. 현재 PR은 토폴로지만 선언하고 DLQ 도달 판정은 Consumer PR에서 구현한다.
 
-Publisher부터 RabbitMQ까지의 구성·정상 발행·장애 복구 경로는
-[Outbox Publisher → RabbitMQ 아키텍처](../.archify/architecture-generation-outbox-rabbitmq-20261108-001407/generation-outbox-rabbitmq.html)에서 확인한다.
+```mermaid
+flowchart LR
+    A[접수 Tx] -->|PUBLISH_PENDING| DB[(generation_jobs Outbox)]
+    A -. AFTER_COMMIT .-> P[Outbox Publisher]
+    DB -->|SKIP LOCKED| P
+    P -->|최대 50건 또는 1초| MQ[RabbitMQ Main Queue]
+    P -. MQ 실패: 2~60초 백오프 .-> DB
+    P -->|INVALID_SNAPSHOT| F[FAILED 격리]
+    MQ -. Consumer NACK .-> RQ[Retry Queue]
+    RQ -. TTL 만료 .-> MQ
+    MQ -. Consumer 재시도 초과 .-> DLQ[DLQ]
+```
