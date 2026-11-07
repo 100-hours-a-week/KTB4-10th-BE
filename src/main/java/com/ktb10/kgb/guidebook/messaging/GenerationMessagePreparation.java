@@ -47,7 +47,7 @@ public class GenerationMessagePreparation {
             ObjectNode snapshot = json.createObjectNode();
             snapshot.put("schemaVersion", 1);
             snapshot.set("input", regeneration.build(source, guidebook, request.request().feedback()));
-            job.preparePublication(json.writeValueAsString(snapshot), LocalDateTime.now(clock));
+            preparePublication(job, json.writeValueAsString(snapshot));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("재생성 메시지를 구성할 수 없습니다.", exception);
         }
@@ -62,7 +62,7 @@ public class GenerationMessagePreparation {
         if (previousSnapshot == null) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
-        job.preparePublication(previousSnapshot, LocalDateTime.now(clock));
+        preparePublication(job, previousSnapshot);
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -79,10 +79,14 @@ public class GenerationMessagePreparation {
             ObjectNode snapshot = json.createObjectNode();
             snapshot.put("schemaVersion", 1);
             snapshot.set("input", inputSnapshot);
-            job.preparePublication(json.writeValueAsString(snapshot), LocalDateTime.now(clock));
+            preparePublication(job, json.writeValueAsString(snapshot));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("생성 메시지 스냅샷을 구성할 수 없습니다.", exception);
         }
+    }
+
+    private void preparePublication(GenerationJob job, String snapshot) {
+        job.preparePublication(snapshot, LocalDateTime.now(clock));
     }
 
     /** 발행 시 DB 식별자를 붙이며 저장된 입력이나 최신 콘텐츠는 변경/재조회하지 않습니다. */

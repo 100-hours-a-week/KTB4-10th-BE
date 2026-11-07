@@ -65,7 +65,8 @@ class RegenerationInputSnapshotTest {
         assertThat(source.getMessagePayload()).isEqualTo(snapshot);
 
         var mapper = mock(com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper.class);
-        var preparation = new GenerationMessagePreparation(mapper, json, java.time.Clock.systemUTC(), snapshots);
+        var preparation = new GenerationMessagePreparation(
+                mapper, json, java.time.Clock.systemUTC(), snapshots);
         GenerationJob pending = GenerationJob.createRegeneration(mock(Member.class), 50L,
                 "{\"request\":{\"feedback\":\"새 피드백\"}}", "regen", now);
         preparation.prepareRegeneration(pending, source, book);
