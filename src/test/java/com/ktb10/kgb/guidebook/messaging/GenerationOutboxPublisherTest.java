@@ -20,10 +20,6 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.AmqpException;
 import org.springframework.amqp.core.Message;
@@ -55,11 +51,6 @@ class GenerationOutboxPublisherTest {
                 .thenReturn(transactionStatus);
         publisher = new GenerationOutboxPublisher(
                 jobs, messages, rabbit, transactions, CLOCK, events);
-    }
-
-    @AfterEach
-    void stopPublisher() {
-        publisher.stopWakeups();
     }
 
     @Test
@@ -141,41 +132,7 @@ class GenerationOutboxPublisherTest {
     }
 
     @Test
-    void overlappingWakeupDoesNotPublishTheSameProcessTwice() throws Exception {
-        GenerationJob job = publishPendingJob();
-        when(jobs.findNextPublicationForUpdate(NOW))
-                .thenReturn(Optional.of(job), Optional.empty());
-        when(jobs.findByIdForUpdate(123L)).thenReturn(Optional.of(job));
-        when(messages.buildMessage(job)).thenReturn("{}");
-        CountDownLatch sending = new CountDownLatch(1);
-        CountDownLatch release = new CountDownLatch(1);
-        doAnswer(invocation -> {
-            sending.countDown();
-            assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
-            CorrelationData correlation = invocation.getArgument(3);
-            correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
-            return null;
-        }).when(rabbit).send(
-                eq(GenerationRabbitConfiguration.EXCHANGE),
-                eq(GenerationRabbitConfiguration.ROUTING_KEY), any(Message.class),
-                any(CorrelationData.class));
-
-        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var first = executor.submit(publisher::publishNext);
-            assertThat(sending.await(5, TimeUnit.SECONDS)).isTrue();
-            publisher.publishNext();
-            release.countDown();
-            first.get(5, TimeUnit.SECONDS);
-        }
-
-        verify(jobs, times(2)).findNextPublicationForUpdate(NOW);
-        verify(rabbit).send(eq(GenerationRabbitConfiguration.EXCHANGE),
-                eq(GenerationRabbitConfiguration.ROUTING_KEY),
-                any(Message.class), any(CorrelationData.class));
-    }
-
-    @Test
-    void oneWakeupDrainsMultiplePendingJobsAsIndividualMessages() {
+    void onePollDrainsMultiplePendingJobsAsIndividualMessages() {
         GenerationJob first = publishPendingJob(123L);
         GenerationJob second = publishPendingJob(124L);
         GenerationJob third = publishPendingJob(125L);

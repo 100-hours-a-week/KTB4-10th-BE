@@ -672,7 +672,7 @@ class GuidebookGenerationServiceTest {
         var mapper = org.mockito.Mockito.mock(com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper.class);
         var inputs = org.mockito.Mockito.mock(com.ktb10.kgb.guidebook.messaging.RegenerationInputSnapshot.class);
         var preparation = new com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation(
-                mapper, objectMapper, CLOCK, inputs, org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
+                mapper, objectMapper, CLOCK, inputs);
         ReflectionTestUtils.setField(service, "messages",
                 new StaticListableBeanFactory(java.util.Map.of("messages", preparation))
                         .getBeanProvider(com.ktb10.kgb.guidebook.messaging.GenerationMessagePreparation.class));

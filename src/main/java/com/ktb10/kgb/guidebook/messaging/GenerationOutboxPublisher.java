@@ -2,15 +2,11 @@ package com.ktb10.kgb.guidebook.messaging;
 
 import com.ktb10.kgb.guidebook.callback.GenerationUpdate;
 import com.ktb10.kgb.guidebook.repository.GenerationJobRepository;
-import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
@@ -21,8 +17,6 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.event.TransactionPhase;
-import org.springframework.transaction.event.TransactionalEventListener;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Component
@@ -42,11 +36,6 @@ public class GenerationOutboxPublisher {
     private final TransactionTemplate writes;
     private final Clock clock;
     private final ApplicationEventPublisher events;
-    private final AtomicBoolean publishing = new AtomicBoolean();
-    private final ThreadPoolExecutor wakeups = new ThreadPoolExecutor(
-            1, 1, 0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1),
-            Thread.ofPlatform().name("generation-outbox-wakeup-", 0).factory(),
-            new ThreadPoolExecutor.DiscardPolicy());
 
     public GenerationOutboxPublisher(GenerationJobRepository jobs, GenerationMessagePreparation messages,
             RabbitTemplate rabbit, PlatformTransactionManager transactionManager, Clock clock,
@@ -62,45 +51,18 @@ public class GenerationOutboxPublisher {
 
     @Scheduled(fixedDelay = 500)
     public void publishNext() {
-        if (!publishing.compareAndSet(false, true)) {
-            return;
-        }
-        boolean shouldContinue;
-        try {
-            shouldContinue = drainAvailablePublications();
-        } finally {
-            publishing.set(false);
-        }
-        if (shouldContinue) {
-            scheduleWakeup();
-        }
+        drainAvailablePublications();
     }
 
-    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void wakeAfterCommit(GenerationMessagePreparation.PublicationReady event) {
-        // 신호가 겹치거나 누락되어도 DB 작업은 다음 폴링에서 처리합니다.
-        scheduleWakeup();
-    }
-
-    @PreDestroy
-    void stopWakeups() {
-        wakeups.shutdownNow();
-    }
-
-    private void scheduleWakeup() {
-        wakeups.execute(this::publishNext);
-    }
-
-    private boolean drainAvailablePublications() {
+    private void drainAvailablePublications() {
         long deadline = System.nanoTime() + MAX_DRAIN_NANOS;
         for (int published = 0; published < MAX_DRAIN_COUNT
                 && System.nanoTime() < deadline; published++) {
             PublishOutcome outcome = publishOne();
             if (outcome == PublishOutcome.EMPTY || outcome == PublishOutcome.BROKER_FAILURE) {
-                return false;
+                return;
             }
         }
-        return true;
     }
 
     private PublishOutcome publishOne() {

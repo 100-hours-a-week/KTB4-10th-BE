@@ -73,11 +73,10 @@ buildMessage(job)는 요청 접수 흐름에서 호출하지 않는다.
 
 ## 발행기 흐름
 
-`GenerationOutboxPublisher`는 접수 트랜잭션의 AFTER_COMMIT 이벤트로 즉시 깨어나고,
-500ms 폴링으로 누락된 이벤트·재발행 예약·만료 선점을 회수한다. 이벤트는 지연을 줄이는 신호일 뿐
-전달 보장의 근거가 아니다. 한 번 깨어나면 개별 메시지를 최대 50건 또는 1초 동안 연속 발행한다.
-한도에 도달하면 실행권을 놓고 다음 drain을 즉시 예약하며, Outbox가 비었거나 MQ 계층 오류가 발생하면
-현재 drain을 종료한다. 이 한도는 발행 속도 제한이 아니라 무한 점유를 막는 실행 단위다.
+`GenerationOutboxPublisher`는 500ms 주기 폴링으로 신규 발행·재발행 예약·만료 선점을 처리한다.
+한 번의 폴링은 개별 메시지를 최대 50건 또는 1초 동안 연속 발행한다.
+한도에 도달하면 현재 drain을 종료하고 다음 500ms 폴링에서 이어서 처리한다.
+Outbox가 비었거나 MQ 계층 오류가 발생해도 현재 drain을 종료한다.
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +86,7 @@ sequenceDiagram
     participant MQ as RabbitMQ
 
     R->>DB: message_payload 저장, PUBLISH_PENDING
-    R-->>P: AFTER_COMMIT wakeup
+    Note over P: 500ms 주기 폴링
     P->>DB: Tx 1: SKIP LOCKED 선점·토큰/만료시각 저장 후 커밋
     P->>MQ: Tx 밖에서 persistent 메시지 발행·confirm/return 대기
     P->>DB: Tx 2: 같은 시도·토큰이면 QUEUED, 실패면 backoff 예약
@@ -115,7 +114,6 @@ sequenceDiagram
 ```mermaid
 flowchart LR
     A[접수 Tx] -->|PUBLISH_PENDING| DB[(generation_jobs Outbox)]
-    A -. AFTER_COMMIT .-> P[Outbox Publisher]
     DB -->|SKIP LOCKED| P
     P -->|최대 50건 또는 1초| MQ[RabbitMQ Main Queue]
     P -. MQ 실패: 2~60초 백오프 .-> DB

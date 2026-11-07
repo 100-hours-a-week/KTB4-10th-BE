@@ -15,7 +15,6 @@ import com.ktb10.kgb.guidebook.entity.JobType;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,15 +28,13 @@ public class GenerationMessagePreparation {
     private final ObjectMapper json;
     private final Clock clock;
     private final RegenerationInputSnapshot regeneration;
-    private final ApplicationEventPublisher events;
 
     public GenerationMessagePreparation(AiGuidebookRequestMapper mapper, ObjectMapper json, Clock clock,
-            RegenerationInputSnapshot regeneration, ApplicationEventPublisher events) {
+            RegenerationInputSnapshot regeneration) {
         this.mapper = mapper;
         this.json = json;
         this.clock = clock;
         this.regeneration = regeneration;
-        this.events = events;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
@@ -90,10 +87,6 @@ public class GenerationMessagePreparation {
 
     private void preparePublication(GenerationJob job, String snapshot) {
         job.preparePublication(snapshot, LocalDateTime.now(clock));
-        events.publishEvent(new PublicationReady());
-    }
-
-    record PublicationReady() {
     }
 
     /** 발행 시 DB 식별자를 붙이며 저장된 입력이나 최신 콘텐츠는 변경/재조회하지 않습니다. */
