@@ -73,9 +73,11 @@ buildMessage(job)는 요청 접수 흐름에서 호출하지 않는다.
 
 ## 발행기 흐름
 
-`GenerationOutboxPublisher`는 접수 트랜잭션의 AFTER_COMMIT 이벤트로 즉시 한 번 깨어나고,
+`GenerationOutboxPublisher`는 접수 트랜잭션의 AFTER_COMMIT 이벤트로 즉시 깨어나고,
 500ms 폴링으로 누락된 이벤트·재발행 예약·만료 선점을 회수한다. 이벤트는 지연을 줄이는 신호일 뿐
-전달 보장의 근거가 아니다.
+전달 보장의 근거가 아니다. 한 번 깨어나면 개별 메시지를 최대 50건 또는 1초 동안 연속 발행한다.
+한도에 도달하면 실행권을 놓고 다음 drain을 즉시 예약하며, Outbox가 비었거나 MQ 계층 오류가 발생하면
+현재 drain을 종료한다. 이 한도는 발행 속도 제한이 아니라 무한 점유를 막는 실행 단위다.
 
 ```mermaid
 sequenceDiagram
@@ -94,3 +96,21 @@ sequenceDiagram
 발행 확인 직전/직후 프로세스가 종료되면 같은 `messageId`가 재발행될 수 있다. 따라서 후속 AI 소비자는
 `messageId` 기준 중복 처리를 해야 한다. 선점 토큰은 만료된 선점을 다른 인스턴스가 회수한 뒤
 이전 발행기의 늦은 결과가 현재 작업 상태를 덮어쓰지 못하게 한다.
+
+## 발행 실패·적체 정책
+
+- 연결 실패, NACK, confirm timeout, unroutable은 `PUBLISH_PENDING`을 유지하고
+  `2→4→8→16→32→60초`로 백오프한 뒤, 성공할 때까지 60초 간격으로 재시도한다.
+- MQ 계층 오류가 발생하면 현재 drain을 중단한다. Publisher 전역 백오프는 두지 않는다.
+- 저장된 JSON·`input`·스키마가 손상된 `MQ_INVALID_SNAPSHOT`은 재시도로 복구되지 않으므로
+  즉시 `FAILED`로 격리하고 자동 폴링에서 제외한다. 사용자에게는 내부 MQ 오류 대신
+  `GENERATION_REQUEST_INVALID`, `retryable=false`를 노출한다.
+- 발행 최대 횟수는 현재 두지 않는다. AI Consumer 처리량·평균 대기시간·장애 복구 시간을
+  운영 관측한 뒤 포기 기준과 수동 복구 절차를 후속 정책으로 결정한다.
+- Main/Retry Queue는 각각 기본 10,000건으로 제한하고 초과 발행을 reject한다.
+  Publisher는 NACK를 DB Outbox 재시도로 복구하며, 운영 처리량 관측 후 설정값을 조정한다.
+- RabbitMQ DLQ는 발행 전 Outbox 오류가 아니라 후속 Consumer가 최대 처리 재시도를 초과한
+  메시지에 사용한다. 현재 PR은 토폴로지만 선언하고 DLQ 도달 판정은 Consumer PR에서 구현한다.
+
+Publisher부터 RabbitMQ까지의 구성·정상 발행·장애 복구 경로는
+[Outbox Publisher → RabbitMQ 아키텍처](../.archify/architecture-generation-outbox-rabbitmq-20261108-001407/generation-outbox-rabbitmq.html)에서 확인한다.

@@ -10,7 +10,7 @@ import org.springframework.amqp.core.Queue;
 class GenerationRabbitConfigurationTest {
 
     private final GenerationRabbitConfiguration configuration =
-            new GenerationRabbitConfiguration(Duration.ofSeconds(30));
+            new GenerationRabbitConfiguration(Duration.ofSeconds(30), 10_000);
 
     @Test
     void mainQueueRoutesRejectedMessagesToRetryQueue() {
@@ -21,6 +21,7 @@ class GenerationRabbitConfigurationTest {
         assertThat(queue.getName()).isEqualTo(GenerationRabbitConfiguration.QUEUE);
         assertThat(queue.getArguments())
                 .containsEntry("x-queue-type", "quorum")
+                .containsEntry("x-max-length", 10_000L)
                 .containsEntry("x-overflow", "reject-publish")
                 .containsEntry("x-dead-letter-strategy", "at-least-once")
                 .containsEntry("x-dead-letter-exchange", GenerationRabbitConfiguration.RETRY_EXCHANGE)
@@ -37,6 +38,7 @@ class GenerationRabbitConfigurationTest {
 
         assertThat(queue.getArguments())
                 .containsEntry("x-message-ttl", 30_000)
+                .containsEntry("x-max-length", 10_000L)
                 .containsEntry("x-overflow", "reject-publish")
                 .containsEntry("x-dead-letter-strategy", "at-least-once")
                 .containsEntry("x-dead-letter-exchange", GenerationRabbitConfiguration.EXCHANGE)

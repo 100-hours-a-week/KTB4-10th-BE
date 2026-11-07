@@ -52,7 +52,7 @@ class GenerationRabbitTopologyIntegrationTest {
         rabbit.setMandatory(true);
 
         GenerationRabbitConfiguration configuration =
-                new GenerationRabbitConfiguration(Duration.ofMillis(500));
+                new GenerationRabbitConfiguration(Duration.ofMillis(500), 10_000);
         RabbitAdmin admin = new RabbitAdmin(connections);
         admin.declareExchange(configuration.guidebookGenerationExchange());
         admin.declareExchange(configuration.guidebookGenerationRetryExchange());

@@ -93,6 +93,7 @@ ai:
     submission-concurrency: ${AI_GENERATION_SUBMISSION_CONCURRENCY:3}
     rabbit:
       retry-delay: ${AI_GENERATION_RABBIT_RETRY_DELAY:30s}
+      max-queue-length: ${AI_GENERATION_RABBIT_MAX_QUEUE_LENGTH:10000}
     redis:
       enabled: ${AI_GENERATION_REDIS_ENABLED:false}
       channel: ${AI_GENERATION_REDIS_CHANNEL:kgb:local:generation}

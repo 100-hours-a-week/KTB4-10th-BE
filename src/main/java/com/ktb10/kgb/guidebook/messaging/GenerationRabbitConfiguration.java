@@ -27,13 +27,19 @@ class GenerationRabbitConfiguration {
     static final String DEAD_LETTER_ROUTING_KEY = "guidebook.generation.failed";
 
     private final Duration retryDelay;
+    private final long maxQueueLength;
 
     GenerationRabbitConfiguration(
-            @Value("${ai.generation.rabbit.retry-delay:30s}") Duration retryDelay) {
+            @Value("${ai.generation.rabbit.retry-delay:30s}") Duration retryDelay,
+            @Value("${ai.generation.rabbit.max-queue-length:10000}") long maxQueueLength) {
         if (retryDelay.isNegative() || retryDelay.isZero()) {
             throw new IllegalArgumentException("RabbitMQ 재시도 지연은 0보다 커야 합니다.");
         }
+        if (maxQueueLength <= 0) {
+            throw new IllegalArgumentException("RabbitMQ 큐 최대 길이는 0보다 커야 합니다.");
+        }
         this.retryDelay = retryDelay;
+        this.maxQueueLength = maxQueueLength;
     }
 
     @Bean
@@ -55,6 +61,7 @@ class GenerationRabbitConfiguration {
     Queue guidebookGenerationQueue() {
         return QueueBuilder.durable(QUEUE)
                 .quorum()
+                .maxLength(maxQueueLength)
                 .withArgument("x-overflow", "reject-publish")
                 .withArgument("x-dead-letter-strategy", "at-least-once")
                 .deadLetterExchange(RETRY_EXCHANGE)
@@ -66,6 +73,7 @@ class GenerationRabbitConfiguration {
     Queue guidebookGenerationRetryQueue() {
         return QueueBuilder.durable(RETRY_QUEUE)
                 .quorum()
+                .maxLength(maxQueueLength)
                 .withArgument("x-overflow", "reject-publish")
                 .withArgument("x-dead-letter-strategy", "at-least-once")
                 .ttl(Math.toIntExact(retryDelay.toMillis()))

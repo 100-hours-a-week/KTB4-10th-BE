@@ -269,6 +269,20 @@ public class GenerationJob {
         }
     }
 
+    /** 재시도해도 복구될 수 없는 발행 데이터 오류를 최종 실패로 격리합니다. */
+    public void failPublication(int attempt, String token, String errorCode,
+            String failurePayload, LocalDateTime failedAt) {
+        if (status != GenerationStatus.PUBLISH_PENDING || attemptCount != attempt
+                || !Objects.equals(publishClaimToken, token)) {
+            return;
+        }
+        publishClaimToken = null;
+        publishClaimExpiresAt = null;
+        nextPublishAt = null;
+        lastPublishErrorCode = Objects.requireNonNull(errorCode);
+        fail(failurePayload, failedAt);
+    }
+
     /** 콜백 방식의 전체 제한 시간은 큐 대기 전 접수 시도부터 계산합니다. */
     public void beginCallbackAttempt(LocalDateTime now) {
         if (status == GenerationStatus.PENDING && attemptStartedAt == null) {
