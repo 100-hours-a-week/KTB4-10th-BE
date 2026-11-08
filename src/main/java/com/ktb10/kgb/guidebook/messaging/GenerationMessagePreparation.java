@@ -100,7 +100,12 @@ public class GenerationMessagePreparation {
             message.put("jobId", job.getId());
             message.put("attempt", job.getAttemptCount().intValue());
             message.put("jobType", job.getJobType().name());
-            ((ObjectNode) message.get("input")).put("request_id", job.getMessageId());
+            ObjectNode input = (ObjectNode) message.get("input");
+            input.put("request_id", job.getMessageId());
+            // 최초 요청은 저장 이력으로만 보존하고 재생성은 현재 일정과 새 피드백을 사용한다.
+            if (job.getJobType() == JobType.REGENERATION) {
+                input.remove("user_request");
+            }
             return json.writeValueAsString(message);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("저장된 입력 스냅샷을 읽을 수 없습니다.", exception);

@@ -7,6 +7,7 @@ public class AiClientException extends RuntimeException {
     private final String targetRoute;
     private final Integer upstreamStatus;
     private final long durationMs;
+    private final String upstreamCode;
 
     public AiClientException(
             String message,
@@ -15,11 +16,21 @@ public class AiClientException extends RuntimeException {
             String targetRoute,
             Integer upstreamStatus,
             long durationMs) {
+        this(message, cause, failureType, targetRoute, upstreamStatus, durationMs, null);
+    }
+
+    public AiClientException(String message, Throwable cause, AiFailureType failureType,
+            String targetRoute, Integer upstreamStatus, long durationMs, String upstreamCode) {
         super(message, cause);
         this.failureType = failureType;
         this.targetRoute = targetRoute;
         this.upstreamStatus = upstreamStatus;
         this.durationMs = durationMs;
+        this.upstreamCode = upstreamCode;
+    }
+
+    public String getUpstreamCode() {
+        return upstreamCode;
     }
 
     public AiFailureType getFailureType() {

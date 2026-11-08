@@ -41,7 +41,7 @@ class RegenerationInputSnapshotTest {
         ReflectionTestUtils.setField(source, "id", 123L);
         String snapshot = """
                 {"schemaVersion":1,"input":{"region":{"city":"중구"},
-                "contents":[{"content_id":"100","overview":"원본 후보"}],
+                "contents":[{"content_id":"100","overview":"원본 후보"}],"user_request":"오후 시작",
                 "feedback":"이전 피드백","previous_plan":[{"content_id":"old"}]}}
                 """;
         ReflectionTestUtils.setField(source, "messagePayload", snapshot);
@@ -60,6 +60,7 @@ class RegenerationInputSnapshotTest {
         assertThat(input.path("previous_plan").get(0).path("content_id").asText()).isEqualTo("100");
         assertThat(input.path("previous_plan").get(0).path("start_time").asText()).isEqualTo("09:30");
         assertThat(input.path("feedback").asText()).isEqualTo("걷기 줄이기");
+        assertThat(input.path("user_request").asText()).isEqualTo("오후 시작");
         assertThat(input.path("title").asText()).isEqualTo("기존 제목");
         assertThat(input.path("source_job_id").asLong()).isEqualTo(123L);
         assertThat(source.getMessagePayload()).isEqualTo(snapshot);

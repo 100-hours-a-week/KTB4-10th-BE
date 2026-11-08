@@ -31,7 +31,7 @@ class AiGuidebookRequestMapperTest {
                         LocalDate.of(2026, 8, 24),
                         LocalDate.of(2026, 8, 25),
                         Companion.COUPLE,
-                        2),
+                        2, " 첫날은 오후에 시작하고 싶어요 "),
                 List.of(
                         new PreferenceSnapshot("THEME", "NATURE"),
                         new PreferenceSnapshot("DETAIL", "NATURE_MOUNTAIN"),
@@ -59,6 +59,8 @@ class AiGuidebookRequestMapperTest {
         var request = mapper.map(payload, 301L, 0);
 
         assertThat(request.requestId()).isEqualTo("301-0");
+        assertThat(request.userRequest()).isEqualTo("첫날은 오후에 시작하고 싶어요");
+        assertThat(mapper.mapInput(payload).userRequest()).isEqualTo(request.userRequest());
         assertThat(request.region().province()).isEqualTo("경상북도");
         assertThat(request.region().city()).isEqualTo("경주시");
         assertThat(request.startDate()).isEqualTo(LocalDate.of(2026, 8, 24));

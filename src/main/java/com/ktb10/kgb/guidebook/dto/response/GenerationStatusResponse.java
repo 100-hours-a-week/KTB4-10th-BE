@@ -24,12 +24,24 @@ public record GenerationStatusResponse(
         @JsonProperty("initial_request")
         GuidebookGenerationRequest initialRequest,
 
-        GenerationError error) {
+        GenerationError error,
+        @JsonProperty("submitted_feedback")
+        String submittedFeedback) {
+
+    public GenerationStatusResponse(Long jobId, JobType jobType, GenerationStatus status,
+            Long guidebookId, int attemptCount, GuidebookGenerationRequest initialRequest, GenerationError error) {
+        this(jobId, jobType, status, guidebookId, attemptCount, initialRequest, error, null);
+    }
 
     public static GenerationStatusResponse from(
             GenerationJob job,
             GenerationError error,
             GuidebookGenerationRequest initialRequest) {
+        return from(job, error, initialRequest, null);
+    }
+
+    public static GenerationStatusResponse from(GenerationJob job, GenerationError error,
+            GuidebookGenerationRequest initialRequest, String submittedFeedback) {
         return new GenerationStatusResponse(
                 job.getId(),
                 job.getJobType(),
@@ -37,7 +49,8 @@ public record GenerationStatusResponse(
                 job.getGuidebookId(),
                 job.getAttemptCount().intValue(),
                 initialRequest,
-                error);
+                error,
+                submittedFeedback);
     }
 
     /** 내부 AI 오류 원문 대신 클라이언트에 공개 가능한 오류만 전달합니다. */

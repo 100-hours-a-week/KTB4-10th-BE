@@ -8,6 +8,7 @@ import com.ktb10.kgb.common.error.CommonErrorCode;
 import com.ktb10.kgb.credit.entity.CreditWallet;
 import com.ktb10.kgb.credit.repository.CreditWalletRepository;
 import com.ktb10.kgb.guidebook.callback.GenerationSubmissionQueue;
+import com.ktb10.kgb.guidebook.dto.GenerationFailurePolicy;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.dto.request.InitialGenerationRequestPayload;
@@ -269,7 +270,7 @@ public class GuidebookGenerationService {
         GenerationStatusResponse.GenerationError error = job.getStatus() == GenerationStatus.FAILED
                 ? failureResponse(job)
                 : null;
-        return GenerationStatusResponse.from(job, error, initialRequest(job));
+        return GenerationStatusResponse.from(job, error, initialRequest(job), submittedFeedback(job));
     }
 
     @Transactional(propagation = Propagation.NEVER)
@@ -349,6 +350,9 @@ public class GuidebookGenerationService {
             if (payload == null) {
                 return false;
             }
+            if (isUserCorrectionRequired(payload.path("code").asText())) {
+                return false;
+            }
             if (payload.has("retryable")) {
                 return payload.get("retryable").asBoolean();
             }
@@ -359,12 +363,20 @@ public class GuidebookGenerationService {
     }
 
     private GuidebookGenerationRequest initialRequest(GenerationJob job) {
-        if (job.getJobType() != JobType.INITIAL) {
+        try {
+            return resolveSourceRequest(job).request();
+        } catch (IllegalStateException | NullPointerException ignored) {
+            return null;
+        }
+    }
+
+    private String submittedFeedback(GenerationJob job) {
+        if (job.getJobType() != JobType.REGENERATION) {
             return null;
         }
         try {
-            return deserialize(job.getRequestPayload()).request();
-        } catch (IllegalStateException ignored) {
+            return deserializeRegeneration(job.getRequestPayload()).request().feedback();
+        } catch (IllegalStateException | NullPointerException ignored) {
             return null;
         }
     }
@@ -380,6 +392,14 @@ public class GuidebookGenerationService {
             if (payload != null) {
                 code = payload.path("code").asText(code);
                 message = payload.path("message").asText(message);
+                if (!payload.hasNonNull("message")) {
+                    String inputMessage = GenerationFailurePolicy.inputMessage(code);
+                    if (inputMessage != null) {
+                        message = inputMessage;
+                    } else if ("AI_SUBMISSION_FAILED".equals(code)) {
+                        message = "AI 서버가 작업을 접수하지 못했어요. 잠시 후 다시 이용해 주세요.";
+                    }
+                }
             }
         } catch (JsonProcessingException | IllegalArgumentException ignored) {
             return new GenerationStatusResponse.GenerationError(
@@ -389,8 +409,7 @@ public class GuidebookGenerationService {
     }
 
     private boolean isUserCorrectionRequired(String code) {
-        return "feedback_not_applicable".equals(code)
-                || "insufficient_candidates".equals(code);
+        return GenerationFailurePolicy.requiresCorrection(code);
     }
 
     private GuidebookGenerationResponse handleRepeatedRequest(
