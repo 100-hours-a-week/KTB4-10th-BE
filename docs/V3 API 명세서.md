@@ -30,7 +30,7 @@
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
-- GDE-03은 DB 상태만 조회하고 진행 단계는 생성 전용 SSE로 제공한다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성 작업은 조건 수정 화면 복원을 위해 최초 요청 조건(initial_request)을 함께 제공한다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
+- GDE-03은 DB 상태만 조회하고 진행 단계는 생성 전용 SSE로 제공한다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성·재생성 모두 조건 수정 화면 복원을 위해 원본 요청 조건(initial_request, user_request 포함)을 제공한다. 복원 가능한 스냅샷이 없으면 initial_request는 null이다. 재생성은 submitted_feedback으로 접수한 피드백도 제공하고 최초 생성의 submitted_feedback은 null이다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
 - 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
 - GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
