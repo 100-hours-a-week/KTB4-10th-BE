@@ -4,6 +4,7 @@ import com.ktb10.kgb.common.response.ApiResponse;
 import com.ktb10.kgb.common.security.AuthenticatedMember;
 import com.ktb10.kgb.content.dto.ContentDetailResponse;
 import com.ktb10.kgb.content.dto.ContentListResponse;
+import com.ktb10.kgb.content.model.ContentSearchCategory;
 import com.ktb10.kgb.content.service.ContentReadService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -32,8 +33,9 @@ public class ContentReadController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<ContentListResponse>> getContents(
-            @RequestParam(defaultValue = "EVENT") ContentCategory category,
-            @RequestParam(required = false) @Size(max = 10) String q,
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @RequestParam(defaultValue = "EVENT") ContentSearchCategory category,
+            @RequestParam(required = false) String q,
             @RequestParam(name = "region_code", required = false)
                     @Size(max = 20) String regionCode,
             @RequestParam(required = false)
@@ -42,7 +44,8 @@ public class ContentReadController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(20) int size) {
         return ResponseEntity.ok(ApiResponse.success(
                 "content_list_success",
-                contentReadService.getEvents(q, regionCode, month, page, size)));
+                contentReadService.getContents(
+                        member.memberId(), category, q, regionCode, month, page, size)));
     }
 
     @GetMapping("/{contentId}")
@@ -52,9 +55,5 @@ public class ContentReadController {
         return ResponseEntity.ok(ApiResponse.success(
                 "content_get_success",
                 contentReadService.getEventDetail(member.memberId(), contentId)));
-    }
-
-    public enum ContentCategory {
-        EVENT
     }
 }

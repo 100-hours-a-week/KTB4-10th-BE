@@ -2,13 +2,13 @@ package com.ktb10.kgb.content.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.ktb10.kgb.content.model.ContentSearchCategory;
 import com.ktb10.kgb.content.service.ContentReadService;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -84,19 +84,19 @@ class ContentReadRepositoryMysqlIntegrationTest {
     @Test
     void queriesEventPagesAndCombinesDetailImagesOnMysql() {
         insertEvent("event-old", "부산 불꽃축제", busanRegionId, "ACTIVE", null,
-                BASE_TIME, "2026-10-01", "2026-10-31");
+                BASE_TIME, "2099-10-01", "2099-10-31");
         insertEvent("event-other", "제주 문화행사", busanRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(1), "2026-10-01", "2026-10-31");
+                BASE_TIME.plusHours(1), "2099-10-01", "2099-10-31");
         insertEvent("event-seoul-2", "서울 음악회", seoulRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(2), "2026-10-01", "2026-10-31");
+                BASE_TIME.plusHours(2), "2099-10-01", "2099-10-31");
         Long detailId = insertEvent(
                 "event-seoul-1", "서울 야행", seoulRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(3), "2026-10-01", "2026-10-31");
+                BASE_TIME.plusHours(3), "2099-10-01", "2099-10-31");
         insertEvent("event-inactive", "서울 종료 행사", seoulRegionId, "INACTIVE", null,
-                BASE_TIME.plusHours(4), "2026-10-01", "2026-10-31");
+                BASE_TIME.plusHours(4), "2099-10-01", "2099-10-31");
         insertEvent("event-deleted", "서울 삭제 행사", seoulRegionId, "ACTIVE",
                 BASE_TIME.plusDays(1), BASE_TIME.plusHours(5),
-                "2026-10-01", "2026-10-31");
+                "2099-10-01", "2099-10-31");
         insertImages(detailId);
         Long memberId = insertMember("detail-member");
         jdbcTemplate.update(
@@ -108,24 +108,25 @@ class ContentReadRepositoryMysqlIntegrationTest {
                 detailId,
                 BASE_TIME);
 
-        var firstPage = repository.findEvents(
-                null, null, null, null, PageRequest.of(0, 2));
-        var secondPage = repository.findEvents(
-                null, null, null, null, PageRequest.of(1, 2));
-        var searchResult = repository.findEvents(
-                "서울", null, null, null, PageRequest.of(0, 10));
+        var firstPage = service.getContents(
+                memberId, ContentSearchCategory.EVENT, null, null, null, 1, 2);
+        var secondPage = service.getContents(
+                memberId, ContentSearchCategory.EVENT, null, null, null, 2, 2);
+        var searchResult = service.getContents(
+                memberId, ContentSearchCategory.EVENT, "서울", null, null, 1, 10);
         var detail = service.getEventDetail(memberId, "event-seoul-1");
 
-        assertThat(firstPage.getTotalElements()).isEqualTo(4);
-        assertThat(firstPage.getContent())
-                .extracting(ContentReadRepository.ContentListProjection::getContentId)
+        assertThat(firstPage.totalItems()).isEqualTo(4);
+        assertThat(firstPage.items())
+                .extracting(item -> item.contentId())
                 .containsExactly("event-seoul-1", "event-seoul-2");
-        assertThat(secondPage.getContent())
-                .extracting(ContentReadRepository.ContentListProjection::getContentId)
+        assertThat(secondPage.items())
+                .extracting(item -> item.contentId())
                 .containsExactly("event-other", "event-old");
-        assertThat(searchResult.getContent())
-                .extracting(ContentReadRepository.ContentListProjection::getContentId)
+        assertThat(searchResult.items())
+                .extracting(item -> item.contentId())
                 .containsExactly("event-seoul-1", "event-seoul-2");
+        assertThat(searchResult.items().getFirst().favorite()).isTrue();
         assertThat(repository.findEventDetail("event-inactive")).isEmpty();
         assertThat(repository.findEventDetail("event-deleted")).isEmpty();
         assertThat(detail.title()).isEqualTo("서울 야행");
@@ -141,26 +142,115 @@ class ContentReadRepositoryMysqlIntegrationTest {
     @Test
     void filtersEventsByProvinceAndOverlappingMonth() {
         insertEvent("seoul-overlap", "가을 야행", seoulRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(1), "2026-09-30", "2026-10-01");
+                BASE_TIME.plusHours(1), "2099-09-30", "2099-10-01");
         insertEvent("seoul-november", "겨울 야행", seoulRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(2), "2026-11-01", "2026-11-30");
+                BASE_TIME.plusHours(2), "2099-11-01", "2099-11-30");
         insertEvent("busan-october", "가을 야행", busanRegionId, "ACTIVE", null,
-                BASE_TIME.plusHours(3), "2026-10-01", "2026-10-31");
+                BASE_TIME.plusHours(3), "2099-10-01", "2099-10-31");
+        Long memberId = insertMember("filter-member");
 
-        var result = repository.findEvents(
+        var result = service.getContents(
+                memberId,
+                ContentSearchCategory.EVENT,
                 "야행",
                 "11",
-                java.time.LocalDate.of(2026, 10, 1),
-                java.time.LocalDate.of(2026, 10, 31),
-                PageRequest.of(0, 20));
+                "2099-10",
+                1,
+                20);
 
-        assertThat(result.getContent())
-                .extracting(ContentReadRepository.ContentListProjection::getContentId)
+        assertThat(result.items())
+                .extracting(item -> item.contentId())
                 .containsExactly("seoul-overlap");
-        assertThat(result.getContent().getFirst().getRegionCode()).isEqualTo("11");
-        assertThat(result.getContent().getFirst().getRegionName()).isEqualTo("서울특별시");
+        assertThat(result.items().getFirst().region().administrativeCode()).isEqualTo("11");
+        assertThat(result.items().getFirst().region().name()).isEqualTo("서울특별시");
         assertThat(repository.countProvinceByCode("11")).isEqualTo(1L);
         assertThat(repository.countProvinceByCode("unknown")).isZero();
+    }
+
+    @Test
+    void searchesAllowedEventsAndPlacesWithLiteralQueryAndPersonalization() {
+        insertEvent("search-event", "공통 검색 행사", seoulRegionId, "ACTIVE", null,
+                BASE_TIME.plusHours(1), "2099-10-01", "2099-10-31");
+        insertEvent("ended-event", "공통 검색 종료 행사", seoulRegionId, "ACTIVE", null,
+                BASE_TIME.plusHours(2), "2020-10-01", "2020-10-31");
+        Long placeId = insertPlace(
+                "search-place", "공통 검색 장소", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(3));
+        insertPlace(
+                "disallowed-place", "공통 검색 제외", seoulRegionId,
+                "VE05", BASE_TIME.plusHours(4));
+        insertPlace(
+                "literal-place", "100% 명소", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(5));
+        insertPlace(
+                "underscore-place", "under_score 명소", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(6));
+        insertPlace(
+                "quote-place", "따옴표' 명소", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(7));
+        insertPlace(
+                "backslash-place", "역슬래시\\ 명소", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(8));
+        insertPlace(
+                "stable-place-1", "정렬 장소 하나", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(9));
+        insertPlace(
+                "stable-place-2", "정렬 장소 둘", seoulRegionId,
+                "NA01", BASE_TIME.plusHours(9));
+        Long memberId = insertMember("search-member");
+        jdbcTemplate.update(
+                "INSERT INTO favorite_contents (member_id, content_id, created_at) VALUES (?, ?, ?)",
+                memberId,
+                placeId,
+                BASE_TIME);
+        insertGuidebookContent(memberId, placeId);
+
+        var all = service.getContents(
+                memberId, ContentSearchCategory.ALL,
+                "공통 검색", null, null, 1, 20);
+        var literal = service.getContents(
+                memberId, ContentSearchCategory.PLACE,
+                "%", null, null, 1, 20);
+        var underscore = service.getContents(
+                memberId, ContentSearchCategory.PLACE,
+                "_", null, null, 1, 20);
+        var quote = service.getContents(
+                memberId, ContentSearchCategory.PLACE,
+                "'", null, null, 1, 20);
+        var backslash = service.getContents(
+                memberId, ContentSearchCategory.PLACE,
+                "\\", null, null, 1, 20);
+        var sqlLikeInput = service.getContents(
+                memberId, ContentSearchCategory.ALL,
+                "' OR 1=1", null, null, 1, 20);
+        var stableOrder = service.getContents(
+                memberId, ContentSearchCategory.PLACE,
+                "정렬 장소", null, null, 1, 20);
+
+        assertThat(all.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("search-place", "search-event");
+        assertThat(all.totalItems()).isEqualTo(2);
+        assertThat(all.items().getFirst().contentType()).isEqualTo("PLACE");
+        assertThat(all.items().getFirst().eventPeriod()).isNull();
+        assertThat(all.items().getFirst().favorite()).isTrue();
+        assertThat(all.items().getFirst().inGuidebook()).isTrue();
+        assertThat(literal.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("literal-place");
+        assertThat(underscore.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("underscore-place");
+        assertThat(quote.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("quote-place");
+        assertThat(backslash.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("backslash-place");
+        assertThat(sqlLikeInput.items()).isEmpty();
+        assertThat(stableOrder.items())
+                .extracting(item -> item.contentId())
+                .containsExactly("stable-place-2", "stable-place-1");
     }
 
     private Long insertMember(String oauthSubject) {
@@ -224,6 +314,82 @@ class ContentReadRepositoryMysqlIntegrationTest {
                 endDate,
                 createdAt);
         return contentId;
+    }
+
+    private Long insertPlace(
+            String sourceContentId,
+            String title,
+            Long contentRegionId,
+            String classificationCode2,
+            LocalDateTime createdAt) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO tourism_contents (
+                    source_provider, source_content_id, title, description, region_id,
+                    classification_code_1, classification_code_2, address, location,
+                    thumbnail_url, status, created_at, updated_at
+                ) VALUES (
+                    'TOUR_API', ?, ?, '장소 소개', ?, 'NA', ?, '서울특별시 종로구',
+                    ST_SRID(POINT(126.9780, 37.5665), 4326),
+                    'https://example.com/place.jpg', 'ACTIVE', ?, ?
+                )
+                """,
+                sourceContentId,
+                title,
+                contentRegionId,
+                classificationCode2,
+                createdAt,
+                createdAt);
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM tourism_contents WHERE source_content_id = ?",
+                Long.class,
+                sourceContentId);
+    }
+
+    private void insertGuidebookContent(Long memberId, Long contentId) {
+        jdbcTemplate.update(
+                """
+                INSERT INTO guidebooks (
+                    title, region_id, start_date, end_date, companion,
+                    people_count, created_at, updated_at
+                ) VALUES ('검색 가이드북', ?, '2099-10-01', '2099-10-01',
+                          'ALONE', 1, ?, ?)
+                """,
+                seoulRegionId,
+                BASE_TIME,
+                BASE_TIME);
+        Long guidebookId = jdbcTemplate.queryForObject(
+                "SELECT id FROM guidebooks WHERE title = '검색 가이드북'",
+                Long.class);
+        jdbcTemplate.update(
+                """
+                INSERT INTO member_guidebooks (
+                    member_id, guidebook_id, acquisition_type, created_at
+                ) VALUES (?, ?, 'CREATED', ?)
+                """,
+                memberId,
+                guidebookId,
+                BASE_TIME);
+        jdbcTemplate.update(
+                """
+                INSERT INTO itinerary_days (guidebook_id, day_number, itinerary_date)
+                VALUES (?, 1, '2099-10-01')
+                """,
+                guidebookId);
+        Long dayId = jdbcTemplate.queryForObject(
+                "SELECT id FROM itinerary_days WHERE guidebook_id = ?",
+                Long.class,
+                guidebookId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO itinerary_items (
+                    itinerary_day_id, tourism_content_id, sequence,
+                    place_snapshot, created_at
+                ) VALUES (?, ?, 1, JSON_OBJECT('title', '공통 검색 장소'), ?)
+                """,
+                dayId,
+                contentId,
+                BASE_TIME);
     }
 
     private void insertImages(Long contentId) {
