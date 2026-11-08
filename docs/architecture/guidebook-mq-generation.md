@@ -8,33 +8,19 @@
 
 ```mermaid
 flowchart TD
-    FE["FE: 생성 / 재생성 요청"] --> API["BE: 권한·입력·멱등·진행 작업 검증"]
-    API --> KIND{"작업 종류"}
-    KIND -->|INITIAL| INITIAL["요청·취향 스냅샷 + user_request + 후보 목록"]
-    KIND -->|REGENERATION| REGEN["최근 완료 작업 입력 복사 + 현재 DB 일정 + 새 feedback"]
-    INITIAL --> SAVE["접수 TX: request_payload / message_payload 저장"]
-    REGEN --> SAVE
-    SAVE --> STATE["PUBLISH_PENDING / 커밋 후 FE 202"]
-    STATE --> PUB["Outbox Publisher: 500ms 폴링 / 선점 TX"]
-    PUB --> BUILD["저장 입력에 jobId / messageId / attempt / jobType 추가"]
-    BUILD --> REMOVE["재생성 전송본은 user_request 제외 / 원본 DB 이력 유지"]
-    REMOVE --> MQ["RabbitMQ: persistent 발행 / confirm 확인"]
-    MQ -->|ACK| QUEUED["DB: QUEUED / FE에는 PENDING"]
-    MQ -->|연결 실패·NACK·timeout·unroutable| BACKOFF["PUBLISH_PENDING 유지 / 2~60초 자동 재발행"]
-    BACKOFF --> PUB
-    BUILD -->|스냅샷 손상| INVALID["FAILED / GENERATION_REQUEST_INVALID / 재시도 불가"]
-    MQ -. "소비·중복 제거·실행 복구: 후속" .-> CONSUMER["AI Consumer: 이 PR 범위 밖"]
-    CONSUMER -. "기존 HTTP callback 계약 재사용 예정" .-> GATE{"BE 실행 시작 시각 존재?"}
-    GATE -->|없음: 현재 MQ 작업| BLOCK["409 / 아직 end-to-end 연결 안 됨"]
-    GATE -->|있음: HTTP 경로| CALLBACK["기존 BE callback 수신"]
-    CALLBACK --> RESULTS["결과 검증·저장 / 성공 시 생성권·버전 반영"]
-    CALLBACK --> SSE["생성 SSE: progress.step / message"]
-    INVALID --> SSE
-    SSE --> UI["FE 단계 진행바 / 실패 안내·입력 복원"]
+    INITIAL["최초 생성: 조건 + user_request"] --> SNAPSHOT["BE 검증·입력 스냅샷 저장"]
+    REGEN["재생성: 원본 후보 + 현재 일정 + feedback"] --> SNAPSHOT
+    SNAPSHOT --> OUTBOX["DB Outbox / PUBLISH_PENDING"]
+    OUTBOX --> PUBLISHER["발행기"]
+    PUBLISHER --> MQ["RabbitMQ / ACK 후 QUEUED"]
+    MQ -. "후속 구현" .-> CONSUMER["AI Consumer"]
+    CONSUMER -. "실행 시작·타임아웃 연결 필요" .-> CALLBACK["BE 콜백"]
+    CALLBACK --> DB["결과·일정 저장"]
+    CALLBACK --> SSE["SSE → FE 진행·실패 안내"]
 ```
 
-인터랙티브 다이어그램은 [mq-generation.html](mq-generation.html)을 내려받아 브라우저에서 연다.
-Mermaid의 점선은 미구현·미연결 경계다. 실선도 실행 시작 시각 gate를 우회하지 않는다.
+점선은 미구현·미연결 경계다. 현재 MQ 작업은 실행 시작 시각이 없어 콜백이 409로 거절되며,
+Consumer 연동 전에는 위 흐름의 end-to-end 동작을 보장하지 않는다. 상세 실패 처리는 아래 표를 따른다.
 
 ## 최초 생성과 재생성 입력
 
