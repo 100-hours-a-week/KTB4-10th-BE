@@ -16,6 +16,11 @@ out/
 
 # Local Archify generated diagrams
 .archify/
+# Local verification receipts contain absolute workspace paths.
+docs/architecture/mq-generation.delivery.json
+docs/architecture/mq-generation.browser-check.json
+docs/architecture/mq-generation.finalize.json
+docs/architecture/mq-generation.finalize-summary.json
 
 # Local environment
 .env

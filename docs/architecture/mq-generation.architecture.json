@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "가이드북 MQ 생성·재생성: 구현과 후속 경계",
+    "locale": "ko",
+    "output": "docs/architecture/mq-generation.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:100-hours-a-week/KTB4-10th-BE.git",
+      "revision": "e53d02bc8d04552d11708254eb14b1bf40e2fbaa",
+      "link_mode": "local-only"
+    }
+  },
+  "components": [
+    {
+      "id": "request",
+      "type": "frontend",
+      "label": "생성·재생성 요청",
+      "sublabel": "세션·멱등 키·자연어 입력",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/controller/GuidebookGenerationController.java",
+          "line": 45,
+          "end_line": 58
+        },
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 11,
+          "end_line": 17
+        }
+      ]
+    },
+    {
+      "id": "admission",
+      "type": "backend",
+      "label": "접수·입력 스냅샷",
+      "sublabel": "INITIAL / REGENERATION",
+      "pos": [
+        390,
+        40
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/messaging/GenerationMessagePreparation.java",
+          "line": 40,
+          "end_line": 89
+        },
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 41,
+          "end_line": 52
+        }
+      ],
+      "tag": "접수 TX"
+    },
+    {
+      "id": "outbox",
+      "type": "database",
+      "label": "생성 작업 Outbox",
+      "sublabel": "request / message payload",
+      "pos": [
+        740,
+        40
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/service/GuidebookGenerationService.java",
+          "line": 241,
+          "end_line": 254
+        },
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/messaging/GenerationMessagePreparation.java",
+          "line": 74,
+          "end_line": 89
+        }
+      ],
+      "tag": "PUBLISH_PENDING"
+    },
+    {
+      "id": "publisher",
+      "type": "backend",
+      "label": "Outbox 발행기",
+      "sublabel": "선점·confirm·백오프",
+      "pos": [
+        740,
+        270
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/messaging/GenerationOutboxPublisher.java",
+          "line": 68,
+          "end_line": 120
+        }
+      ],
+      "tag": "500ms 폴링"
+    },
+    {
+      "id": "broker",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "persistent 메시지·고정 ID",
+      "pos": [
+        390,
+        270
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/messaging/GenerationOutboxPublisher.java",
+          "line": 97,
+          "end_line": 119
+        },
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 63,
+          "end_line": 67
+        }
+      ],
+      "tag": "ACK → QUEUED"
+    },
+    {
+      "id": "consumer",
+      "type": "external",
+      "label": "AI Consumer · 후속",
+      "sublabel": "소비·중복 제거·실행 복구",
+      "pos": [
+        40,
+        270
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 26,
+          "end_line": 29
+        },
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 65,
+          "end_line": 72
+        }
+      ],
+      "tag": "이 PR 미구현"
+    },
+    {
+      "id": "callback",
+      "type": "backend",
+      "label": "콜백·결과 처리",
+      "sublabel": "실행 시각 없는 MQ: 409",
+      "pos": [
+        40,
+        500
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/callback/GenerationCallbackTransactionService.java",
+          "line": 118,
+          "end_line": 156
+        },
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/service/GuidebookResultService.java",
+          "line": 99,
+          "end_line": 118
+        }
+      ],
+      "tag": "실행 경계 미연결"
+    },
+    {
+      "id": "sse",
+      "type": "backend",
+      "label": "생성 SSE",
+      "sublabel": "progress.step / message",
+      "pos": [
+        390,
+        500
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/callback/GenerationStreamService.java",
+          "line": 87,
+          "end_line": 99
+        },
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/callback/GenerationStreamService.java",
+          "line": 177,
+          "end_line": 182
+        }
+      ]
+    },
+    {
+      "id": "screen",
+      "type": "frontend",
+      "label": "진행·실패 화면",
+      "sublabel": "단계 표시·입력 복원",
+      "pos": [
+        740,
+        500
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "docs/architecture/guidebook-mq-generation.md",
+          "line": 70,
+          "end_line": 79
+        }
+      ],
+      "tag": "콜백 수신 후"
+    },
+    {
+      "id": "results",
+      "type": "database",
+      "label": "결과·일정·생성권",
+      "sublabel": "성공 TX / 재생성 버전 갱신",
+      "pos": [
+        40,
+        730
+      ],
+      "size": [
+        230,
+        76
+      ],
+      "sources": [
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/service/GuidebookResultService.java",
+          "line": 165,
+          "end_line": 200
+        },
+        {
+          "path": "src/main/java/com/ktb10/kgb/guidebook/service/GuidebookResultService.java",
+          "line": 266,
+          "end_line": 284
+        }
+      ],
+      "tag": "실패 시 기존 결과 유지"
+    }
+  ],
+  "connections": [
+    {
+      "id": "request-input",
+      "from": "request",
+      "to": "admission",
+      "label": "POST",
+      "variant": "emphasis"
+    },
+    {
+      "id": "persist-snapshot",
+      "from": "admission",
+      "to": "outbox",
+      "label": "저장",
+      "variant": "emphasis"
+    },
+    {
+      "id": "claim-outbox",
+      "from": "outbox",
+      "to": "publisher",
+      "label": "선점 SQL"
+    },
+    {
+      "id": "publish-message",
+      "from": "publisher",
+      "to": "broker",
+      "label": "AMQP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "consume-future",
+      "from": "broker",
+      "to": "consumer",
+      "label": "소비 후속",
+      "variant": "dashed"
+    },
+    {
+      "id": "callback-future",
+      "from": "consumer",
+      "to": "callback",
+      "label": "실행 시각 필요",
+      "variant": "dashed"
+    },
+    {
+      "id": "callback-sse",
+      "from": "callback",
+      "to": "sse",
+      "label": "진행 이벤트"
+    },
+    {
+      "id": "sse-screen",
+      "from": "sse",
+      "to": "screen",
+      "label": "SSE"
+    },
+    {
+      "id": "persist-result",
+      "from": "callback",
+      "to": "results",
+      "label": "결과 TX"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "최초 생성",
+      "items": [
+        "user_request 선택 · trim 후 1~200자",
+        "접수 때 조건·취향·후보를 스냅샷 저장",
+        "성공 시 새 가이드북·생성권 1개 차감"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "재생성",
+      "items": [
+        "최근 완료 입력 + 현재 일정 + 새 feedback",
+        "원본 user_request는 이력만, 전송본에서 제외",
+        "성공 시 같은 ID·버전 증가, 생성권 미차감"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "현재 발행 실패 처리",
+      "items": [
+        "브로커 오류는 Outbox 대기·2~60초 재발행",
+        "손상 입력은 FAILED·재시도 불가",
+        "최대 발행 횟수·대기 만료 정책은 미정"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "MQ 전환 미완료",
+      "items": [
+        "점선은 Consumer 후속 경로",
+        "실행 시작 시각·타이머 연결 전 콜백 409",
+        "Consumer 중단·DLQ→실패 통지는 미구현"
+      ]
+    }
+  ]
+}
