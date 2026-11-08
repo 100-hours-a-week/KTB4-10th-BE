@@ -123,9 +123,9 @@ class NewEventDigestNotificationServiceTest {
     }
 
     private void givenEventCount(long count) {
-        given(newEventQuery.countBySourceCreatedAt(
-                REFERENCE_DATE.atStartOfDay(),
-                REFERENCE_DATE.plusDays(1).atStartOfDay()))
+        given(newEventQuery.countByCreatedAt(
+                REFERENCE_DATE.minusDays(1).atTime(15, 0),
+                REFERENCE_DATE.atTime(15, 0)))
                 .willReturn(count);
     }
 }

@@ -23,7 +23,7 @@
 - 동기화 성공 기록은 `TourApiSyncCompletedEvent`만 발행하고 행사 변경 알림을 즉시 만들지 않는다. `Asia/Seoul` 오전 9시 스케줄이 당일 성공 `run_id`를 조회해 전용 bounded executor에 관심 행사와 가이드북 포함 행사 알림을 함께 등록한다. 동기화가 9시 이후 완료되면 성공 이벤트가 같은 실행을 보완 등록한다.
 - 회원×관심 행사×변경 occurrence별 `EVENT_CHANGED` 알림은 `notification_occurrences` DB UNIQUE 제약을 선점한 뒤 저장한다. 재처리·다중 인스턴스 경합에서 중복은 생략하고, 기존 커밋 후 리스너가 SSE와 Web Push를 발송한다. 특정 회원의 저장 실패는 로그·메트릭으로 남기고 다음 회원 처리를 계속한다.
 - 행사 시작일·종료일 변경 또는 콘텐츠 비활성화는 해당 행사를 일정에 포함한 미삭제 `CREATED` 가이드북을 역조회한다. ACTIVE 생성자에게 가이드북별 `GUIDEBOOK_EVENT_CHANGED` 또는 `GUIDEBOOK_EVENT_CANCELLED` 알림을 만들고 `GUIDEBOOK`과 가이드북 ID로 이동시킨다. 공유·가져오기 관계는 현재 제외한다.
-- 매일 오전 9시에는 당일 동기화 `SUCCESS`를 확인한 뒤 전날 `source_created_at`의 활성 행사를 집계한다. 신규 행사가 있으면 ACTIVE 회원을 ID 키셋 방식으로 나눠 `NEW_EVENTS_ADDED` 알림을 한 건씩 생성하고, `EVENT_LIST`와 `YYYY-MM-DD` 기준일을 전달해 정보 탭의 기존 신규 행사 목록과 연결한다.
+- 매일 오전 9시에는 당일 동기화 `SUCCESS`를 확인한 뒤 당일 서비스에 최초 적재된(`tourism_contents.created_at`) 활성 행사를 집계한다. TourAPI 원본 생성 시각(`source_created_at`)이 과거여도 당일 처음 적재됐다면 신규 행사에 포함한다. 신규 행사가 있으면 ACTIVE 회원을 ID 키셋 방식으로 나눠 `NEW_EVENTS_ADDED` 알림을 한 건씩 생성하고, `EVENT_LIST`와 당일 `YYYY-MM-DD` 기준일을 전달해 정보 탭의 동일한 신규 행사 목록과 연결한다.
 - 신규 행사 묶음 알림은 회원·알림 유형·기준일 occurrence를 영속 선점하므로 스케줄러 재실행과 다중 인스턴스 경합에서도 회원별 하루 한 건만 저장한다. 생성된 알림은 기존 SSE와 Web Push Outbox·Worker를 사용하며, 대상·성공·중복·실패 수와 처리 시간을 로그·메트릭으로 관측한다.
 - 변경 occurrence 커밋 뒤 오전 9시 작업 등록 전에 프로세스가 종료되는 경우 애플리케이션 기동 시 당일 성공 실행을 다시 확인한다. 다만 배치 등록과 회원별 `notifications` 생성 사이의 완전한 내구성 있는 재처리는 알림 생산자 연계를 먼저 완성한 뒤 공통 알림 생성 Outbox·Worker Issue #315에서 설계한다.
 - 목록 반영은 신규, 기존 갱신, 응답 누락에 따른 비활성화의 세 경우로 구분한다. 비활성 콘텐츠가 다시 응답에 들어오면 별도 재활성 사건으로 관리하지 않고 기존 콘텐츠 갱신으로 처리하여 `status=ACTIVE`, `deleted_at=NULL`로 복구한다.

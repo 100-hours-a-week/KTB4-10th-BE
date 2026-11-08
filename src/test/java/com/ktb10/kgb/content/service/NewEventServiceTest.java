@@ -30,8 +30,8 @@ class NewEventServiceTest {
                 Instant.parse("2026-10-14T15:30:00Z"),
                 ZoneOffset.UTC);
         NewEventService service = new NewEventService(newEventQuery, clock);
-        LocalDateTime start = LocalDateTime.of(2026, 10, 15, 0, 0);
-        LocalDateTime end = LocalDateTime.of(2026, 10, 16, 0, 0);
+        LocalDateTime start = LocalDateTime.of(2026, 10, 14, 15, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 10, 15, 15, 0);
         NewEventData event = new NewEventData(
                 "event-1",
                 "가을 축제",
@@ -40,8 +40,8 @@ class NewEventServiceTest {
                 LocalDate.of(2026, 10, 20),
                 LocalDate.of(2026, 10, 21),
                 LocalDateTime.of(2026, 10, 15, 8, 30));
-        when(newEventQuery.countBySourceCreatedAt(start, end)).thenReturn(21L);
-        when(newEventQuery.findBySourceCreatedAt(start, end, 10, 10L))
+        when(newEventQuery.countByCreatedAt(start, end)).thenReturn(21L);
+        when(newEventQuery.findByCreatedAt(start, end, 10, 10L))
                 .thenReturn(List.of(event));
 
         var response = service.getNewEvents(null, 2, 10);
@@ -53,18 +53,18 @@ class NewEventServiceTest {
         assertThat(response.totalPages()).isEqualTo(3);
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().getFirst().contentId()).isEqualTo("event-1");
-        verify(newEventQuery).findBySourceCreatedAt(start, end, 10, 10L);
+        verify(newEventQuery).findByCreatedAt(start, end, 10, 10L);
     }
 
     @Test
     void returnsEmptyPageWhenNoEventWasCreatedThatDay() {
         LocalDate date = LocalDate.of(2026, 10, 14);
-        LocalDateTime start = date.atStartOfDay();
-        LocalDateTime end = date.plusDays(1).atStartOfDay();
+        LocalDateTime start = LocalDateTime.of(2026, 10, 13, 15, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 10, 14, 15, 0);
         NewEventService service = new NewEventService(
                 newEventQuery,
                 Clock.systemUTC());
-        when(newEventQuery.findBySourceCreatedAt(start, end, 20, 0L))
+        when(newEventQuery.findByCreatedAt(start, end, 20, 0L))
                 .thenReturn(List.of());
 
         var response = service.getNewEvents(date, 1, 20);

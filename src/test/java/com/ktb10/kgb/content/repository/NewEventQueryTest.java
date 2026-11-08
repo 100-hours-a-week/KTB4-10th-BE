@@ -19,7 +19,7 @@ class NewEventQueryTest {
 
     @Test
     @SuppressWarnings({"rawtypes", "unchecked"})
-    void filtersActiveEventsByHalfOpenSourceCreatedAtRange() {
+    void filtersActiveEventsByHalfOpenCreatedAtRange() {
         JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
         when(jdbcTemplate.query(anyString(), any(RowMapper.class), any(Object[].class)))
                 .thenReturn(List.of());
@@ -27,7 +27,7 @@ class NewEventQueryTest {
         LocalDateTime start = LocalDateTime.of(2026, 10, 14, 0, 0);
         LocalDateTime end = LocalDateTime.of(2026, 10, 15, 0, 0);
 
-        query.findBySourceCreatedAt(start, end, 20, 40L);
+        query.findByCreatedAt(start, end, 20, 40L);
 
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<Object[]> argumentsCaptor = ArgumentCaptor.forClass(Object[].class);
@@ -38,9 +38,9 @@ class NewEventQueryTest {
                 "content.status = 'ACTIVE'",
                 "content.deleted_at IS NULL",
                 "content.classification_code_1 = 'EV'",
-                "content.source_created_at >= ?",
-                "content.source_created_at < ?",
-                "ORDER BY content.source_created_at DESC, content.id DESC",
+                "content.created_at >= ?",
+                "content.created_at < ?",
+                "ORDER BY content.created_at DESC, content.id DESC",
                 "LIMIT ? OFFSET ?");
         assertThat(argumentsCaptor.getValue()).containsExactly(
                 Timestamp.valueOf(start),
