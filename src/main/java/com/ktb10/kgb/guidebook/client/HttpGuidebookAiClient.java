@@ -1,6 +1,7 @@
 package com.ktb10.kgb.guidebook.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedEnvelope;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
@@ -152,7 +153,24 @@ public class HttpGuidebookAiClient implements GuidebookAiClient {
                 failureType,
                 route,
                 status,
-                elapsedMillis(startedAt));
+                elapsedMillis(startedAt),
+                rejectionCode(exception));
+    }
+
+    private String rejectionCode(RestClientResponseException exception) {
+        if (exception.getStatusCode().value() != 400 && exception.getStatusCode().value() != 422) {
+            return null;
+        }
+        try {
+            var body = new ObjectMapper().readTree(exception.getResponseBodyAsString());
+            if (body == null) {
+                return null;
+            }
+            String code = body.path("error").path("code").asText();
+            return code.isBlank() ? body.path("message").asText() : code;
+        } catch (JsonProcessingException | IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     private AiClientException restClientError(

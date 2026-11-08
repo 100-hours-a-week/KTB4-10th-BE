@@ -70,7 +70,8 @@ public class AiGuidebookRequestMapper {
                         request.province(),
                         request.city(),
                         request.startDate(),
-                        request.endDate()));
+                        request.endDate()),
+                request.userRequest());
     }
 
     private void validatePreferenceType(PreferenceType snapshotType, PreferenceCode code) {

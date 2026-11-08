@@ -446,6 +446,51 @@ class GuidebookGenerationServiceTest {
     }
 
     @Test
+    void includesNormalizedUserRequestInIdempotentComparison() throws Exception {
+        var base = validRequest();
+        var original = new GuidebookGenerationRequest(base.province(), base.city(), base.startDate(),
+                base.endDate(), base.companion(), base.peopleCount(), "오후 시작");
+        var existingJob = GenerationJob.createInitial(member(), requestPayload(original),
+                IDEMPOTENCY_KEY, LocalDateTime.now(CLOCK));
+        given(generationJobRepository.findByMemberIdAndIdempotencyKey(MEMBER_ID, IDEMPOTENCY_KEY))
+                .willReturn(Optional.of(existingJob));
+        var same = new GuidebookGenerationRequest(base.province(), base.city(), base.startDate(),
+                base.endDate(), base.companion(), base.peopleCount(), " 오후 시작 ");
+        assertThat(service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, same).status())
+                .isEqualTo(GenerationStatus.PENDING);
+        var changed = new GuidebookGenerationRequest(base.province(), base.city(), base.startDate(),
+                base.endDate(), base.companion(), base.peopleCount(), "오전 시작");
+        assertThatThrownBy(() -> service.createInitial(MEMBER_ID, IDEMPOTENCY_KEY, changed))
+                .isInstanceOfSatisfying(BusinessException.class, exception ->
+                        assertThat(exception.errorCode()).isEqualTo(GuidebookErrorCode.IDEMPOTENCY_CONFLICT));
+        verify(generationJobRepository, never()).save(any());
+    }
+
+    @Test
+    void restoresRegenerationInputAndPreventsRetryOfInputErrors() throws Exception {
+        var base = validRequest();
+        var initial = new GuidebookGenerationRequest(base.province(), base.city(), base.startDate(),
+                base.endDate(), base.companion(), base.peopleCount(), "첫날 오후 시작");
+        var context = new InitialGenerationRequestPayload(initial, List.of());
+        var payload = new com.ktb10.kgb.guidebook.dto.request.RegenerationRequestPayload(
+                new GuidebookRegenerationRequest("첫날 오전 시작"), context, "original");
+        GenerationJob job = GenerationJob.createRegeneration(member(), 50L,
+                objectMapper.writeValueAsString(payload), "regen", LocalDateTime.now(CLOCK));
+        ReflectionTestUtils.setField(job, "id", 301L);
+        job.fail("{\"code\":\"invalid_request\",\"retryable\":true}", LocalDateTime.now(CLOCK));
+        given(generationJobRepository.existsById(301L)).willReturn(true);
+        given(generationJobRepository.existsByIdAndMemberId(301L, MEMBER_ID)).willReturn(true);
+        given(generationJobRepository.findById(301L)).willReturn(Optional.of(job));
+
+        var response = service.getGenerationJobStatus(MEMBER_ID, 301L);
+
+        assertThat(response.initialRequest()).isEqualTo(initial);
+        assertThat(response.submittedFeedback()).isEqualTo("첫날 오전 시작");
+        assertThat(response.error().retryable()).isFalse();
+        assertThat(response.error().message()).contains("생성 입력");
+    }
+
+    @Test
     void rejectsDifferentRequestUsingSameIdempotencyKey() throws Exception {
         GenerationJob existingJob = GenerationJob.createInitial(
                 member(),

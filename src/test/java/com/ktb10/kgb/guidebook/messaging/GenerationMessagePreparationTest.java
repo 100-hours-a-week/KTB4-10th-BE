@@ -34,7 +34,7 @@ class GenerationMessagePreparationTest {
         GenerationJob job = GenerationJob.createRegeneration(mock(Member.class), 50L,
                 "{}", "key", LocalDateTime.now(clock));
         ReflectionTestUtils.setField(job, "id", 124L);
-        String snapshot = "{\"schemaVersion\":1,\"input\":{\"feedback\":\"원본 피드백\"}}";
+        String snapshot = "{\"schemaVersion\":1,\"input\":{\"feedback\":\"원본 피드백\",\"user_request\":\"오후 시작\"}}";
         job.preparePublication(snapshot, LocalDateTime.now(clock));
         job.fail("{\"code\":\"timeout\"}", LocalDateTime.now(clock));
         job.retry(LocalDateTime.now(clock));
@@ -46,6 +46,8 @@ class GenerationMessagePreparationTest {
         assertThat(message.path("messageId").asText()).isEqualTo("124-1");
         assertThat(message.path("jobType").asText()).isEqualTo("REGENERATION");
         assertThat(message.path("input").path("feedback").asText()).isEqualTo("원본 피드백");
+        assertThat(message.path("input").has("user_request")).isFalse();
+        assertThat(job.getMessagePayload()).isEqualTo(snapshot);
         org.mockito.Mockito.verifyNoInteractions(mapper);
     }
 
@@ -61,7 +63,7 @@ class GenerationMessagePreparationTest {
                 "장소", "원본 설명", "HS", "HS01", null, "서울", null, null, null);
         var request = new AiGuidebookRequest("123-0", new AiGuidebookRequest.Region("서울특별시", "중구"),
                 date, date, "couple", 2,
-                new AiGuidebookRequest.Preferences(List.of(), Map.of(), List.of()), List.of(content));
+                new AiGuidebookRequest.Preferences(List.of(), Map.of(), List.of()), List.of(content), "오후 시작");
         when(mapper.mapInput(any())).thenReturn(request);
         var preparation = new GenerationMessagePreparation(
                 mapper, json, clock, mock(RegenerationInputSnapshot.class));
@@ -73,6 +75,7 @@ class GenerationMessagePreparationTest {
         assertThat(message.has("messageId")).isFalse();
         assertThat(message.has("jobId")).isFalse();
         assertThat(message.path("input").has("request_id")).isFalse();
+        assertThat(message.path("input").path("user_request").asText()).isEqualTo("오후 시작");
         assertThat(message.path("input").path("contents").get(0).path("overview").asText())
                 .isEqualTo("원본 설명");
         assertThat(job.getStatus()).isEqualTo(GenerationStatus.PUBLISH_PENDING);
@@ -84,6 +87,7 @@ class GenerationMessagePreparationTest {
         assertThat(envelope.path("messageId").asText()).isEqualTo("123-0");
         assertThat(envelope.path("jobId").asLong()).isEqualTo(123L);
         assertThat(envelope.path("input").path("request_id").asText()).isEqualTo("123-0");
+        assertThat(envelope.path("input").path("user_request").asText()).isEqualTo("오후 시작");
         assertThat(preparation.buildMessage(job)).isEqualTo(published);
         org.mockito.Mockito.verify(mapper).mapInput(any());
         assertThat(job.getMessagePayload()).isEqualTo(snapshot);

@@ -75,7 +75,7 @@
 | API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
 | API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 예 | Query cursor,size |
-| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body province,city,start_date,end_date,companion,people_count |
+| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body province,city,start_date,end_date,companion,people_count,user_request(선택) |
 | API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` | 예 | Path job_id; Body 없음 |
 | API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` | 예 | Path guidebook_id; Body 없음 |
 | API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 아니오 | API-GDE-05의 itinerary 재사용; 독립 소비처 확정 후 분리 검토 |
@@ -1250,6 +1250,7 @@ Body 없음.
 - companion: ALONE/FRIEND/COUPLE/FAMILY/GROUP 중 하나
 - people_count: 본인 포함 Integer. ALONE=1, FRIEND=2~4, COUPLE=2, FAMILY=2~6, GROUP=2~10. 혼합 구성은 GROUP, 구성 배열 미지원
 - 취향은 서버에서 현재값 조회하며 개별 취향 Body는 없음
+- user_request: 선택 String. 누락/null 허용. 값이 있으면 재생성 feedback과 동일하게 `trim()` 후 공백 불가·최대 200자. 기본 취향을 변경하지 않으며 이번 생성에만 적용한다. 정규화한 값은 요청 스냅샷과 HTTP/MQ AI 입력에 포함한다. 같은 멱등 키로 이 값이 달라지면 기존 멱등 충돌을 반환한다.
 - ACTIVE 회원·유효 기본 취향·잔액≥1·진행 작업 없음 필수
 - 동일 키 재요청은 기존 작업의 현재 상태 반환; 새 AI 작업 생성 안 함
 
@@ -1262,7 +1263,8 @@ Body 없음.
   "start_date": "2026-10-12",
   "end_date": "2026-10-14",
   "companion": "FRIEND",
-  "people_count": 2
+  "people_count": 2,
+  "user_request": "첫날은 오후에 시작하고 싶어요"
 }
 ```
 
@@ -1330,7 +1332,9 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 - status: PENDING|PROCESSING|COMPLETED|FAILED|CANCELED
 - job_type: INITIAL|REGENERATION
 - attempt_count: Integer 0~3, 재시도 횟수. 최초 생성 성공 전 guidebook_id=null. 재생성 작업은 완료 전에도 기존 대상 guidebook_id를 유지한다.
-- initial_request: 최초 생성(INITIAL) 작업의 원본 요청 조건. 재생성(REGENERATION) 작업은 null이다.
+- initial_request: 최초 생성 원본 요청 조건(user_request 포함). 재생성도 source_request의 원본 조건을 반환하여 실패 후 복원한다. 복원 가능한 스냅샷이 없으면 null이다. 기존 재생성 null 전용 설명을 대체한다.
+- submitted_feedback: 재생성 작업에서 접수한 정규화된 feedback. 최초 생성은 null. 본인 작업 조회에서만 제공하고 SSE·공유에는 추가하지 않는다.
+- HTTP 400/422의 알려진 AI 입력 오류 코드(invalid_request, invalid_date_range, invalid_preference_mapping, feedback_not_applicable, insufficient_candidates)는 공개용 안내와 함께 보존하고 retryable=false로 반환한다. 외부 원문·내부 상세는 노출하지 않는다. 알 수 없는 접수 실패는 AI_SUBMISSION_FAILED, 429는 AI_RATE_LIMITED로 구분한다.
 - 상태 GET은 DB만 읽으며 AI를 조회하거나 작업 상태를 변경하지 않는다. 종료 상태와 이전 회차의 늦은 결과는 반영하지 않는다. callback은 15분 메모리 타이머를 사용하며 재시작 시 DB의 `attempt_started_at` 기준 남은 제한 시간을 복구한다.
 - error: FAILED이면 `{code:"<실패 코드>",message:"<실패 메시지>",retryable:true|false}`, 그 외 상태는 null. 콜백 실패 또는 BE 타임아웃의 저장된 code·message를 반환하며 상태 GET 자체는 작업을 실패로 변경하지 않는다. `retryable`은 재시도 횟수가 남고 해당 실패가 다시 시도 가능한 경우에만 true다.
 

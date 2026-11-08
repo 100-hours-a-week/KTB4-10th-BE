@@ -50,6 +50,7 @@ class HttpGuidebookAiClientTest {
                           "end_date": "26.10.14",
                           "companion": "couple",
                           "people_count": 2,
+                          "user_request": "첫날은 오후에 시작하고 싶어요",
                           "preferences": {
                             "large_category": ["힐링"],
                             "mid_category": {"힐링": ["카페에서 쉬기"]},
@@ -115,6 +116,52 @@ class HttpGuidebookAiClientTest {
                 .hasMessage("AI 서버가 오류 응답을 반환했습니다. status=404")
                 .extracting(exception -> ((AiClientException) exception).getFailureType())
                 .isEqualTo(AiFailureType.UPSTREAM_4XX);
+        server.verify();
+    }
+
+    @Test
+    void preservesRecognizedRejectionCodeWithoutExposingResponseBody() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"message\":\"invalid_date_range\",\"debug\":\"internal details\"}"));
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOfSatisfying(AiClientException.class, exception -> {
+                    var failure = com.ktb10.kgb.guidebook.dto.GenerationFailurePayload.from(exception);
+                    assertThat(failure.code()).isEqualTo("invalid_date_range");
+                    assertThat(failure.retryable()).isFalse();
+                    assertThat(failure.message()).contains("여행 날짜").doesNotContain("internal details");
+                });
+        server.verify();
+    }
+
+    @Test
+    void preservesFeedbackRejectionForRegeneration() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations/original/regenerate"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"error\":{\"code\":\"feedback_not_applicable\"}}"));
+        assertThatThrownBy(() -> client.requestRegeneration("original",
+                new AiGuidebookRegenerationRequest("301-0", "수정")))
+                .isInstanceOfSatisfying(AiClientException.class, exception -> {
+                    var failure = com.ktb10.kgb.guidebook.dto.GenerationFailurePayload.from(exception);
+                    assertThat(failure.code()).isEqualTo("feedback_not_applicable");
+                    assertThat(failure.message()).contains("피드백");
+                    assertThat(failure.retryable()).isFalse();
+                });
+        server.verify();
+    }
+
+    @Test
+    void hidesUnknownResponseBodyAndAllowsRetryForRateLimit() {
+        server.expect(requestTo("http://ai.internal:8000/guidebooks-generations"))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                        .body("internal service diagnostics"));
+        assertThatThrownBy(() -> client.requestGeneration(request()))
+                .isInstanceOfSatisfying(AiClientException.class, exception -> {
+                    var failure = com.ktb10.kgb.guidebook.dto.GenerationFailurePayload.from(exception);
+                    assertThat(failure.code()).isEqualTo("AI_RATE_LIMITED");
+                    assertThat(failure.retryable()).isTrue();
+                    assertThat(failure.message()).doesNotContain("diagnostics");
+                });
         server.verify();
     }
 
@@ -220,6 +267,6 @@ class HttpGuidebookAiClientTest {
                         List.of("힐링"),
                         Map.of("힐링", List.of("카페에서 쉬기")),
                         List.of("여유롭게")),
-                List.of());
+                List.of(), "첫날은 오후에 시작하고 싶어요");
     }
 }

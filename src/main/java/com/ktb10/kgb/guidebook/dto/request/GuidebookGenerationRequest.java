@@ -33,5 +33,19 @@ public record GuidebookGenerationRequest(
         @NotNull
         @Min(1)
         @Max(10)
-        Integer peopleCount) {
+        Integer peopleCount,
+
+        @JsonProperty("user_request")
+        // null은 선택 입력으로 허용하고, trim 후 빈 값은 재생성의 @NotBlank와 동일하게 거절합니다.
+        @Size(min = 1, max = 200)
+        String userRequest) {
+
+    public GuidebookGenerationRequest {
+        userRequest = userRequest == null ? null : userRequest.trim();
+    }
+
+    public GuidebookGenerationRequest(String province, String city, LocalDate startDate,
+            LocalDate endDate, Companion companion, Integer peopleCount) {
+        this(province, city, startDate, endDate, companion, peopleCount, null);
+    }
 }

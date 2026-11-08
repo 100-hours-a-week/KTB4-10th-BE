@@ -22,10 +22,18 @@ public record AiGuidebookRequest(
         @JsonProperty("people_count")
         Integer peopleCount,
         Preferences preferences,
-        List<Content> contents) {
+        List<Content> contents,
+        @JsonProperty("user_request")
+        String userRequest) {
 
     public AiGuidebookRequest {
         contents = List.copyOf(contents);
+    }
+
+    public AiGuidebookRequest(String requestId, Region region, LocalDate startDate,
+            LocalDate endDate, String companion, Integer peopleCount,
+            Preferences preferences, List<Content> contents) {
+        this(requestId, region, startDate, endDate, companion, peopleCount, preferences, contents, null);
     }
 
     public record Region(String province, String city) {

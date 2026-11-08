@@ -10,6 +10,8 @@ RabbitMQ 발행기는 이 후속 단계에서 구현한다. AI 소비는 아직 
 - MQ 준비 경로에서는 최근 COMPLETED 작업을 completed_at DESC, id DESC로 선택한다.
 - AI가 발급한 ID가 아닌 BE GenerationJob ID를 사용한다.
 - 원본 message_payload.input의 여행 조건/취향/contents를 복사한다. 후보를 최신 DB로 재조회하지 않는다.
+- 최초 생성의 선택 `user_request`도 공통 AI DTO/mapper에서 HTTP와 MQ에 전달하며 원본 input 복사 시 이력으로 보존한다. BE는 누락/null을 허용하고 값이 있으면 재생성과 동일하게 trim 후 공백 불가·최대 200자로 검증한다.
+- 재생성은 기존 AI HTTP 구현과 동일하게 현재 일정 `previous_plan`과 새 `feedback`을 기준으로 수행한다. Consumer는 저장된 `user_request`를 재생성 LLM 입력이나 지시문에 다시 넣지 않는다. 최초 요청의 효과는 현재 일정으로 이어지며, 피드백이 변경을 요청하지 않은 일정은 유지한다. 여행 조건·취향·후보와 배치 제약은 기존 재생성 입력 규칙을 따른다.
 - 현재 guidebook 제목/version과 itinerary_days/items의 일정 스냅샷을 읽는다.
 - source_job_id, source_guidebook_version, title, feedback, previous_plan을 덮어쓴다.
 - previous_plan은 content_id, day, order, start_time, duration_minutes의 배열이다.
@@ -17,6 +19,8 @@ RabbitMQ 발행기는 이 후속 단계에서 구현한다. AI 소비는 아직 
 - title은 기존 제목 보존용이다. AI 소비 구현 때 날짜/시간 및 PlanItem 변환 계약을 함께 검증해야 한다.
 
 ## 저장과 재시도
+
+재생성 발행 시 BE의 `buildMessage`는 전송용 `input`에서 `user_request`를 제거한다. DB의 원본 `message_payload`는 그대로 보존하며, 최초 생성 메시지에는 `user_request`를 포함한다. 발행 재시도와 사용자 재시도에도 같은 규칙을 적용한다.
 
 접수 트랜잭션에서 {schemaVersion:1,input:{...}}을 만든 뒤 작업과 함께 저장한다.
 실패 시 전부 롤백한다. 발행 시 jobId/messageId/attempt/jobType과 input.request_id를 붙인다.
