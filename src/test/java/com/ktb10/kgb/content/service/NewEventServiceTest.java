@@ -30,8 +30,8 @@ class NewEventServiceTest {
                 Instant.parse("2026-10-14T15:30:00Z"),
                 ZoneOffset.UTC);
         NewEventService service = new NewEventService(newEventQuery, clock);
-        LocalDateTime start = LocalDateTime.of(2026, 10, 14, 15, 0);
-        LocalDateTime end = LocalDateTime.of(2026, 10, 15, 15, 0);
+        LocalDateTime start = LocalDateTime.of(2026, 10, 15, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 10, 16, 0, 0);
         NewEventData event = new NewEventData(
                 "event-1",
                 "가을 축제",
@@ -59,8 +59,8 @@ class NewEventServiceTest {
     @Test
     void returnsEmptyPageWhenNoEventWasCreatedThatDay() {
         LocalDate date = LocalDate.of(2026, 10, 14);
-        LocalDateTime start = LocalDateTime.of(2026, 10, 13, 15, 0);
-        LocalDateTime end = LocalDateTime.of(2026, 10, 14, 15, 0);
+        LocalDateTime start = date.atStartOfDay();
+        LocalDateTime end = date.plusDays(1).atStartOfDay();
         NewEventService service = new NewEventService(
                 newEventQuery,
                 Clock.systemUTC());

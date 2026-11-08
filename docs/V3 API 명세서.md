@@ -1066,7 +1066,7 @@ Body 없음.
 - date: 선택, `YYYY-MM-DD`; 생략하면 Asia/Seoul 기준 오늘
 - page: Integer ≥1, 기본 1
 - size: Integer 1~50, 기본 20
-- 서비스 최초 적재 시각인 `tourism_contents.created_at`이 `Asia/Seoul` 기준 선택 일자의 `[00:00, 다음 날 00:00)`에 속하는 활성 행사만 반환(DB 조회 경계는 UTC로 변환)
+- 서비스 최초 적재 시각인 `tourism_contents.created_at`이 `Asia/Seoul` 기준 선택 일자의 `[00:00, 다음 날 00:00)`에 속하는 활성 행사만 반환
 - `created_at DESC, id DESC` 고정 정렬
 - 응답의 `source_created_at`은 TourAPI 원본 생성 시각이며 신규 여부 판단 기준과 다를 수 있음
 - 결과가 없으면 `items=[]`, `total_items=0`, `total_pages=0`

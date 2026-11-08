@@ -8,7 +8,6 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,8 +31,8 @@ public class NewEventService {
         LocalDate date = requestedDate == null
                 ? LocalDate.now(clock.withZone(SEOUL))
                 : requestedDate;
-        LocalDateTime startInclusive = utcStartOfDay(date);
-        LocalDateTime endExclusive = utcStartOfDay(date.plusDays(1));
+        LocalDateTime startInclusive = date.atStartOfDay();
+        LocalDateTime endExclusive = date.plusDays(1).atStartOfDay();
         long totalItems = newEventQuery.countByCreatedAt(
                 startInclusive,
                 endExclusive);
@@ -57,9 +56,4 @@ public class NewEventService {
                 totalPages);
     }
 
-    private static LocalDateTime utcStartOfDay(LocalDate date) {
-        return date.atStartOfDay(SEOUL)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-    }
 }

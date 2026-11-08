@@ -7,9 +7,6 @@ import com.ktb10.kgb.member.entity.NotificationType;
 import com.ktb10.kgb.member.repository.MemberRepository;
 import com.ktb10.kgb.member.service.NotificationService;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +21,6 @@ public class NewEventDigestNotificationService {
             NewEventDigestNotificationService.class);
     private static final int MEMBER_BATCH_SIZE = 100;
     private static final String BODY = "정보 탭에서 새로 등록된 행사를 확인해 보세요.";
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final NewEventQuery newEventQuery;
     private final MemberRepository memberRepository;
@@ -41,8 +37,8 @@ public class NewEventDigestNotificationService {
 
     public NewEventDigestNotificationSummary createForReferenceDate(LocalDate referenceDate) {
         long newEventCount = newEventQuery.countByCreatedAt(
-                utcStartOfDay(referenceDate),
-                utcStartOfDay(referenceDate.plusDays(1)));
+                referenceDate.atStartOfDay(),
+                referenceDate.plusDays(1).atStartOfDay());
         if (newEventCount == 0L) {
             return new NewEventDigestNotificationSummary(0L, 0, 0, 0, 0);
         }
@@ -107,9 +103,4 @@ public class NewEventDigestNotificationService {
         return "새로운 행사가 %d개 추가되었어요!".formatted(newEventCount);
     }
 
-    private static LocalDateTime utcStartOfDay(LocalDate date) {
-        return date.atStartOfDay(SEOUL)
-                .withZoneSameInstant(ZoneOffset.UTC)
-                .toLocalDateTime();
-    }
 }
