@@ -7,7 +7,7 @@ import java.util.List;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** TourAPI 원본 생성 시각을 기준으로 신규 행사를 조회합니다. */
+/** 서비스 최초 적재 시각을 기준으로 신규 행사를 조회합니다. */
 @Repository
 public class NewEventQuery {
 
@@ -26,9 +26,9 @@ public class NewEventQuery {
                     WHERE content.status = 'ACTIVE'
                       AND content.deleted_at IS NULL
                       AND content.classification_code_1 = 'EV'
-                      AND content.source_created_at >= ?
-                      AND content.source_created_at < ?
-                    ORDER BY content.source_created_at DESC, content.id DESC
+                      AND content.created_at >= ?
+                      AND content.created_at < ?
+                    ORDER BY content.created_at DESC, content.id DESC
                     LIMIT ? OFFSET ?
             """;
 
@@ -40,8 +40,8 @@ public class NewEventQuery {
                     WHERE content.status = 'ACTIVE'
                       AND content.deleted_at IS NULL
                       AND content.classification_code_1 = 'EV'
-                      AND content.source_created_at >= ?
-                      AND content.source_created_at < ?
+                      AND content.created_at >= ?
+                      AND content.created_at < ?
             """;
 
     private final JdbcTemplate jdbcTemplate;
@@ -50,7 +50,7 @@ public class NewEventQuery {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public List<NewEventData> findBySourceCreatedAt(
+    public List<NewEventData> findByCreatedAt(
             LocalDateTime startInclusive,
             LocalDateTime endExclusive,
             int limit,
@@ -71,7 +71,7 @@ public class NewEventQuery {
                 offset);
     }
 
-    public long countBySourceCreatedAt(
+    public long countByCreatedAt(
             LocalDateTime startInclusive,
             LocalDateTime endExclusive) {
         Long count = jdbcTemplate.queryForObject(

@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 성공한 당일 TourAPI 동기화의 전날 신규 행사를 오전 9시에 알립니다. */
+/** 성공한 당일 TourAPI 동기화에서 서비스에 최초 적재된 행사를 알립니다. */
 @Component
 public class NewEventDigestNotificationScheduler {
 
@@ -40,7 +40,7 @@ public class NewEventDigestNotificationScheduler {
             zone = "Asia/Seoul")
     public void createDailyNotifications() {
         LocalDate syncDate = LocalDate.now(clock.withZone(SEOUL_ZONE));
-        LocalDate referenceDate = syncDate.minusDays(1);
+        LocalDate referenceDate = syncDate;
         if (!syncRunRepository.hasSuccessfulRun(syncDate)) {
             metrics.recordSkipped();
             LOGGER.warn(

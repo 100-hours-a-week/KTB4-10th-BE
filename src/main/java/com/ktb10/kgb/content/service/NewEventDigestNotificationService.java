@@ -36,7 +36,7 @@ public class NewEventDigestNotificationService {
     }
 
     public NewEventDigestNotificationSummary createForReferenceDate(LocalDate referenceDate) {
-        long newEventCount = newEventQuery.countBySourceCreatedAt(
+        long newEventCount = newEventQuery.countByCreatedAt(
                 referenceDate.atStartOfDay(),
                 referenceDate.plusDays(1).atStartOfDay());
         if (newEventCount == 0L) {
@@ -102,4 +102,5 @@ public class NewEventDigestNotificationService {
         }
         return "새로운 행사가 %d개 추가되었어요!".formatted(newEventCount);
     }
+
 }

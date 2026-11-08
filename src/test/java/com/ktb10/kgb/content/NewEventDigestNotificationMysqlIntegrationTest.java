@@ -70,7 +70,7 @@ class NewEventDigestNotificationMysqlIntegrationTest {
         occurrenceRepository.deleteAllInBatch();
         notificationRepository.deleteAllInBatch();
         memberRepository.deleteAllInBatch();
-        given(newEventQuery.countBySourceCreatedAt(
+        given(newEventQuery.countByCreatedAt(
                 REFERENCE_DATE.atStartOfDay(),
                 REFERENCE_DATE.plusDays(1).atStartOfDay()))
                 .willReturn(2L);

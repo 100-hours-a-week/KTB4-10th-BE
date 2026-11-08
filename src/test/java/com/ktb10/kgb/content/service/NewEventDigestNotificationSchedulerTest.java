@@ -20,7 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class NewEventDigestNotificationSchedulerTest {
 
     private static final LocalDate SYNC_DATE = LocalDate.of(2026, 11, 3);
-    private static final LocalDate REFERENCE_DATE = LocalDate.of(2026, 11, 2);
+    private static final LocalDate REFERENCE_DATE = SYNC_DATE;
 
     @Mock
     private TourApiSyncRunRepository syncRunRepository;
@@ -46,7 +46,7 @@ class NewEventDigestNotificationSchedulerTest {
     }
 
     @Test
-    void createsNotificationsForPreviousDayAfterSuccessfulSync() {
+    void createsNotificationsForSyncDateAfterSuccessfulSync() {
         NewEventDigestNotificationSummary summary =
                 new NewEventDigestNotificationSummary(3L, 2, 2, 0, 0);
         given(syncRunRepository.hasSuccessfulRun(SYNC_DATE)).willReturn(true);

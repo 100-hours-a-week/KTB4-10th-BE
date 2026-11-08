@@ -33,10 +33,10 @@ public class NewEventService {
                 : requestedDate;
         LocalDateTime startInclusive = date.atStartOfDay();
         LocalDateTime endExclusive = date.plusDays(1).atStartOfDay();
-        long totalItems = newEventQuery.countBySourceCreatedAt(
+        long totalItems = newEventQuery.countByCreatedAt(
                 startInclusive,
                 endExclusive);
-        List<NewEventData> data = newEventQuery.findBySourceCreatedAt(
+        List<NewEventData> data = newEventQuery.findByCreatedAt(
                 startInclusive,
                 endExclusive,
                 size,
@@ -55,4 +55,5 @@ public class NewEventService {
                 totalItems,
                 totalPages);
     }
+
 }
