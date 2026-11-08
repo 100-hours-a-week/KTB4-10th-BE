@@ -230,6 +230,7 @@ class ContentReadRepositoryMysqlIntegrationTest {
         assertThat(all.items())
                 .extracting(item -> item.contentId())
                 .containsExactly("search-place", "search-event");
+        assertThat(all.totalItems()).isEqualTo(2);
         assertThat(all.items().getFirst().contentType()).isEqualTo("PLACE");
         assertThat(all.items().getFirst().eventPeriod()).isNull();
         assertThat(all.items().getFirst().favorite()).isTrue();

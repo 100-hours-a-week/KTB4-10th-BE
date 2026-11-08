@@ -20,6 +20,7 @@ public class ContentSearchQuery {
             LEFT JOIN event_details event ON event.content_id = content.id
             WHERE content.status = 'ACTIVE'
               AND content.deleted_at IS NULL
+              AND content.location IS NOT NULL
               AND %s
               AND (:query IS NULL OR LOCATE(:query, content.title) > 0)
               AND (:regionCode IS NULL OR province.administrative_code = :regionCode)
