@@ -5,6 +5,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.ktb10.kgb.content.tourapi.TourApiSyncRunRepository;
+import com.ktb10.kgb.common.observability.NotificationCreationBatchMetrics;
+import com.ktb10.kgb.common.observability.NotificationCreationPhase;
+import com.ktb10.kgb.common.observability.NotificationCreationProducer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,6 +34,9 @@ class NewEventDigestNotificationSchedulerTest {
     @Mock
     private NewEventDigestNotificationMetrics metrics;
 
+    @Mock
+    private NotificationCreationBatchMetrics batchMetrics;
+
     private NewEventDigestNotificationScheduler scheduler;
 
     @BeforeEach
@@ -42,6 +48,7 @@ class NewEventDigestNotificationSchedulerTest {
                 syncRunRepository,
                 notificationService,
                 metrics,
+                batchMetrics,
                 clock);
     }
 
@@ -57,6 +64,14 @@ class NewEventDigestNotificationSchedulerTest {
 
         verify(notificationService).createForReferenceDate(REFERENCE_DATE);
         verify(metrics).record(summary, Duration.ZERO);
+        verify(batchMetrics).record(
+                NotificationCreationProducer.NEW_EVENT_DIGEST,
+                NotificationCreationPhase.INITIAL,
+                2,
+                2,
+                0,
+                0,
+                Duration.ZERO);
     }
 
     @Test
@@ -67,5 +82,24 @@ class NewEventDigestNotificationSchedulerTest {
 
         verify(notificationService, never()).createForReferenceDate(REFERENCE_DATE);
         verify(metrics).recordSkipped();
+    }
+
+    @Test
+    void rerunsSameReferenceDateAtReconciliationTime() {
+        NewEventDigestNotificationSummary summary =
+                new NewEventDigestNotificationSummary(3L, 2, 0, 2, 0);
+        given(syncRunRepository.hasSuccessfulRun(SYNC_DATE)).willReturn(true);
+        given(notificationService.createForReferenceDate(REFERENCE_DATE)).willReturn(summary);
+
+        scheduler.reconcileDailyNotifications();
+
+        verify(batchMetrics).record(
+                NotificationCreationProducer.NEW_EVENT_DIGEST,
+                NotificationCreationPhase.RECONCILIATION,
+                2,
+                0,
+                2,
+                0,
+                Duration.ZERO);
     }
 }

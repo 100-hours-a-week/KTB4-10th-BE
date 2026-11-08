@@ -122,6 +122,47 @@ class NewEventDigestNotificationServiceTest {
                 new NewEventDigestNotificationSummary(1L, 2, 1, 0, 1));
     }
 
+    @Test
+    void rerunCreatesOnlyPreviouslyFailedMemberNotification() {
+        givenEventCount(1L);
+        PageRequest firstPage = PageRequest.of(0, 100);
+        given(memberRepository.findMemberIdsByStatusAfter(
+                MemberStatus.ACTIVE, 0L, firstPage))
+                .willReturn(List.of(11L, 12L), List.of(11L, 12L));
+        given(memberRepository.findMemberIdsByStatusAfter(
+                MemberStatus.ACTIVE, 12L, firstPage))
+                .willReturn(List.of());
+        given(notificationService.createOnce(
+                11L,
+                NotificationType.NEW_EVENTS_ADDED,
+                "새로운 행사가 추가되었어요!",
+                "정보 탭에서 새로 등록된 행사를 확인해 보세요.",
+                NotificationReferenceType.EVENT_LIST,
+                "2026-11-02",
+                "2026-11-02"))
+                .willThrow(new IllegalStateException("최초 알림 생성 실패"))
+                .willReturn(true);
+        given(notificationService.createOnce(
+                12L,
+                NotificationType.NEW_EVENTS_ADDED,
+                "새로운 행사가 추가되었어요!",
+                "정보 탭에서 새로 등록된 행사를 확인해 보세요.",
+                NotificationReferenceType.EVENT_LIST,
+                "2026-11-02",
+                "2026-11-02"))
+                .willReturn(true, false);
+
+        NewEventDigestNotificationSummary initial =
+                service.createForReferenceDate(REFERENCE_DATE);
+        NewEventDigestNotificationSummary reconciliation =
+                service.createForReferenceDate(REFERENCE_DATE);
+
+        assertThat(initial).isEqualTo(
+                new NewEventDigestNotificationSummary(1L, 2, 1, 0, 1));
+        assertThat(reconciliation).isEqualTo(
+                new NewEventDigestNotificationSummary(1L, 2, 1, 1, 0));
+    }
+
     private void givenEventCount(long count) {
         given(newEventQuery.countByCreatedAt(
                 REFERENCE_DATE.atStartOfDay(),
