@@ -1,5 +1,7 @@
 package com.ktb10.kgb.content.tourapi;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.entity.AdministrativeDistrict;
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -39,6 +42,8 @@ public class TourApiImportService {
             DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
     private static final DateTimeFormatter SOURCE_DATE =
             DateTimeFormatter.BASIC_ISO_DATE;
+    private static final Set<String> DETAIL_ALLOWED_CLASSIFICATIONS =
+            Set.of("NA", "HS", "VE", "EX", "LS", "EV");
 
     private final ObjectMapper objectMapper;
     private final JdbcTemplate jdbcTemplate;
@@ -56,7 +61,6 @@ public class TourApiImportService {
             byte[] areaSnapshot,
             byte[] festivalSnapshot,
             LocalDate syncDate) {
-        List<JsonNode> contents = readItems(areaSnapshot, "수집한 areaBasedList2 스냅샷");
         List<JsonNode> events = readItems(festivalSnapshot, "수집한 searchFestival2 스냅샷");
         Map<String, ExistingEvent> existingEvents = loadExistingEvents();
         Set<String> expiredEventIds = resolveExpiredEventIds(
@@ -64,7 +68,7 @@ public class TourApiImportService {
                 existingEvents,
                 syncDate);
         ContentImportResult contentResult = synchronizeAndImportContents(
-                contents,
+                areaSnapshot,
                 expiredEventIds);
         EventImportResult eventResult = importEvents(
                 events,
@@ -75,7 +79,7 @@ public class TourApiImportService {
                 contentResult.changeSets(),
                 eventResult.changeSets());
         return new ImportSummary(
-                contents.size(),
+                contentResult.sourceContents(),
                 contentResult.imported(),
                 contentResult.missingCoordinates(),
                 contentResult.missingRegionMapping(),
@@ -87,14 +91,13 @@ public class TourApiImportService {
     }
 
     private ContentImportResult synchronizeAndImportContents(
-            List<JsonNode> contents,
+            byte[] areaSnapshot,
             Set<String> expiredEventIds) {
-        Map<SourceRegionKey, ServiceRegionKey> regionNames =
-                extractRegionNames(contents);
-        Map<AdministrativeProvince, String> provinceCodes =
-                extractProvinceCodes(contents);
-        RegionMappings regionMappings = synchronizeRegions(regionNames, provinceCodes);
-        return importContents(contents, regionMappings, expiredEventIds);
+        RegionMetadata regionMetadata = extractRegionMetadata(areaSnapshot);
+        RegionMappings regionMappings = synchronizeRegions(
+                regionMetadata.regionNames(),
+                regionMetadata.provinceCodes());
+        return importContents(areaSnapshot, regionMappings, expiredEventIds);
     }
 
     private List<JsonNode> readItems(byte[] snapshot, String sourceName) {
@@ -118,24 +121,33 @@ public class TourApiImportService {
         }
     }
 
-    private Map<SourceRegionKey, ServiceRegionKey> extractRegionNames(
-            List<JsonNode> contents) {
+    private RegionMetadata extractRegionMetadata(byte[] areaSnapshot) {
         Map<SourceRegionKey, Map<ServiceRegionKey, Integer>> frequencies = new HashMap<>();
-        for (JsonNode content : contents) {
+        Map<AdministrativeProvince, String> provinceCodes = new HashMap<>();
+        forEachItem(areaSnapshot, "수집한 areaBasedList2 스냅샷", content -> {
             SourceRegionKey sourceKey = sourceRegionKey(content);
             ServiceRegionKey serviceKey = serviceRegionKey(content.path("addr1").asText());
-            if (sourceKey == null || serviceKey == null) {
-                continue;
+            if (sourceKey != null && serviceKey != null) {
+                frequencies.computeIfAbsent(sourceKey, ignored -> new HashMap<>())
+                        .merge(serviceKey, 1, Integer::sum);
             }
-            frequencies.computeIfAbsent(sourceKey, ignored -> new HashMap<>())
-                    .merge(serviceKey, 1, Integer::sum);
-        }
+            String sourceCode = text(content, "lDongRegnCd");
+            String address = text(content, "addr1");
+            if (sourceCode == null || address == null) {
+                return;
+            }
+            String[] tokens = address.split("\\s+");
+            AdministrativeProvince province = provinceOrNull(tokens[0]);
+            if (province != null) {
+                provinceCodes.putIfAbsent(province, sourceCode);
+            }
+        });
 
-        Map<SourceRegionKey, ServiceRegionKey> result = new HashMap<>();
+        Map<SourceRegionKey, ServiceRegionKey> regionNames = new HashMap<>();
         frequencies.forEach((source, candidates) -> candidates.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue))
-                .ifPresent(entry -> result.put(source, entry.getKey())));
-        return result;
+                .ifPresent(entry -> regionNames.put(source, entry.getKey())));
+        return new RegionMetadata(regionNames, provinceCodes);
     }
 
     private ServiceRegionKey serviceRegionKey(String address) {
@@ -157,24 +169,6 @@ public class TourApiImportService {
         } catch (IllegalArgumentException exception) {
             return null;
         }
-    }
-
-    private Map<AdministrativeProvince, String> extractProvinceCodes(
-            List<JsonNode> contents) {
-        Map<AdministrativeProvince, String> result = new HashMap<>();
-        for (JsonNode content : contents) {
-            String sourceCode = text(content, "lDongRegnCd");
-            String address = text(content, "addr1");
-            if (sourceCode == null || address == null) {
-                continue;
-            }
-            String[] tokens = address.split("\\s+");
-            AdministrativeProvince province = provinceOrNull(tokens[0]);
-            if (province != null) {
-                result.putIfAbsent(province, sourceCode);
-            }
-        }
-        return result;
     }
 
     private AdministrativeProvince provinceOrNull(String displayName) {
@@ -296,19 +290,22 @@ public class TourApiImportService {
     }
 
     private ContentImportResult importContents(
-            List<JsonNode> sourceContents,
+            byte[] areaSnapshot,
             RegionMappings regionMappings,
             Set<String> expiredEventIds) {
-        List<ContentRow> rows = new ArrayList<>();
+        Map<String, ExistingVersion> existingVersions = loadExistingVersions();
+        List<ContentRow> changedRows = new ArrayList<>();
         Set<String> contentIds = new HashSet<>();
         Set<String> sourceContentIds = new HashSet<>();
-        int missingCoordinates = 0;
-        int missingRegionMapping = 0;
+        int[] sourceContents = {0};
+        int[] missingCoordinates = {0};
+        int[] missingRegionMapping = {0};
 
-        for (JsonNode source : sourceContents) {
+        forEachItem(areaSnapshot, "수집한 areaBasedList2 스냅샷", source -> {
+            sourceContents[0]++;
             String sourceContentId = text(source, "contentid");
             if (sourceContentId != null && expiredEventIds.contains(sourceContentId)) {
-                continue;
+                return;
             }
             if (sourceContentId != null) {
                 sourceContentIds.add(sourceContentId);
@@ -316,8 +313,8 @@ public class TourApiImportService {
             BigDecimal longitude = decimal(source, "mapx");
             BigDecimal latitude = decimal(source, "mapy");
             if (longitude == null || latitude == null) {
-                missingCoordinates++;
-                continue;
+                missingCoordinates[0]++;
+                return;
             }
             SourceRegionKey sourceRegion = sourceRegionKey(source);
             Long regionId = regionMappings.bySource().get(sourceRegion);
@@ -327,28 +324,48 @@ public class TourApiImportService {
                 regionId = regionMappings.byService().get(serviceRegion);
             }
             if (regionId == null) {
-                missingRegionMapping++;
-                continue;
+                missingRegionMapping[0]++;
+                return;
+            }
+            String title = text(source, "title");
+            String classificationCode1 = text(source, "lclsSystm1");
+            if (sourceContentId == null || title == null || classificationCode1 == null) {
+                return;
+            }
+            contentIds.add(sourceContentId);
+            ExistingVersion existing = existingVersions.get(sourceContentId);
+            LocalDateTime sourceModifiedAt = dateTime(source, "modifiedtime");
+            if (!needsUpsert(existing, sourceModifiedAt)) {
+                return;
             }
             ContentRow row = ContentRow.from(source, regionId, longitude, latitude);
             if (row != null) {
-                rows.add(row);
-                contentIds.add(row.sourceContentId());
+                changedRows.add(row);
             }
-        }
+        });
 
-        Map<String, ExistingContent> existingContents = loadExistingContents();
-        List<ContentRow> changedRows = rows.stream()
-                .filter(row -> row.needsUpsert(existingContents.get(row.sourceContentId())))
-                .toList();
-        List<ContentChangeSet> changedContentSets = changedRows.stream()
-                .map(row -> row.changeSet(existingContents.get(row.sourceContentId())))
-                .toList();
-        batchUpsertContents(changedRows);
-        List<String> missingContentIds = existingContents.values().stream()
+        List<String> missingContentIds = existingVersions.values().stream()
                 .filter(existing -> "ACTIVE".equals(existing.status()))
-                .map(ExistingContent::sourceContentId)
+                .map(ExistingVersion::sourceContentId)
                 .filter(existingId -> !sourceContentIds.contains(existingId))
+                .toList();
+        Set<String> detailedIds = new HashSet<>(missingContentIds);
+        changedRows.stream().map(ContentRow::sourceContentId).forEach(detailedIds::add);
+        final Map<String, ExistingContent> existingContents = loadExistingContents(detailedIds);
+        batchUpsertContents(changedRows);
+        Map<String, Long> databaseContentIds = new HashMap<>();
+        existingVersions.forEach((sourceContentId, existing) ->
+                databaseContentIds.put(sourceContentId, existing.id()));
+        Set<String> newContentIds = changedRows.stream()
+                .map(ContentRow::sourceContentId)
+                .filter(sourceContentId -> !databaseContentIds.containsKey(sourceContentId))
+                .collect(java.util.stream.Collectors.toSet());
+        databaseContentIds.putAll(loadContentDatabaseIds(newContentIds));
+        List<ContentChangeSet> changedContentSets = changedRows.stream()
+                .map(row -> withDetailTarget(
+                        row.changeSet(existingContents.get(row.sourceContentId())),
+                        row,
+                        databaseContentIds.get(row.sourceContentId())))
                 .toList();
         List<ContentChangeSet> inactiveChangeSets = missingContentIds.stream()
                 .map(existingContents::get)
@@ -358,17 +375,96 @@ public class TourApiImportService {
         List<ContentChangeSet> changeSets = new ArrayList<>(changedContentSets);
         changeSets.addAll(inactiveChangeSets);
         return new ContentImportResult(
+                sourceContents[0],
                 changedRows.size(),
-                missingCoordinates,
-                missingRegionMapping,
+                missingCoordinates[0],
+                missingRegionMapping[0],
                 missingContentIds.size(),
                 contentIds,
                 changeSets);
     }
 
-    private Map<String, ExistingContent> loadExistingContents() {
-        Map<String, ExistingContent> result = new HashMap<>();
+    private Map<String, ExistingVersion> loadExistingVersions() {
+        Map<String, ExistingVersion> result = new HashMap<>();
         jdbcTemplate.query(
+                """
+                SELECT id, source_content_id, source_modified_at, status, deleted_at
+                FROM tourism_contents
+                WHERE source_provider = ?
+                """,
+                (resultSet, rowNumber) -> new ExistingVersion(
+                        resultSet.getLong("id"),
+                        resultSet.getString("source_content_id"),
+                        resultSet.getTimestamp("source_modified_at") == null
+                                ? null
+                                : resultSet.getTimestamp("source_modified_at").toLocalDateTime(),
+                        resultSet.getString("status"),
+                        resultSet.getTimestamp("deleted_at") != null),
+                SOURCE_PROVIDER).forEach(version -> result.put(version.sourceContentId(), version));
+        return result;
+    }
+
+    private ContentChangeSet withDetailTarget(
+            ContentChangeSet changeSet,
+            ContentRow row,
+            Long databaseContentId) {
+        if (databaseContentId == null
+                || !DETAIL_ALLOWED_CLASSIFICATIONS.contains(row.classificationCode1())) {
+            return changeSet;
+        }
+        return changeSet.withDetailTarget(new TourApiDetailTarget(
+                databaseContentId,
+                row.sourceContentId(),
+                row.sourceContentTypeId(),
+                "EV".equals(row.classificationCode1())));
+    }
+
+    private Map<String, Long> loadContentDatabaseIds(Set<String> sourceContentIds) {
+        Map<String, Long> result = new HashMap<>();
+        List<String> ids = List.copyOf(sourceContentIds);
+        for (int start = 0; start < ids.size(); start += 1_000) {
+            List<String> chunk = ids.subList(start, Math.min(start + 1_000, ids.size()));
+            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+            Object[] parameters = new Object[chunk.size() + 1];
+            parameters[0] = SOURCE_PROVIDER;
+            for (int index = 0; index < chunk.size(); index++) {
+                parameters[index + 1] = chunk.get(index);
+            }
+            jdbcTemplate.query(
+                    """
+                    SELECT id, source_content_id
+                    FROM tourism_contents
+                    WHERE source_provider = ? AND source_content_id IN (%s)
+                    """.formatted(placeholders),
+                    (org.springframework.jdbc.core.RowCallbackHandler) resultSet ->
+                            result.put(
+                                    resultSet.getString("source_content_id"),
+                                    resultSet.getLong("id")),
+                    parameters);
+        }
+        return result;
+    }
+
+    private boolean needsUpsert(ExistingVersion existing, LocalDateTime sourceModifiedAt) {
+        return existing == null
+                || !"ACTIVE".equals(existing.status())
+                || existing.deleted()
+                || sourceModifiedAt == null
+                || !Objects.equals(sourceModifiedAt, existing.sourceModifiedAt());
+    }
+
+    private Map<String, ExistingContent> loadExistingContents(Set<String> sourceContentIds) {
+        Map<String, ExistingContent> result = new HashMap<>();
+        List<String> ids = List.copyOf(sourceContentIds);
+        for (int start = 0; start < ids.size(); start += 1_000) {
+            List<String> chunk = ids.subList(start, Math.min(start + 1_000, ids.size()));
+            String placeholders = String.join(",", java.util.Collections.nCopies(chunk.size(), "?"));
+            Object[] parameters = new Object[chunk.size() + 1];
+            parameters[0] = SOURCE_PROVIDER;
+            for (int index = 0; index < chunk.size(); index++) {
+                parameters[index + 1] = chunk.get(index);
+            }
+            jdbcTemplate.query(
                 """
                 SELECT source_content_id, source_content_type_id, title, region_id,
                        source_region_code, source_district_code,
@@ -378,8 +474,8 @@ public class TourApiImportService {
                        ST_Latitude(location) AS latitude,
                        phone, thumbnail_url, source_modified_at, status, deleted_at
                 FROM tourism_contents
-                WHERE source_provider = ?
-                """,
+                WHERE source_provider = ? AND source_content_id IN (%s)
+                """.formatted(placeholders),
                 (resultSet, rowNumber) -> new ExistingContent(
                         resultSet.getString("source_content_id"),
                         resultSet.getString("source_content_type_id"),
@@ -400,8 +496,38 @@ public class TourApiImportService {
                                 : resultSet.getTimestamp("source_modified_at").toLocalDateTime(),
                         resultSet.getString("status"),
                         resultSet.getTimestamp("deleted_at") != null),
-                SOURCE_PROVIDER).forEach(content -> result.put(content.sourceContentId(), content));
+                parameters).forEach(content -> result.put(content.sourceContentId(), content));
+        }
         return result;
+    }
+
+    private void forEachItem(byte[] snapshot, String sourceName, Consumer<JsonNode> consumer) {
+        try (JsonParser parser = objectMapper.getFactory().createParser(snapshot)) {
+            boolean found = false;
+            while (parser.nextToken() != null) {
+                if (parser.currentToken() != JsonToken.FIELD_NAME
+                        || !"item".equals(parser.currentName())) {
+                    continue;
+                }
+                if (parser.nextToken() != JsonToken.START_ARRAY) {
+                    throw new IllegalArgumentException(
+                            "TourAPI item 배열을 찾을 수 없습니다: " + sourceName);
+                }
+                found = true;
+                while (parser.nextToken() != JsonToken.END_ARRAY) {
+                    consumer.accept(objectMapper.readTree(parser));
+                }
+                break;
+            }
+            if (!found) {
+                throw new IllegalArgumentException(
+                        "TourAPI item 배열을 찾을 수 없습니다: " + sourceName);
+            }
+        } catch (IOException exception) {
+            throw new UncheckedIOException(
+                    "TourAPI JSON을 읽을 수 없습니다: " + sourceName,
+                    exception);
+        }
     }
 
     private void batchUpsertContents(List<ContentRow> rows) {
@@ -670,7 +796,13 @@ public class TourApiImportService {
             Map<ServiceRegionKey, Long> byService) {
     }
 
+    private record RegionMetadata(
+            Map<SourceRegionKey, ServiceRegionKey> regionNames,
+            Map<AdministrativeProvince, String> provinceCodes) {
+    }
+
     private record ContentImportResult(
+            int sourceContents,
             int imported,
             int missingCoordinates,
             int missingRegionMapping,
@@ -762,6 +894,14 @@ public class TourApiImportService {
         }
     }
 
+    private record ExistingVersion(
+            long id,
+            String sourceContentId,
+            LocalDateTime sourceModifiedAt,
+            String status,
+            boolean deleted) {
+    }
+
     private record ContentRow(
             String sourceContentId,
             String sourceContentTypeId,
@@ -815,14 +955,6 @@ public class TourApiImportService {
                     limit(thumbnail, 2048),
                     dateTime(source, "createdtime"),
                     dateTime(source, "modifiedtime"));
-        }
-
-        private boolean needsUpsert(ExistingContent existing) {
-            return existing == null
-                    || !"ACTIVE".equals(existing.status())
-                    || existing.deleted()
-                    || sourceModifiedAt == null
-                    || !Objects.equals(sourceModifiedAt, existing.sourceModifiedAt());
         }
 
         private ContentChangeSet changeSet(ExistingContent existing) {
