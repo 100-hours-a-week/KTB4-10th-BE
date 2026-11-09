@@ -12,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
         "management.server.port=0",
+        "management.endpoint.health.probes.enabled=true",
         "spring.datasource.url=jdbc:h2:mem:prometheus-test;MODE=MySQL;DB_CLOSE_DELAY=-1",
         "spring.datasource.driver-class-name=org.h2.Driver",
         "spring.datasource.username=sa",
@@ -58,6 +59,23 @@ class PrometheusMetricsIntegrationTest {
                 .contains("hikaricp_connections_idle")
                 .contains("hikaricp_connections_pending")
                 .contains("hikaricp_connections_max");
+    }
+
+    @Test
+    void kubernetesHealthProbesAreExposedOnlyOnManagementPortWithoutAuthentication() {
+        assertProbeIsExposedOnlyOnManagementPort("/actuator/health/liveness");
+        assertProbeIsExposedOnlyOnManagementPort("/actuator/health/readiness");
+    }
+
+    private void assertProbeIsExposedOnlyOnManagementPort(String path) {
+        ResponseEntity<String> applicationResponse = restTemplate.getForEntity(
+                endpoint(applicationPort, path), String.class);
+        ResponseEntity<String> managementResponse = restTemplate.getForEntity(
+                endpoint(managementPort, path), String.class);
+
+        assertThat(applicationResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(managementResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(managementResponse.getBody()).contains("\"status\":\"UP\"");
     }
 
     private static String endpoint(int port, String path) {

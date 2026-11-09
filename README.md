@@ -45,6 +45,10 @@ BE 내부 Fake 클라이언트, AI 상태 조회 및 백그라운드 폴링은 �
 - 기존 polling/Fake로 접수한 미종료 작업의 자동 인계·복구는 제공하지 않음
 
 기본 헬스 체크는 내부 관리 포트 `8081`의 `GET /actuator/health`에서 확인할 수 있습니다.
+EKS liveness·readiness Probe를 사용할 환경은
+`MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`를 주입하고 같은 관리 포트의
+`GET /actuator/health/liveness`, `GET /actuator/health/readiness`를 사용합니다.
+세 경로는 서비스 세션 없이 접근하지만 관리 포트는 공용 라우팅에 노출하지 않습니다.
 
 - JPA는 스키마를 자동 변경하지 않고 `ddl-auto=validate`로 Flyway 결과만 검증합니다.
 - Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.

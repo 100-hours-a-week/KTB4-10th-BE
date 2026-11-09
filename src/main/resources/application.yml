@@ -59,6 +59,10 @@ server:
         path: /
 
 management:
+  endpoint:
+    health:
+      probes:
+        enabled: ${MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED:false}
   health:
     rabbit:
       # MQ 경로는 전환 중 선택 기능이므로 브로커 부재가 API readiness를 실패시키지 않습니다.

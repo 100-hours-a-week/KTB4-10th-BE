@@ -88,6 +88,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/error", "/actuator/health", "/actuator/prometheus")
                         .permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/actuator/health/liveness",
+                                "/actuator/health/readiness")
+                        .permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/oauth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/policies", "/api/v1/policies/**")
