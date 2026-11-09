@@ -1,7 +1,7 @@
 # AI MQ 소비 계약 및 완전 전환 계획
 
 관련 Issue: #330  
-선행 작업: #308, Draft PR #320  
+선행 작업: #308, PR #320
 관련 요구사항: BR-GDE-16, FR-GDE-01/02/07/08/09
 
 ## 문서 상태와 머지 조건
@@ -11,11 +11,15 @@
 
 - AI consumer가 본 문서의 메시지, ACK, 멱등성, retry, DLQ, callback 계약을 승인한다.
 - AI consumer 구현이 완료된다.
+- BE 실행 선점·lease 갱신·만료 회수·결과 콜백의 소유권 검증을 구현한다.
 - staging에서 BE 발행 → RabbitMQ → AI 소비 → BE callback 흐름을 검증한다.
 - 최초 생성, 재생성, 사용자 수동 재시도, 중복 전달, 일시 장애, 타임아웃 시나리오를 확인한다.
 - 이 문서 PR 머지와 함께 HTTP/MQ 이중 경로를 제거하는 완전 전환 코드를 반영한다.
 
 문서만 먼저 머지하여 아직 존재하지 않는 consumer 동작을 완료된 계약처럼 취급하지 않는다.
+이번 개정은 AI 별도 작업 저장소 없이 BE DB를 실행 상태의 기준으로 사용하는 전환안이다.
+아래 실행 선점·heartbeat API와 lease 검증은 후속 구현이며, URI·요청/응답 스키마·운영 시간값은
+AI 팀과 확정해야 한다. 기존 콜백의 중복 무시만으로 이 계약이 구현된 것으로 간주하지 않는다.
 
 ## 전체 구조
 
@@ -86,31 +90,48 @@ BE는 생성·재생성 입력을 DB에 먼저 저장한 뒤 RabbitMQ에 발행�
 전달 보장은 at-least-once다. publisher confirm 응답 유실, BE 재기동, consumer 연결 종료로 동일한
 `messageId`가 여러 번 전달될 수 있다.
 
-AI는 작업 저장소에서 `messageId`를 UNIQUE로 관리한다.
+AI 전용 DB·영속 작업 저장소는 요구하지 않는다. 기존의 「AI 작업 저장소 UNIQUE 등록 후 조기 ACK」
+방식을 대체하고, 요청·실행 상태·결과는 BE의 `generation_jobs`에서 영속 관리한다.
 
-1. 처음 본 `messageId`이면 AI 작업을 영속화한다.
-2. 영속화 트랜잭션이 커밋된 뒤 RabbitMQ ACK를 보낸다.
-3. 이미 PROCESSING 또는 COMPLETED인 메시지는 새 LLM 작업을 만들지 않고 ACK한다.
-4. PROCESSING 작업의 실행 주체가 사라질 수 있다면 lease/heartbeat 만료 후 회수한다.
-5. 사용자 수동 재시도는 `attempt`와 `messageId`가 바뀌므로 새로운 실행으로 처리한다.
+1. AI는 메시지 검증 후 `jobId`, `attempt`, `messageId`로 BE에 실행 선점을 요청한다.
+2. BE는 행 잠금과 현재 회차·상태 검사로 실행을 원자적으로 선점하고 `lease_token`,
+   `lease_version`, `lease_expires_at`을 저장한다. 유효한 소유자가 있는 동안 새 실행을 허용하지 않는다.
+3. AI는 선점 성공 후 LLM 작업을 시작하고 heartbeat로 BE lease를 갱신한다. lease 갱신·결과 콜백은
+   발급받은 토큰과 버전을 함께 검증한다. 소유권을 잃은 실행의 늦은 결과는 반영하지 않는다.
+4. AI는 BE가 최종 성공·실패 결과를 커밋했음을 확인한 뒤 RabbitMQ ACK를 보낸다.
+   콜백 전송만 실패한 경우 메모리에 보관한 같은 결과·이벤트를 재전송하며 LLM을 다시 호출하지 않는다.
+5. 재전달 시에도 BE 선점을 거친다. BE가 같은 시도의 종료 또는 이전 회차임을 확인하면 실행 없이 ACK한다.
+   다른 실행의 lease가 유효하면 즉시 ACK하지 않고 retry queue로 지연 재시도한다.
+6. AI 연결 종료로 미ACK 메시지가 재전달되면, BE의 이전 실행 lease 만료 후 새 실행이 선점한다.
+   BE 재기동 후에도 DB lease를 기준으로 복구한다. AI 재시작만으로 FAILED를 확정하지 않는다.
+7. 사용자 수동 재시도는 `attempt`와 `messageId`가 바뀌므로 새로운 실행으로 처리한다.
 
-LLM 실행 완료까지 RabbitMQ delivery를 unacked로 유지하지 않는다. ACK는 LLM 완료가 아니라
-AI 내부 작업의 안전한 접수를 의미한다.
+AI의 메모리 중복 검사는 보조 수단이다. 최종 콜백만 중복 무시하면 LLM 중복 호출 비용은 막지 못하므로
+실행 전 BE 선점을 필수로 한다. 다만 LLM 응답 후 BE 저장 전에 AI가 종료되거나 lease 만료 후 이전 호출이
+계속 실행되면 LLM 호출은 중복될 수 있다. 결과 반영은 소유권 검증으로 보호하며 exactly-once 계산은 보장하지 않는다.
+
+BE 전체 중단 중에는 신규 선점·heartbeat·결과 저장이 지연된다. 결과가 확정되지 않은 메시지는
+ACK하지 않고 재전달 가능한 상태를 유지한다. lease와 실행 제한·콜백 재시도·consumer acknowledgement
+timeout을 함께 설정해야 한다. BE 제한 시간이 먼저 종료한 작업은 재전달 시 종료 상태를 확인해 ACK한다.
 
 ## ACK, retry, DLQ 정책
 
 | 상황 | AI consumer 처리 |
 | --- | --- |
-| 검증 성공 및 AI 작업 저장 성공 | ACK |
-| 동일 `messageId` 작업이 이미 존재 | 중복 실행 없이 ACK |
-| AI 저장소 연결 실패 등 접수 단계의 일시 오류 | NACK, `requeue=false` |
+| 검증 및 BE 실행 선점 성공 | ACK를 보류하고 실행 |
+| BE가 같은 시도 종료 또는 이전 회차임을 확인 | 실행 없이 ACK |
+| 동일 `messageId`의 유효한 실행 lease 존재 | 실행 없이 retry queue로 지연 재시도 |
+| BE 선점 요청의 연결 실패·응답 유실 등 일시 오류 | NACK, `requeue=false`, 재전달 시 BE 상태 재확인 |
+| 최종 결과가 BE에 커밋됨 | ACK |
+| 결과 콜백의 연결 실패·응답 유실 | 같은 결과 재전송, 완료 확인 전 ACK 보류 |
 | JSON, schemaVersion, jobType 등 복구 불가능한 오류 | DLX 발행 confirm 후 원본 ACK |
 | `x-death` 기반 접수 재시도 한도 초과 | DLX 발행 confirm 후 원본 ACK |
-| ACK 이후 LLM 실행 실패 또는 실행 타임아웃 | MQ 재시도 없이 FAILED callback |
+| LLM 실행 실패 또는 실행 타임아웃을 최종 실패로 확정 | FAILED callback 커밋 확인 후 ACK |
 
 consumer는 `x-death` 헤더로 접수 재시도 횟수를 판단하고 무한 NACK를 허용하지 않는다. 최대 횟수는
-AI 운영 정책에서 확정한다. DLQ 발행은 publisher confirm을 확인한 뒤 원본 메시지를 ACK하여 격리
-과정의 유실을 막는다.
+AI·BE 팀이 확정한다. 유효한 lease 때문에 기다린 횟수와 실제 처리 실패 횟수를 구분하며,
+`x-death` 총횟수만으로 정상 실행 중인 작업을 최종 실패시키지 않는다. DLQ 발행은 publisher confirm을
+확인한 뒤 원본 메시지를 ACK한다. 식별 가능한 작업의 DLQ 격리 후 BE 실패 수렴·재처리 절차는 별도 확정한다.
 
 ## callback과 타임아웃
 
@@ -122,15 +143,20 @@ POST /internal/v1/ai/generation-events
 
 - callback에는 `backend_job_id=jobId`와 `attempt`를 포함한다.
 - 진행 단계와 최종 성공·실패 결과를 callback으로 전달한다.
-- AI 작업 저장 이후 LLM 실패·타임아웃은 같은 MQ 메시지를 재처리하지 않고 FAILED callback한다.
+- 실행 시작 시각은 BE 선점 트랜잭션에서 등록한다. heartbeat와 진행·최종 콜백에는 실행 소유권을 검증한다.
+- LLM 실패·타임아웃을 최종 실패로 확정하면 FAILED callback을 보내고 BE 커밋 확인 후 ACK한다.
 - BE는 현재 attempt와 종료 상태를 다시 확인하여 이전 회차·중복 최종 callback을 무시한다.
-- BE의 전체 생성 제한 시간 기본값 15분과 AI 내부 모델 호출 제한은 별도다.
+- sequence는 동일 시도에서 새 이벤트를 만들 때 증가시키며 재전송은 같은 event_id·sequence를 유지한다.
+  기존 BE는 비종료 콜백의 낮거나 같은 sequence를 무시하며 종료 콜백은 그 비교에서 제외한다.
+  재실행의 소유권은 sequence와 별도로 lease 토큰·버전으로 검증한다.
+- 기존 HTTP 경로의 기본 15분 제한은 MQ 큐 대기·실행·결과 전달 제한과 분리해 전환 전에 확정한다.
 
 ## 초기 consumer 운영값
 
 - manual ACK
 - consumer concurrency 1
 - prefetch 1
+- consumer acknowledgement timeout은 최대 실행·콜백 재시도 시간을 수용하도록 설정하며 시간값은 확정 필요
 - `messageId`, `jobId`, `attempt`, `jobType`, `x-death` 구조화 로그
 - 메인/retry/DLQ 큐 적재량 모니터링
 - 소비 지연, callback 실패, DLQ 신규 적재 알림
@@ -192,7 +218,12 @@ MQ가 유일한 생성 전달 경로가 되므로 활성화 flag를 운영 토�
 
 - [ ] INITIAL 메시지를 AI가 소비하고 성공 callback한다.
 - [ ] REGENERATION 메시지를 `previous_plan`과 `feedback`으로 처리한다.
-- [ ] 동일 `messageId` 중복 전달이 LLM 중복 실행을 만들지 않는다.
+- [ ] 같은 시도의 유효한 lease가 있는 동안 중복 메시지는 새 LLM 실행을 시작하지 않는다.
+- [ ] AI 종료 후 미ACK 재전달과 BE lease 만료로 재실행할 수 있다.
+- [ ] BE 결과 커밋 후 ACK 전 AI 종료 시 재실행 없이 ACK한다.
+- [ ] BE 재기동 후 DB lease·종료 상태를 기준으로 복구한다.
+- [ ] 만료된 실행의 늦은 heartbeat·결과 콜백은 현재 실행에 반영되지 않는다.
+- [ ] 콜백 응답 유실 시 같은 이벤트를 재전송하고 결과 중복 저장·생성권 중복 차감을 막는다.
 - [ ] AI 접수 전 일시 장애가 retry queue를 거쳐 복구된다.
 - [ ] 접수 재시도 초과·잘못된 메시지가 DLQ에 격리된다.
 - [ ] LLM 실패·타임아웃이 FAILED callback으로 종료된다.
