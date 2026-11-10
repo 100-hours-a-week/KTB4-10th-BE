@@ -102,6 +102,8 @@
 | API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
 | API-OPS-01 | 로드밸런서 헬스체크 | GET | `:8081/actuator/health` | 예 | Query/Body 없음; 내부 관리 포트 |
 | API-OPS-02 | Prometheus 메트릭 수집 | GET | `:8081/actuator/prometheus` | 예 | Query/Body 없음; 내부 관리 포트 |
+| API-OPS-03 | Kubernetes liveness Probe | GET | `:8081/actuator/health/liveness` | 예 | 환경별 활성화; 내부 관리 포트 |
+| API-OPS-04 | Kubernetes readiness Probe | GET | `:8081/actuator/health/readiness` | 예 | 환경별 활성화; 내부 관리 포트 |
 
 ### 2.1 운영 헬스체크
 
@@ -110,9 +112,13 @@
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `:8081/actuator/health` | 배포·로드밸런서 내부 헬스체크. 세션 인증 없음 |
+| GET | `:8081/actuator/health/liveness` | Kubernetes 생존 상태 확인. 세션 인증 없음 |
+| GET | `:8081/actuator/health/readiness` | Kubernetes 트래픽 수신 가능 상태 확인. 세션 인증 없음 |
 
 - 애플리케이션과 MySQL 연결 같은 필수 의존성의 요청 처리 가능 상태를 확인한다.
 - AI·관광·PG·푸시 공급자는 헬스체크에서 제외하고 별도로 감시한다.
+- liveness에는 DB·Redis 등 외부 의존성을 포함하지 않아 외부 장애가 불필요한 Pod 재시작으로 이어지지 않게 한다.
+- Kubernetes Probe 경로는 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`인 환경에서 활성화한다.
 - `UP`이면 200, `DOWN`·`OUT_OF_SERVICE`이면 503을 반환한다.
 - 응답은 상태만 공개하고 DB URL, 자격증명, 예외 메시지를 노출하지 않는다.
 
