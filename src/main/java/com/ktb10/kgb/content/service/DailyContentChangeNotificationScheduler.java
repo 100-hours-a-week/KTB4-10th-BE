@@ -1,5 +1,6 @@
 package com.ktb10.kgb.content.service;
 
+import com.ktb10.kgb.common.observability.NotificationCreationPhase;
 import com.ktb10.kgb.content.event.ContentChangesDetectedEvent;
 import com.ktb10.kgb.content.event.TourApiSyncCompletedEvent;
 import com.ktb10.kgb.content.tourapi.TourApiContentChangeOccurrenceRepository;
@@ -18,7 +19,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 성공한 당일 TourAPI 변경 이력을 오전 9시 행사 알림 배치로 전달합니다. */
+/** 성공한 당일 TourAPI 변경 이력을 최초 실행과 제한 재실행 알림 배치로 전달합니다. */
 @Component
 @ConditionalOnProperty(prefix = "tour-api.scheduler", name = "enabled", havingValue = "true")
 public class DailyContentChangeNotificationScheduler {
@@ -51,36 +52,47 @@ public class DailyContentChangeNotificationScheduler {
             cron = "${notification.content-changes.cron}",
             zone = "Asia/Seoul")
     public void createDailyNotifications() {
-        dispatchSuccessfulRun(today());
+        dispatchSuccessfulRun(today(), NotificationCreationPhase.INITIAL);
+    }
+
+    @Scheduled(
+            cron = "${notification.reconciliation.cron}",
+            zone = "Asia/Seoul")
+    public void reconcileDailyNotifications() {
+        dispatchSuccessfulRun(today(), NotificationCreationPhase.RECONCILIATION);
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void recoverMissedSchedule() {
         if (!seoulTime().isBefore(DELIVERY_TIME)) {
-            dispatchSuccessfulRun(today());
+            dispatchSuccessfulRun(today(), NotificationCreationPhase.INITIAL);
         }
     }
 
     @EventListener
     public void recoverDelayedSync(TourApiSyncCompletedEvent event) {
         if (event.syncDate().equals(today()) && !seoulTime().isBefore(DELIVERY_TIME)) {
-            dispatch(event.runId(), event.syncDate());
+            dispatch(event.runId(), event.syncDate(), NotificationCreationPhase.INITIAL);
         }
     }
 
-    private void dispatchSuccessfulRun(LocalDate syncDate) {
+    private void dispatchSuccessfulRun(LocalDate syncDate, NotificationCreationPhase phase) {
         syncRunRepository.findSuccessfulRunId(syncDate)
                 .ifPresentOrElse(
-                        runId -> dispatch(runId, syncDate),
-                        () -> skipIncompleteSync(syncDate));
+                        runId -> dispatch(runId, syncDate, phase),
+                        () -> skipIncompleteSync(syncDate, phase));
     }
 
-    private void dispatch(UUID runId, LocalDate syncDate) {
+    private void dispatch(
+            UUID runId,
+            LocalDate syncDate,
+            NotificationCreationPhase phase) {
         int occurrenceCount = occurrenceRepository.countByRunId(runId);
         if (occurrenceCount == 0) {
             LOGGER.info(
-                    "오전 9시 행사 변경 알림 대상 이력이 없습니다. "
-                            + "runId={}, syncDate={}",
+                    "일일 행사 변경 알림 대상 이력이 없습니다. "
+                            + "phase={}, runId={}, syncDate={}",
+                    phase.tagValue(),
                     runId,
                     syncDate);
             return;
@@ -88,14 +100,16 @@ public class DailyContentChangeNotificationScheduler {
         eventPublisher.publishEvent(new ContentChangesDetectedEvent(
                 runId,
                 syncDate,
-                occurrenceCount));
+                occurrenceCount,
+                phase));
     }
 
-    private void skipIncompleteSync(LocalDate syncDate) {
+    private void skipIncompleteSync(LocalDate syncDate, NotificationCreationPhase phase) {
         metrics.recordSyncNotCompleted();
         LOGGER.warn(
-                "오전 9시 행사 변경 알림 생성을 건너뜁니다. "
-                        + "syncDate={}, reason=sync_not_completed",
+                "일일 행사 변경 알림 생성을 건너뜁니다. "
+                        + "phase={}, syncDate={}, reason=sync_not_completed",
+                phase.tagValue(),
                 syncDate);
     }
 

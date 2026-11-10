@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ktb10.kgb.common.observability.NotificationCreationBatchMetrics;
 import com.ktb10.kgb.content.service.ContentChangeNotificationBatchMetrics;
 import com.ktb10.kgb.content.service.GuidebookEventChangeNotificationProcessor;
 import com.ktb10.kgb.content.service.InterestedContentChangeNotificationProcessor;
@@ -26,12 +27,21 @@ class ContentChangeNotificationListenerTest {
                 mock(GuidebookEventChangeNotificationProcessor.class);
         ContentChangeNotificationBatchMetrics metrics =
                 mock(ContentChangeNotificationBatchMetrics.class);
+        NotificationCreationBatchMetrics creationMetrics =
+                mock(NotificationCreationBatchMetrics.class);
         ContentChangeNotificationListener listener = new ContentChangeNotificationListener(
                 executor,
                 interestedProcessor,
                 guidebookProcessor,
-                metrics);
+                metrics,
+                creationMetrics);
         ContentChangesDetectedEvent event = event();
+        org.mockito.BDDMockito.given(interestedProcessor.process(event))
+                .willReturn(new InterestedContentChangeNotificationProcessor.ProcessingResult(
+                        0, 0, 0, 0));
+        org.mockito.BDDMockito.given(guidebookProcessor.process(event))
+                .willReturn(new GuidebookEventChangeNotificationProcessor.ProcessingResult(
+                        0, 0, 0, 0));
         ArgumentCaptor<Runnable> taskCaptor = ArgumentCaptor.forClass(Runnable.class);
 
         listener.handle(event);
@@ -55,15 +65,21 @@ class ContentChangeNotificationListenerTest {
                 mock(GuidebookEventChangeNotificationProcessor.class);
         ContentChangeNotificationBatchMetrics metrics =
                 mock(ContentChangeNotificationBatchMetrics.class);
+        NotificationCreationBatchMetrics creationMetrics =
+                mock(NotificationCreationBatchMetrics.class);
         ContentChangeNotificationListener listener = new ContentChangeNotificationListener(
                 executor,
                 interestedProcessor,
                 guidebookProcessor,
-                metrics);
+                metrics,
+                creationMetrics);
         ContentChangesDetectedEvent event = event();
         doThrow(new IllegalStateException("관심 행사 처리 실패"))
                 .when(interestedProcessor)
                 .process(event);
+        org.mockito.BDDMockito.given(guidebookProcessor.process(event))
+                .willReturn(new GuidebookEventChangeNotificationProcessor.ProcessingResult(
+                        0, 0, 0, 0));
 
         listener.handle(event);
 
@@ -80,11 +96,14 @@ class ContentChangeNotificationListenerTest {
                 mock(GuidebookEventChangeNotificationProcessor.class);
         ContentChangeNotificationBatchMetrics metrics =
                 mock(ContentChangeNotificationBatchMetrics.class);
+        NotificationCreationBatchMetrics creationMetrics =
+                mock(NotificationCreationBatchMetrics.class);
         ContentChangeNotificationListener listener = new ContentChangeNotificationListener(
                 executor,
                 interestedProcessor,
                 guidebookProcessor,
-                metrics);
+                metrics,
+                creationMetrics);
         doThrow(new RejectedExecutionException("큐가 가득 참"))
                 .when(executor)
                 .execute(org.mockito.ArgumentMatchers.any(Runnable.class));

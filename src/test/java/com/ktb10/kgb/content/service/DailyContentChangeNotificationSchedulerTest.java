@@ -4,6 +4,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ktb10.kgb.common.observability.NotificationCreationPhase;
 import com.ktb10.kgb.content.event.ContentChangesDetectedEvent;
 import com.ktb10.kgb.content.event.TourApiSyncCompletedEvent;
 import com.ktb10.kgb.content.tourapi.TourApiContentChangeOccurrenceRepository;
@@ -54,6 +55,19 @@ class DailyContentChangeNotificationSchedulerTest {
 
         verify(metrics).recordSyncNotCompleted();
         verify(eventPublisher, never()).publishEvent(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void publishesReconciliationEventForSameSuccessfulRun() {
+        DailyContentChangeNotificationScheduler scheduler = schedulerAt("2026-11-03T03:00:00Z");
+        given(syncRunRepository.findSuccessfulRunId(SYNC_DATE))
+                .willReturn(Optional.of(RUN_ID));
+        given(occurrenceRepository.countByRunId(RUN_ID)).willReturn(2);
+
+        scheduler.reconcileDailyNotifications();
+
+        verify(eventPublisher).publishEvent(new ContentChangesDetectedEvent(
+                RUN_ID, SYNC_DATE, 2, NotificationCreationPhase.RECONCILIATION));
     }
 
     @Test

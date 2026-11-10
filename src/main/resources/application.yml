@@ -114,6 +114,8 @@ notification:
     cron: "${NOTIFICATION_NEW_EVENTS_CRON:0 0 9 * * *}"
   content-changes:
     cron: "${NOTIFICATION_CONTENT_CHANGES_CRON:0 0 9 * * *}"
+  reconciliation:
+    cron: "${NOTIFICATION_RECONCILIATION_CRON:0 0 12 * * *}"
 
 webpush:
   vapid:
