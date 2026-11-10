@@ -89,6 +89,20 @@ class GenerationJobTest {
     }
 
     @Test
+    void startsQueuedMqAttemptWithAiIdentity() {
+        GenerationJob job = initialJob();
+        job.preparePublication("{}", NOW);
+        job.markQueued(NOW.plusSeconds(1));
+
+        job.startQueuedAttempt("123-0", NOW.plusSeconds(2));
+
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(job.getAiJobId()).isEqualTo("123-0");
+        assertThat(job.getStartedAt()).isEqualTo(NOW.plusSeconds(2));
+        assertThat(job.getAttemptStartedAt()).isEqualTo(NOW.plusSeconds(2));
+    }
+
+    @Test
     void mqWaitingJobsCanFailOrBeCanceled() {
         for (boolean queued : new boolean[]{false, true}) {
             GenerationJob failed = initialJob();

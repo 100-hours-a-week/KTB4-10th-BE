@@ -8,6 +8,8 @@ import java.util.concurrent.ScheduledFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /** 시도별 단발 타이머입니다. 애플리케이션 시작 시 DB의 진행 중 시도도 다시 등록합니다. */
 @Component
@@ -27,6 +29,11 @@ public class GenerationTimeoutRegistry {
 
     public void register(GenerationCallbackTransactionService.Prepared prepared) {
         register(prepared.jobId(), prepared.attempt(), prepared.deadline());
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void register(GenerationCallbackTransactionService.AttemptStarted event) {
+        register(event.jobId(), event.attempt(), event.deadline());
     }
 
     public void register(Long jobId, int attempt, Instant deadline) {

@@ -51,4 +51,20 @@ class GenerationTimeoutRegistryTest {
         verify(future, times(1)).cancel(false);
         verify(transactions, never()).expire(any(), eq(0));
     }
+
+    @Test
+    void schedulesMqAttemptAfterItsStartTransactionCommits() {
+        GenerationTimerScheduler scheduler = mock(GenerationTimerScheduler.class);
+        GenerationCallbackTransactionService transactions =
+                mock(GenerationCallbackTransactionService.class);
+        ScheduledFuture<?> future = mock(ScheduledFuture.class);
+        Instant deadline = Instant.parse("2026-10-28T00:15:00Z");
+        when(scheduler.schedule(any(), eq(deadline))).thenReturn((ScheduledFuture) future);
+        GenerationTimeoutRegistry timers = new GenerationTimeoutRegistry(scheduler, transactions);
+
+        timers.register(new GenerationCallbackTransactionService.AttemptStarted(
+                301L, 0, deadline));
+
+        verify(scheduler).schedule(any(), eq(deadline));
+    }
 }

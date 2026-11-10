@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ktb10.kgb.guidebook.client.AiGenerationStatus;
 import com.ktb10.kgb.guidebook.client.AiGuidebookRequestMapper;
 import com.ktb10.kgb.guidebook.client.dto.AiGenerationAcceptedResponse;
+import com.ktb10.kgb.guidebook.client.dto.AiGenerationStatusResponse;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRegenerationRequest;
 import com.ktb10.kgb.guidebook.client.dto.AiGuidebookRequest;
 import com.ktb10.kgb.guidebook.dto.request.GuidebookGenerationRequest;
@@ -32,6 +33,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -121,6 +123,57 @@ class GenerationCallbackTransactionServiceTest {
         assertThat(transactions.prepare(301L)).isNull();
 
         verifyNoInteractions(mapper, results);
+    }
+
+    @Test
+    void startsQueuedMqAttemptFromFirstProcessingCallback() throws Exception {
+        GenerationJob job = initialJob();
+        job.preparePublication("{\"schemaVersion\":1,\"input\":{}}", LocalDateTime.now(CLOCK));
+        job.markQueued(LocalDateTime.now(CLOCK));
+        var envelope = new GenerationCallbackEnvelope(
+                "guidebook_processing",
+                new GenerationCallbackEnvelope.Data(
+                        UUID.randomUUID(), "301-0", 1L, "301-0",
+                        AiGenerationStatus.PROCESSING,
+                        new GenerationCallbackEnvelope.Progress("checking", "입력을 확인하고 있습니다."),
+                        null, null));
+
+        var result = transactions.receive(envelope);
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.status()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(job.getStatus()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(job.getAiJobId()).isEqualTo("301-0");
+        assertThat(job.getStartedAt()).isEqualTo(LocalDateTime.now(CLOCK));
+        assertThat(job.getAttemptStartedAt()).isEqualTo(LocalDateTime.now(CLOCK));
+        verify(results).apply(301L, envelope.data().response());
+        verify(events).publishEvent(any(
+                GenerationCallbackTransactionService.AttemptStarted.class));
+    }
+
+    @Test
+    void acceptsTerminalCallbackThatArrivesBeforeProcessingCallback() throws Exception {
+        GenerationJob job = initialJob();
+        job.preparePublication("{\"schemaVersion\":1,\"input\":{}}", LocalDateTime.now(CLOCK));
+        job.markQueued(LocalDateTime.now(CLOCK));
+        var error = new AiGenerationStatusResponse.GenerationError(
+                "insufficient_candidates", "후보가 부족합니다.");
+        var envelope = new GenerationCallbackEnvelope(
+                "guidebook_failed",
+                new GenerationCallbackEnvelope.Data(
+                        UUID.randomUUID(), "301-0", 3L, "301-0",
+                        AiGenerationStatus.FAILED, null, null, error));
+
+        var result = transactions.receive(envelope);
+
+        assertThat(result.handled()).isTrue();
+        // 결과 서비스는 mock이므로 여기서는 시작 전이까지만 실제 엔티티에 반영됩니다.
+        assertThat(result.status()).isEqualTo(GenerationStatus.PROCESSING);
+        assertThat(job.getAiJobId()).isEqualTo("301-0");
+        assertThat(job.getAttemptStartedAt()).isEqualTo(LocalDateTime.now(CLOCK));
+        verify(results).apply(301L, envelope.data().response());
+        verify(events).publishEvent(any(
+                GenerationCallbackTransactionService.AttemptStarted.class));
     }
 
     private GenerationJob initialJob() throws Exception {
