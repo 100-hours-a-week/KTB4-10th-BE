@@ -479,3 +479,112 @@ CSRF 발급 GET도 요청당 1회 추가되므로 총 HTTP 요청량은 생성 P
 `guidebook_generation_queue_limit`로 노출한다. BE 202 접수와 실제 AI 접수·완료는
 구분해서 확인한다. 3개 AI 워커가 60초씩 처리하면 10분 동안 6,000건을 완료할 수 없다.
 격리 환경 종료 시 메모리 대기열은 유실되므로 결과를 먼저 집계하고 테스트 DB를 보존한다.
+
+## 알림 생산자 fan-out 확장 검증
+
+`local,loadtest` 프로필에서만 활성화되는 fixture/runner로 신규 행사 묶음, 관심 행사 변경,
+가이드북 포함 행사 변경, 여행 일정 임박 생산자를 같은 회원 수 조건으로 실행합니다. 운영 DB나
+공유 개발 DB에서는 실행하지 않습니다. fixture는 선택한 수만큼의 부하테스트 회원만 `ACTIVE`로
+두어 전체 회원 대상 신규 행사 알림도 동일한 fan-out 크기로 맞춥니다.
+
+환경을 준비합니다. `LOAD_TEST_USER_COUNT`는 가장 큰 단계 이상이어야 합니다.
+
+```bash
+cp .env.loadtest.example .env.loadtest
+
+LOAD_TEST_USER_COUNT=5000 \
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  up -d --build mysql redis backend prometheus loki alloy grafana
+```
+
+### 1. 생산자별 단독 측정
+
+각 생산자는 `10 → 100 → 1000 → 5000` 순서로 올립니다. 아래의 `<scenario>`와
+`<member-count>`를 바꿔 한 단계씩 실행합니다.
+
+```bash
+./scripts/load-test/run-notification-fanout.sh prepare <scenario> <member-count> false
+./scripts/load-test/run-notification-fanout.sh run <scenario> initial
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh run <scenario> reconciliation
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh cleanup
+```
+
+사용 가능한 `<scenario>`는 다음과 같습니다.
+
+- `new-event`: 신규 행사 묶음 알림
+- `interested-change`: 관심 행사 변경 알림
+- `guidebook-change`: 가이드북 포함 행사 변경 알림
+- `trip-starting`: 여행 일정 임박 알림
+- `mixed`: 위 네 생산자를 한 번에 실행
+
+예를 들어 관심 행사 변경 알림 1000명을 측정합니다.
+
+```bash
+./scripts/load-test/run-notification-fanout.sh prepare interested-change 1000 false
+./scripts/load-test/run-notification-fanout.sh run interested-change initial
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh run interested-change reconciliation
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh cleanup
+```
+
+초기 실행의 예상 생성 건수는 단독 시나리오에서 회원 수와 같고, `mixed`에서는 회원 수의
+4배입니다. 재실행 뒤 총 알림 수가 증가하지 않고 duplicate 메트릭만 증가해야 합니다.
+변경 알림 처리는 비동기이므로 실행 API의 `202 Accepted`가 전체 완료를 뜻하지 않습니다.
+`status`의 건수가 예상값에 도달하고 관련 요약 로그가 출력될 때까지 확인합니다.
+
+### 2. Web Push Outbox 포함 측정
+
+실제 Push Service 대신 loadtest gateway를 사용하며, 구독과 Outbox 생성·Worker 처리 비용을
+포함합니다.
+
+```bash
+WEB_PUSH_OUTBOX_WORKER_ENABLED=true \
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  up -d --force-recreate backend
+
+./scripts/load-test/run-notification-fanout.sh prepare mixed 1000 true
+./scripts/load-test/run-notification-fanout.sh run mixed initial
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh cleanup
+```
+
+### 3. 가이드북 생성 완료 알림과 AI 처리 슬롯 확장
+
+가이드북 생성 완료는 기존 `k6-guidebook` 시나리오로 별도 측정합니다. 운영 슬롯 3을 기준선으로
+삼고 로컬에서만 10, 20으로 올려 callback과 완료 알림이 동시에 몰릴 때의 한계를 찾습니다.
+
+```bash
+AI_GENERATION_SUBMISSION_CONCURRENCY=10 \
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  up -d --force-recreate backend
+
+K6_GENERATION_VUS=10 \
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  --profile loadtest run --rm k6-guidebook
+```
+
+AI 서버도 같은 callback token을 사용하고 fake LLM 지연을 실제 평균에 가깝게 설정합니다. 슬롯을
+20으로 올릴 때는 BE 환경변수와 AI worker 수를 함께 올립니다. 슬롯 확장 전후에 Hikari pending,
+connection acquire 시간, callback 5xx, 알림 생성 실패와 누락을 비교합니다.
+
+### 4. 관측과 정리
+
+Grafana에서는 생산자·phase별 생성 건수, 실패·중복, duration, HikariCP, HTTP 5xx, JVM CPU·Heap,
+`web_push_outbox` 상태와 처리 지연을 함께 봅니다. 각 단계는 동일 조건으로 3회 반복하고 실행마다
+fixture를 정리합니다.
+
+```bash
+./scripts/load-test/run-notification-fanout.sh status
+./scripts/load-test/run-notification-fanout.sh cleanup
+```
