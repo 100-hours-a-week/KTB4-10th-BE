@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
@@ -17,14 +16,11 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 
 class TourApiDetailSyncServiceTest {
 
     private static final UUID RUN_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
-    private final JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
     private final TourApiClient client = mock(TourApiClient.class);
     private final TourApiSnapshotStorage storage = mock(TourApiSnapshotStorage.class);
     private final TourApiDetailImportService importer = mock(TourApiDetailImportService.class);
@@ -33,8 +29,6 @@ class TourApiDetailSyncServiceTest {
     @BeforeEach
     void setUp() {
         service = new TourApiDetailSyncService(
-                new ObjectMapper(),
-                jdbcTemplate,
                 client,
                 storage,
                 importer,
@@ -42,8 +36,7 @@ class TourApiDetailSyncServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void synchronizesOnlyPreviousDayCreatedOrModifiedTargets() {
+    void synchronizesOnlyTargetsSelectedByBaseChangeSets() {
         byte[] area = response("""
                 [
                   {
@@ -69,10 +62,6 @@ class TourApiDetailSyncServiceTest {
                   }
                 ]
                 """);
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("100")))
-                .thenReturn(List.of(10L));
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("200")))
-                .thenReturn(List.of(20L));
         when(client.fetchDetailCommon("100")).thenReturn(response("[]"));
         when(client.fetchDetailCommon("200")).thenReturn(response("[]"));
         when(client.fetchDetailIntro("200", "15")).thenReturn(response("[]"));
@@ -90,8 +79,9 @@ class TourApiDetailSyncServiceTest {
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 RUN_ID,
                 LocalDate.of(2026, 10, 13),
-                area,
-                Set.of());
+                List.of(
+                        candidate("100", 10L, "12", false),
+                        candidate("200", 20L, "15", true)));
 
         assertThat(summary.targets()).isEqualTo(2);
         assertThat(summary.completed()).isEqualTo(2);
@@ -129,15 +119,13 @@ class TourApiDetailSyncServiceTest {
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 RUN_ID,
                 LocalDate.of(2026, 10, 13),
-                area,
-                Set.of());
+                List.of(emptyChangeSet("400")));
 
         assertThat(summary.targets()).isZero();
         verify(client, never()).fetchDetailCommon(anyString());
     }
 
     @Test
-    @SuppressWarnings("unchecked")
     void synchronizesNewlyImportedTargetRegardlessOfSourceDate() {
         byte[] area = response("""
                 [
@@ -150,8 +138,6 @@ class TourApiDetailSyncServiceTest {
                   }
                 ]
                 """);
-        when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("500")))
-                .thenReturn(List.of(50L));
         when(client.fetchDetailCommon("500")).thenReturn(response("[]"));
         when(client.fetchDetailIntro("500", "15")).thenReturn(response("[]"));
         when(importer.importDetail(
@@ -163,8 +149,7 @@ class TourApiDetailSyncServiceTest {
         TourApiDetailSyncService.DetailSyncSummary summary = service.synchronize(
                 RUN_ID,
                 LocalDate.of(2026, 10, 17),
-                area,
-                Set.of("500"));
+                List.of(candidate("500", 50L, "15", true)));
 
         assertThat(summary.targets()).isEqualTo(1);
         assertThat(summary.completed()).isEqualTo(1);
@@ -186,5 +171,17 @@ class TourApiDetailSyncServiceTest {
                 ContentLifecycleChange.NONE,
                 null,
                 null);
+    }
+
+    private static ContentChangeSet candidate(
+            String sourceContentId,
+            long databaseContentId,
+            String sourceContentTypeId,
+            boolean event) {
+        return emptyChangeSet(sourceContentId).withDetailTarget(new TourApiDetailTarget(
+                databaseContentId,
+                sourceContentId,
+                sourceContentTypeId,
+                event));
     }
 }

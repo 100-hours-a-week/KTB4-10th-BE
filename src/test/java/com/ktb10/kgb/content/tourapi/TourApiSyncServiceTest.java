@@ -55,6 +55,13 @@ class TourApiSyncServiceTest {
                 .thenReturn(new ValidatedSnapshot(SnapshotType.AREA, area, 10));
         when(validator.validate(SnapshotType.FESTIVAL, festival))
                 .thenReturn(new ValidatedSnapshot(SnapshotType.FESTIVAL, festival, 3));
+        ContentChangeSet baseChange = ContentChangeSet.of(
+                "late-content",
+                Set.of(ContentChangedField.TITLE),
+                ContentLifecycleChange.NEW,
+                null,
+                null).withDetailTarget(new TourApiDetailTarget(
+                        10L, "late-content", "12", false));
         when(baseImportTransactionService.importSnapshots(
                 org.mockito.ArgumentMatchers.any(UUID.class),
                 org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 9)),
@@ -70,17 +77,11 @@ class TourApiSyncServiceTest {
                         3,
                         1,
                         0,
-                        List.of(ContentChangeSet.of(
-                                "late-content",
-                                Set.of(ContentChangedField.TITLE),
-                                ContentLifecycleChange.NEW,
-                                null,
-                                null))));
+                        List.of(baseChange)));
         when(detailSyncService.synchronize(
                 org.mockito.ArgumentMatchers.any(UUID.class),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
-                org.mockito.ArgumentMatchers.eq(area),
-                org.mockito.ArgumentMatchers.eq(Set.of("late-content"))))
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 9)),
+                org.mockito.ArgumentMatchers.eq(List.of(baseChange))))
                 .thenReturn(new TourApiDetailSyncService.DetailSyncSummary(0, 0, 0, List.of()));
 
         UUID runId = UUID.randomUUID();
@@ -94,9 +95,8 @@ class TourApiSyncServiceTest {
                 org.mockito.ArgumentMatchers.any());
         verify(detailSyncService).synchronize(
                 org.mockito.ArgumentMatchers.eq(runId),
-                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 8)),
-                org.mockito.ArgumentMatchers.eq(area),
-                org.mockito.ArgumentMatchers.eq(Set.of("late-content")));
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 10, 9)),
+                org.mockito.ArgumentMatchers.eq(List.of(baseChange)));
     }
 
     @Test

@@ -15,7 +15,8 @@ public record ContentChangeSet(
         Set<ContentChangedField> changedFields,
         ContentLifecycleChange lifecycleChange,
         TourApiContentLocation previousLocation,
-        TourApiContentLocation currentLocation) {
+        TourApiContentLocation currentLocation,
+        TourApiDetailTarget detailTarget) {
 
     public ContentChangeSet {
         Objects.requireNonNull(sourceContentId);
@@ -35,7 +36,18 @@ public record ContentChangeSet(
                 changedFields,
                 lifecycleChange,
                 previousLocation,
-                currentLocation);
+                currentLocation,
+                null);
+    }
+
+    public ContentChangeSet withDetailTarget(TourApiDetailTarget target) {
+        return new ContentChangeSet(
+                sourceContentId,
+                changedFields,
+                lifecycleChange,
+                previousLocation,
+                currentLocation,
+                target);
     }
 
     public ContentChangeSet merge(ContentChangeSet other) {
@@ -53,7 +65,8 @@ public record ContentChangeSet(
                 fields,
                 mergedLifecycle,
                 previousLocation != null ? previousLocation : other.previousLocation,
-                other.currentLocation != null ? other.currentLocation : currentLocation);
+                other.currentLocation != null ? other.currentLocation : currentLocation)
+                .withDetailTarget(detailTarget != null ? detailTarget : other.detailTarget);
     }
 
     public static List<ContentChangeSet> mergeAll(
