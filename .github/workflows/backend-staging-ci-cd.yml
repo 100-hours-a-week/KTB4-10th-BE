@@ -1,195 +1,140 @@
-# Staging CI-CD
-# dev Merge 이후 Staging 환경에 배포
-# CI 실패와 관계없이 Staging 배포는 진행, CI + 배포 모두 성공한 이미지만 main promotion 대상
+# dev -> CI -> GHCR -> GitOps. EKS deployment remains a manual Argo CD Sync.
 name: KGB Backend CI/CD (staging)
 
 on:
-  # dev Merge 이후 CI/CD 실행
   push:
-    branches:
-      - dev
+    branches: [dev]
 
-
-# GitHub Actions 권한
 permissions:
   contents: read
-  packages: write
 
-  # GitHub OIDC -> AWS IAM Role Assume에 필요
-  id-token: write
-
-
-# dev에 연속으로 Merge되면 이전 배포를 취소하고 최신 커밋만 배포
 concurrency:
   group: backend-cd-stag
-  cancel-in-progress: true
-
+  cancel-in-progress: false
 
 jobs:
-
-  # 1. dev Merge 이후 CI 검증
-  # 실패해도 Staging 배포는 차단 X, tree 태그(main promotion)만 차단
-  # ==================================================
   ci:
     name: CI
-
     runs-on: ubuntu-latest
-
     steps:
-
-      # Repository Checkout
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # JDK 설정
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-
-      # Gradle Wrapper 실행 권한
       - name: Grant Gradle Permission
         run: chmod +x gradlew
-
-      # Build / Compile / Test 검증
       - name: Gradle Build
         run: ./gradlew build
-
-      # Checkstyle
       - name: Checkstyle
         run: ./gradlew checkstyleMain
-
-      # SpotBugs
-      # Rank 5~20 제외
-      # Rank 1~4 발견 시 실패
       - name: SpotBugs
         run: ./gradlew spotbugsMain
 
-
-  # 2. Staging Image Build / Push 후 Backend Staging ECS 배포
-  # CI와 병렬 실행
-  # ==================================================
   backend-cd-stag:
-    name: CD (staging)
-
+    name: Build staging image
+    needs: ci
     runs-on: ubuntu-latest
-
-    # 생성한 Image URI를 tree 태그 Job으로 전달
+    permissions:
+      contents: read
+      packages: write
     outputs:
+      tag: ${{ steps.image.outputs.tag }}
       uri: ${{ steps.image.outputs.uri }}
-      tree_uri: ${{ steps.image.outputs.tree_uri }}
-
-    env:
-      AWS_REGION: ap-northeast-2
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ktb4-10-be
-      ECS_CLUSTER: kgb-staging-cluster
-      ECS_SERVICE: kgb-staging-backend
-      ECS_TASK_FAMILY: kgb-staging-backend
-      ECS_CONTAINER: backend
-
     steps:
-
-      # Merge 완료된 dev Checkout
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # --------------------------------
-      # Docker Image Build & Push
-      # --------------------------------
-
-      # GHCR Login
+      - uses: actions/checkout@v4
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Image Tag 생성
-      # stag-<sha>-<생성일> (예: stag-a81c29f-20260921)
-      - name: Generate Image Tag
+      - name: Generate image tag
         id: image
+        shell: bash
         run: |
-          TREE=$(git rev-parse HEAD^{tree} | cut -c1-12)
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          DATE=$(TZ="Asia/Seoul" date +%Y%m%d)
-          echo "tree_uri=${IMAGE_NAME}:tree-${TREE}" >> "$GITHUB_OUTPUT"
-          echo "uri=${IMAGE_NAME}:stag-${SHORT_SHA}-${DATE}" >> "$GITHUB_OUTPUT"
-
-      # Docker Image Build
-      - name: Build Docker Image
+          set -euo pipefail
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ktb4-10-be"
+          TAG="stag-${GITHUB_SHA:0:7}-$(TZ=Asia/Seoul date +%Y%m%d)"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "uri=${IMAGE_NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+      - name: Build and push
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
-          docker build -t "${{ steps.image.outputs.uri }}" .
+          set -euo pipefail
+          docker build --label "org.opencontainers.image.revision=${GITHUB_SHA}" -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
 
-      # GHCR Push
-      - name: Push Docker Image
-        run: |
-          docker push "${{ steps.image.outputs.uri }}"
-
-      # --------------------------------
-      # Deploy
-      # --------------------------------
-
-      # GitHub OIDC를 통해 AWS IAM Role Assume
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ECS_STAG_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      # 최신 Task Definition 다운로드
-      - name: Download Task Definition
-        run: |
-          aws ecs describe-task-definition \
-            --task-definition "${ECS_TASK_FAMILY}" \
-            --query taskDefinition > task-definition.json
-
-          echo "Base: $(jq -r '.taskDefinitionArn' task-definition.json)"
-
-      # 이미지 교체
-      - name: Render Task Definition
-        id: render
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: ${{ env.ECS_CONTAINER }}
-          image: ${{ steps.image.outputs.uri }}
-
-      # 새 리비전 등록 후 서비스 업데이트, 안정화까지 대기
-      # 실패 시 ECS Circuit Breaker가 이전 리비전으로 자동 롤백
-      - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.render.outputs.task-definition }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          service: ${{ env.ECS_SERVICE }}
-          wait-for-service-stability: true
-          wait-for-minutes: 10
-          wait-max-delay-seconds: 30   # 최대 30초 간격으로 상태 확인
-
-
-  # 3. CI + Staging 배포 모두 성공한 이미지에만 tree 태그 추가
-  # ==================================================
-  tag-verified:
-    name: Tag Verified Image
-
-    needs: [ci, backend-cd-stag]
-
+  update-gitops:
+    name: Update staging GitOps image tags
+    needs: backend-cd-stag
     runs-on: ubuntu-latest
-
     steps:
-
-      # GHCR Login
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Tag Verified Image
+      - name: Check GitOps credential
+        env:
+          GITOPS_TOKEN: ${{ secrets.KGB_GITOPS_TOKEN }}
         run: |
-          docker buildx imagetools create \
-            -t "${{ needs.backend-cd-stag.outputs.tree_uri }}" \
-            "${{ needs.backend-cd-stag.outputs.uri }}"
+          if [ -z "$GITOPS_TOKEN" ]; then
+            echo "::error::KGB_GITOPS_TOKEN is required (Cloud repository Contents: read/write)."
+            exit 1
+          fi
+      - name: Checkout backend scripts
+        uses: actions/checkout@v4
+        with:
+          path: backend
+      - name: Checkout GitOps repository
+        uses: actions/checkout@v4
+        with:
+          repository: 100-hours-a-week/KTB4-10th-Cloud
+          ref: main
+          token: ${{ secrets.KGB_GITOPS_TOKEN }}
+          path: gitops
+      - name: Update and push image tags
+        id: update
+        shell: bash
+        env:
+          IMAGE_TAG: ${{ needs.backend-cd-stag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git -C gitops config user.name 'github-actions[bot]'
+          git -C gitops config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3; do
+            # A newer dev merge must not be overwritten by a delayed older run.
+            git -C backend fetch origin dev
+            if [ "$(git -C backend rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+              echo "Newer dev commit exists; skipping this GitOps update."
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # Reapply only the three image tags on top of the latest Cloud main.
+            git -C gitops fetch origin main
+            git -C gitops checkout -B staging-image-update FETCH_HEAD
+            python3 backend/.github/scripts/update-staging-image.py gitops "$IMAGE_TAG"
+            git -C gitops add -- helm/auth/values.yaml helm/guidebook/values.yaml helm/scheduler/values.yaml
+            if git -C gitops diff --cached --quiet; then
+              echo "updated=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            git -C gitops commit -m "chore(staging): update backend image to ${IMAGE_TAG}" -m "Source: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+            if git -C gitops push origin HEAD:main; then
+              echo "updated=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Push failed (attempt ${attempt}/3); fetching the latest branch before retry."
+          done
+          echo '::error::Unable to update GitOps main. Check token permissions, branch rules and concurrent changes.'
+          exit 1
+      - name: Write delivery summary
+        env:
+          IMAGE_URI: ${{ needs.backend-cd-stag.outputs.uri }}
+          UPDATED: ${{ steps.update.outputs.updated }}
+        run: |
+          {
+            echo '### Staging image delivery'
+            echo "- Image: ${IMAGE_URI}"
+            echo "- GitOps changed: ${UPDATED}"
+            echo '- Target: Cloud main / helm/{auth,guidebook,scheduler}/values.yaml'
+            echo '- EKS deployment: pending manual Argo CD Sync and health verification.'
+            echo '- No verified tree tag is issued by this workflow.'
+          } >> "$GITHUB_STEP_SUMMARY"
