@@ -126,6 +126,11 @@ public class GenerationCallbackTransactionService {
         if (!activeAttempt(job, data.attempt())) {
             return CallbackHandlingResult.ignored(job.getStatus());
         }
+        if (isQueuedAttemptStart(job, data)) {
+            job.startQueuedAttempt(data.jobId(), LocalDateTime.now(clock));
+            events.publishEvent(new AttemptStarted(
+                    job.getId(), job.getAttemptCount(), deadline(job)));
+        }
         if (job.getAttemptStartedAt() == null) {
             throw new BusinessException(CommonErrorCode.RESOURCE_STATE_CONFLICT);
         }
@@ -199,6 +204,14 @@ public class GenerationCallbackTransactionService {
                 && job.getStatus().isActive();
     }
 
+    private boolean isQueuedAttemptStart(
+            GenerationJob job, GenerationCallbackEnvelope.Data data) {
+        return job.getStatus() == GenerationStatus.QUEUED
+                && job.getAttemptStartedAt() == null
+                && job.getAiJobId() == null
+                && data.status() != AiGenerationStatus.PENDING;
+    }
+
     private void bindAiJob(GenerationJob job, String aiJobId) {
         if (job.getAiJobId() == null) {
             job.registerAiJob(aiJobId, LocalDateTime.now(clock));
@@ -238,6 +251,9 @@ public class GenerationCallbackTransactionService {
 
     /** 실제 종료 콜백 또는 명확한 접수 실패만 슬롯을 반환한다. 타임아웃은 포함하지 않는다. */
     public record SubmissionFinished(String requestId) {
+    }
+
+    public record AttemptStarted(Long jobId, int attempt, Instant deadline) {
     }
 
     public record Prepared(

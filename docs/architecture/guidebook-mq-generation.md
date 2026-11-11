@@ -13,14 +13,15 @@ flowchart TD
     SNAPSHOT --> OUTBOX["DB Outbox / PUBLISH_PENDING"]
     OUTBOX --> PUBLISHER["발행기"]
     PUBLISHER --> MQ["RabbitMQ / ACK 후 QUEUED"]
-    MQ -. "후속 구현" .-> CONSUMER["AI Consumer"]
-    CONSUMER -. "실행 시작·타임아웃 연결 필요" .-> CALLBACK["BE 콜백"]
+    MQ --> CONSUMER["AI Consumer"]
+    CONSUMER --> CALLBACK["최초 PROCESSING 콜백으로 실행 시작"]
     CALLBACK --> DB["결과·일정 저장"]
     CALLBACK --> SSE["SSE → FE 진행·실패 안내"]
 ```
 
-점선은 미구현·미연결 경계다. 현재 MQ 작업은 실행 시작 시각이 없어 콜백이 409로 거절되며,
-Consumer 연동 전에는 위 흐름의 end-to-end 동작을 보장하지 않는다. 상세 실패 처리는 아래 표를 따른다.
+AI Consumer의 최초 `PROCESSING` 또는 종결 콜백은 `QUEUED` 작업의 실행 시작으로 처리한다.
+이때 `ai_job_id`, `attempt_started_at`을 함께 기록하고 커밋 후 제한 시간 타이머를 등록한다.
+상세 실패 처리는 아래 표를 따른다.
 
 ## 최초 생성과 재생성 입력
 
@@ -49,7 +50,7 @@ HTTP 작업처럼 원본 MQ 후보 스냅샷이 없는 작업은 MQ 재생성에
 | MQ broker 연결 실패/NACK/confirm timeout/unroutable | Outbox 대기와 원인 코드 저장, 2~60초 백오프 재발행 | 최대 횟수·대기 만료·최종 사용자 실패/복구 정책 미정 |
 | MQ 발행 입력 손상 | 즉시 FAILED, GENERATION_REQUEST_INVALID, retryable=false | 복구 불가능한 입력은 자동 발행에서 제외 |
 | MQ 발행 성공·Consumer 중단 | QUEUED, FE는 접수 대기 | Consumer 감지·소비 대기 만료·실행 복구 미구현 |
-| MQ 작업의 최초 callback | 현재 attempt_started_at이 없어 409 | 실행 시작 시각 설정, ai_job_id 결합, 타이머 등록·재시작 복구를 Consumer 연동과 함께 구현 |
+| MQ 작업의 최초 PROCESSING/종결 callback | 실행 시각·ai_job_id 기록 후 상태 반영, 커밋 후 타이머 등록 | Consumer lease/heartbeat와 소비 대기 만료는 후속 구현 |
 | Consumer 처리 실패·DLQ 도달 | Retry/DLQ 토폴로지 선언만 존재 | 소비 재시도 한도·DLQ 판정·BE FAILED 통지·수동 복구 미구현 |
 | BE 타임아웃 후 늦은 AI 완료 | 종료된 시도 callback 무시, 생성권 미차감 | 사후 결과 복구는 이 PR 범위 밖 |
 

@@ -321,6 +321,18 @@ public class GenerationJob {
         updatedAt = processedAt;
     }
 
+    /** MQ 소비자가 보낸 최초 처리 콜백으로 대기 중인 시도의 실행 시작을 확정합니다. */
+    public void startQueuedAttempt(String aiJobId, LocalDateTime startedAt) {
+        if (status != GenerationStatus.QUEUED || attemptStartedAt != null || this.aiJobId != null) {
+            throw new IllegalStateException("대기 중인 MQ 작업만 최초 콜백으로 시작할 수 있습니다.");
+        }
+        if (aiJobId == null || aiJobId.isBlank()) {
+            throw new IllegalArgumentException("AI 작업 ID는 비어 있을 수 없습니다.");
+        }
+        this.aiJobId = aiJobId;
+        markProcessing(Objects.requireNonNull(startedAt));
+    }
+
     public void complete(Long completedGuidebookId, LocalDateTime completedAt) {
         if (status == GenerationStatus.COMPLETED) {
             return;
