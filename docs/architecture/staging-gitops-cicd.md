@@ -30,9 +30,8 @@ BE 저장소 `100-hours-a-week/KTB4-10th-BE`의 Settings → Secrets and variabl
    - `environments/staging/auth.yaml` → `image.tag`
    - `environments/staging/guidebook.yaml` → `image.tag`
    - `environments/staging/scheduler.yaml` → `image.tag`
-   - 전환 중에는 기존 `helm/{auth,guidebook,scheduler}/values.yaml`의 태그도 함께 갱신한다.
-   - Cloud에 environments/staging이 아직 없으면 기존 chart 값만 갱신한다. BE 변경을 먼저 병합할 수 있다.
-   - 환경 디렉토리가 있는데 대상 파일이 빠졌으면 변경 전에 실패한다.
+   - 기존 `helm/*/values.yaml`은 공통 기본값이므로 변경하지 않는다.
+   - 대상 환경 파일이 빠졌으면 변경 전에 실패한다. 기존 경로로 되돌아가지 않는다.
    - `environments/production`은 변경하지 않는다.
 4. AI Worker·일반 환경변수·리소스·Secret·Ingress는 갱신하지 않는다.
 5. Auto Sync Application은 자동 반영되고 Manual Application은 직접 Sync한다. 이후 기동·기능을 검증한다.
@@ -71,12 +70,15 @@ GitHub concurrency는 모든 중간 커밋의 전달을 보장하지 않는다. 
 로컬에서 Actions 문법, 셸 문법, 태그 변경 스크립트의 실제 Helm 파일 처리·오류 시 무변경·멱등성을 확인한다.
 GHCR 업로드·Cloud 쓰기·Argo CD Sync는 GitHub Secret 등록 및 변경 병합 후 첫 실행으로 확인한다.
 
-## 환경 디렉토리 전환 순서
+## 공통 values 정리
 
-1. 이 BE 변경을 dev에 먼저 병합한다. Cloud에 환경 값이 없으면 기존 경로로 계속 동작한다.
-2. Cloud main에 environments/staging 값과 Argo CD valueFiles 참조를 추가한다.
-3. 라이브 Application에 참조 변경을 적용하고 기존 설정과 렌더링이 같은지 확인한다.
-4. 이후 스테이징 설정은 environments/staging에서 수정한다.
-5. 참조 전환 완료 후 legacy 차트 값과 이 스크립트의 legacy 미러 갱신을 함께 정리한다.
+Argo CD가 환경별 파일을 읽도록 전환을 완료했습니다. helm/*/values.yaml에는 공통 기본값만 둡니다.
+스테이징 CI는 environments/staging의 백엔드 이미지 태그 3개만 갱신합니다.
 
-운영 환경 값은 environments/production에 별도로 작성한다. 운영 CI/CD는 이번 변경 대상이 아니다.
+이번 정리의 적용 순서:
+1. 이 BE 변경(기존 chart values 미러 갱신 제거)을 dev에 먼저 병합합니다.
+2. Cloud main에 공통 values 정리를 반영합니다.
+3. 이전과 같은 환경 값으로 같은 리소스를 렌더링하는지 확인합니다.
+
+운영은 environments/production에 별도 값을 작성하며 이번 CI 변경의 쓰기 대상에서 제외합니다.
+운영 ECS CI/CD는 변경하지 않습니다.

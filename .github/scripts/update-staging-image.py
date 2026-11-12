@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Update staging image tags; keep legacy values compatible during migration."""
+"""Update only staging environment image tags, preserving values formatting."""
 import re
 import sys
 from pathlib import Path
@@ -10,11 +10,9 @@ def update(root: Path, tag: str) -> None:
         raise ValueError("Expected stag-<7-character SHA>-<YYYYMMDD>")
     changes = []
     charts = ("auth", "guidebook", "scheduler")
-    paths = [root / "helm" / chart / "values.yaml" for chart in charts]
     environment = root / "environments" / "staging"
-    if environment.exists():
-        # Require the complete environment before changing any files.
-        paths += [environment / f"{chart}.yaml" for chart in charts]
+    # Validate all environment files before writing; no legacy fallback.
+    paths = [environment / f"{chart}.yaml" for chart in charts]
     for path in paths:
         text = path.read_text()
         images = list(re.finditer(r"^image:\s*\n((?:[ \t]+[^\n]*\n|\n)*)", text, re.M))
