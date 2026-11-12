@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Change only backend image tags, preserving Helm values formatting."""
+"""Update staging image tags; keep legacy values compatible during migration."""
 import re
 import sys
 from pathlib import Path
@@ -9,8 +9,13 @@ def update(root: Path, tag: str) -> None:
     if not re.fullmatch(r"stag-[0-9a-f]{7}-[0-9]{8}", tag):
         raise ValueError("Expected stag-<7-character SHA>-<YYYYMMDD>")
     changes = []
-    for chart in ("auth", "guidebook", "scheduler"):
-        path = root / "helm" / chart / "values.yaml"
+    charts = ("auth", "guidebook", "scheduler")
+    paths = [root / "helm" / chart / "values.yaml" for chart in charts]
+    environment = root / "environments" / "staging"
+    if environment.exists():
+        # Require the complete environment before changing any files.
+        paths += [environment / f"{chart}.yaml" for chart in charts]
+    for path in paths:
         text = path.read_text()
         images = list(re.finditer(r"^image:\s*\n((?:[ \t]+[^\n]*\n|\n)*)", text, re.M))
         if len(images) != 1:

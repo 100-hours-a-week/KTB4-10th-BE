@@ -1,4 +1,4 @@
-# dev -> CI -> GHCR -> GitOps. EKS deployment remains a manual Argo CD Sync.
+# dev -> CI -> GHCR -> staging GitOps values. Argo CD applies its configured sync policy.
 name: KGB Backend CI/CD (staging)
 
 on:
@@ -112,6 +112,9 @@ jobs:
             git -C gitops checkout -B staging-image-update FETCH_HEAD
             python3 backend/.github/scripts/update-staging-image.py gitops "$IMAGE_TAG"
             git -C gitops add -- helm/auth/values.yaml helm/guidebook/values.yaml helm/scheduler/values.yaml
+            if [ -d gitops/environments/staging ]; then
+              git -C gitops add -- environments/staging/auth.yaml environments/staging/guidebook.yaml environments/staging/scheduler.yaml
+            fi
             if git -C gitops diff --cached --quiet; then
               echo "updated=false" >> "$GITHUB_OUTPUT"
               exit 0
@@ -134,7 +137,7 @@ jobs:
             echo '### Staging image delivery'
             echo "- Image: ${IMAGE_URI}"
             echo "- GitOps changed: ${UPDATED}"
-            echo '- Target: Cloud main / helm/{auth,guidebook,scheduler}/values.yaml'
-            echo '- EKS deployment: pending manual Argo CD Sync and health verification.'
+            echo '- Target: Cloud main / environments/staging/{auth,guidebook,scheduler}.yaml (legacy chart values mirrored during migration)'
+            echo '- EKS deployment: follows each Argo CD Application sync policy; runtime health must be verified separately.'
             echo '- No verified tree tag is issued by this workflow.'
           } >> "$GITHUB_STEP_SUMMARY"
