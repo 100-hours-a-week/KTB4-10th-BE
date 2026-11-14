@@ -39,7 +39,7 @@ scripts/load-test/
 환경변수 예시를 복사합니다.
 
 ```bash
-cp .env.loadtest.example .env.loadtest
+test -f .env.loadtest || cp .env.loadtest.example .env.loadtest
 ```
 
 `.env.loadtest`는 Git에 포함되지 않습니다. 개발 DB나 운영 DB 접속 정보를 입력하지 않습니다. Compose 내부 백엔드는 Compose가 생성한 로컬 MySQL만 사용합니다.
