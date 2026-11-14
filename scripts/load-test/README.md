@@ -39,7 +39,7 @@ scripts/load-test/
 환경변수 예시를 복사합니다.
 
 ```bash
-cp .env.loadtest.example .env.loadtest
+test -f .env.loadtest || cp .env.loadtest.example .env.loadtest
 ```
 
 `.env.loadtest`는 Git에 포함되지 않습니다. 개발 DB나 운영 DB 접속 정보를 입력하지 않습니다. Compose 내부 백엔드는 Compose가 생성한 로컬 MySQL만 사용합니다.
@@ -386,6 +386,75 @@ docker compose \
 - `http_req_duration` p95 threshold
 - VU마다 서로 다른 fixture 세션 사용
 - 테스트 목적과 입력 데이터 조건을 설명하는 주석
+
+### 지도 검색 병목 측정 (Issue #345)
+
+`search-contents.js`는 `GET /api/v1/contents`의 `LOCATE` 제목 검색, 필터 JOIN, 목록·COUNT,
+깊은 OFFSET과 지도 일반 조회 혼합 부하를 분리해 측정합니다. 실행 도구는 전용 MySQL에서
+결과가 많은 한 글자 검색어, 최근 콘텐츠 제목, 콘텐츠가 가장 많은 광역 지역을 자동으로 찾아
+같은 데이터 상태에서 반복할 수 있게 합니다.
+
+먼저 전체 환경을 기동하고 자동 선정된 입력을 확인합니다.
+
+```bash
+cp .env.loadtest.example .env.loadtest
+
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  up -d --build --wait
+
+./scripts/load-test/run-content-search.sh discover
+```
+
+검색 입력은 필요하면 명령 실행 전 `SEARCH_COMMON_QUERY`, `SEARCH_RARE_QUERY`,
+`SEARCH_NO_RESULT_QUERY`, `SEARCH_REGION_CODE`, `SEARCH_MONTH`, `SEARCH_DEEP_PAGE`로
+재정의할 수 있습니다. 실제 데이터가 적재되지 않았다면 테스트하지 않고 먼저 동일한 관광 데이터
+baseline을 복원합니다.
+
+스모크와 입력 방어를 확인한 뒤 한 번에 한 시나리오만 실행합니다.
+
+```bash
+./scripts/load-test/run-content-search.sh smoke
+./scripts/load-test/run-content-search.sh run validation 1 15s
+
+./scripts/load-test/run-content-search.sh run baseline 10 1m
+./scripts/load-test/run-content-search.sh run baseline 30 1m
+./scripts/load-test/run-content-search.sh run baseline 50 1m
+
+./scripts/load-test/run-content-search.sh run filter 10 1m
+./scripts/load-test/run-content-search.sh run deep 10 1m
+./scripts/load-test/run-content-search.sh run mixed 10 1m
+```
+
+- `baseline`: 결과가 많은·적은·없는 검색어의 목록과 COUNT 비용 비교
+- `filter`: `ALL`, `PLACE`, `EVENT`, 지역과 월 AND 조합 비교
+- `deep`: 같은 검색어의 첫 페이지와 깊은 OFFSET 페이지 비교
+- `mixed`: 검색 70%, 지도 일반 조회 30%로 상호 영향 확인
+- `validation`: 10자 초과·검색어 누락·잘못된 월·지역 요청이 400인지 확인
+
+대표 목록과 COUNT의 실제 실행 계획은 같은 검색 입력으로 별도 저장합니다.
+
+```bash
+./scripts/load-test/run-content-search.sh explain \
+  | tee results/load-test/content-search-explain.txt
+```
+
+Grafana는 각 실행 구간만 선택하고 `testid=content-search-<mode>-vu<N>` 및
+`search_case` 태그로 평균·p95·p99, RPS와 실패율을 비교합니다. 함께 확인할 값은 HikariCP
+active·pending·acquire, MySQL CPU, JVM CPU·Heap·GC이며, mixed에서는 `/api/v1/map/contents`
+p95가 검색 부하와 함께 악화되는지도 확인합니다. 10 → 30 → 50 VU 중 오류율, Hikari pending,
+DB CPU 또는 p95·p99가 비선형으로 증가하는 최초 구간을 병목 후보로 기록합니다.
+
+테스트가 끝나면 컨테이너를 내립니다. 관광 데이터가 담긴 MySQL volume은 다음 비교를 위해
+삭제하지 않습니다.
+
+```bash
+docker compose \
+  --env-file .env.loadtest \
+  -f compose.loadtest.yml \
+  down
+```
 
 ## 9. Grafana에서 확인할 지표
 
