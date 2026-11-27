@@ -1,109 +1,112 @@
 # V3 API 명세서
 
-> 기준일: 2026-09-06 · MySQL 스키마 연동 V3 확정 API 명세
-> 기준: [요구사항정의서](./요구사항정의서.md), [테이블정의서](./테이블정의서.md), [ERDCloud SQL](./ERDCloud_schema.sql)
-> 구현 이유·요구사항 추적: [API 설계 근거](./API%20설계%20근거.md) · 학습: [REST API 예시 및 Best Practice](./REST%20API%20예시%20및%20Best%20Practice.md)
+> 2026-11-24 · 백엔드 `dev` (`277bd55`) · MySQL 8 / Flyway V20
+> [요구사항 최종본](./요구사항정의서-최종.md) · [테이블 정의서 최종본](./테이블정의서-최종.md) · [ERD](./KGB-ERD-최종.png)
 
 ## 1. 공통 규약
 
 | 항목 | 규약 |
 |---|---|
-| 기준 | 2026-09-06 · 요구사항정의서/테이블정의서/ERDCloud SQL과 동기화한 V3 구현 계약. 명시적 MVP 제외 항목은 별도 표기. |
+| 기준 | 현재 백엔드의 라우트와 DTO 기준. 엔드포인트 목록에서 제공 범위를 확인한다. |
 | API Prefix | 업무 API는 /api/v1. URL 칼럼에서는 prefix 생략. Actuator 운영 엔드포인트는 prefix 적용 제외. |
 | 문서 분리 | 본 명세서는 요청·응답 계약. 요구사항 연결·설계 이유·트레이드오프는 API 설계 근거.md에서 API ID로 조회. |
 | 인증 | 별도 공개/PG 표시 외 서버 세션 쿠키 필수. 회원 ID는 유효한 서버 세션에서 결정하며 Body로 받지 않음. 서비스 액세스·리프레시 토큰은 사용하지 않는다. 소유권·탈퇴 여부를 매 요청 검증. POST/PUT/PATCH/DELETE는 XSRF-TOKEN 쿠키와 X-XSRF-TOKEN 헤더가 모두 필요하다. |
 | JSON | Content-Type: application/json. 성공 {message,data}, 오류 {message,data:null,error:{code,details,trace_id}}. message/code는 안정 키이며 화면 문구는 프론트 매핑. |
-| 응답 예외 | OAuth 시작·콜백은 302 리다이렉트이며 JSON Body 없음. 204는 Body 없음. PDF 성공은 application/pdf 바이너리, 실패는 JSON. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
-| ID / 숫자 | BIGINT 식별자는 JSON/Path에서 양의 10진 문자열로 통일. gb/job은 ≤50자 문자열. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
+| 응답 예외 | OAuth 시작·콜백은 302 리다이렉트이며 JSON Body 없음. 204는 Body 없음. 예시 객체는 필드 형태 설명이며 실제 계정/상품/전체 일정이 아님. |
+| ID / 숫자 | 식별자의 JSON 타입은 각 API 예시를 따른다. 가이드북·생성 작업 ID는 양의 정수다. page/count/people/score는 JSON 정수. 금액은 최소 화폐단위 정수이며 JS 안전 정수 범위 내 제한 필요. 랭킹 소수는 문자열. |
 | 날짜·시각 | 사건 시각 ISO8601 오프셋 포함, 예시 UTC Z. DB DATETIME(6)에 UTC 저장. 여행 날짜 YYYY-MM-DD, 일정 시각 HH:mm:ss. 일간 경계 등 정책은 DEC-03. |
 | 좌표 | API latitude/longitude는 WGS84 도 단위 Number. DB location POINT SRID4326과 변환. X/Y 순서를 임의로 위도·경도라고 가정하지 않음. |
 | 문자열·URL | 필드별 최대 길이 검증. DB 외부 URL은 ≤2048자, 초과값 자르지 않음. nullable 명시 외 null 불가. 예시 URL은 실제 연동 주소 아님. |
 | 커서 목록 | cursor 선택 불투명 문자열, size 기본20·1~100. API별 안정 복합 정렬 키 사용. 응답 items,next_cursor,has_more. 알림은 커서가 아니라 번호 페이지 사용. |
-| 번호 페이지 | 알림 page 기본1,size 기본4·1~20. 콘텐츠 page 기본1,size 기본5·최대20. 랭킹 page 기본1,size 기본20·최대100. items,page,size,total_items,total_pages. 빈 목록은 200,items=[]. |
-| 멱등 키 | 필수 대상 GDE-02/GDE-09/PAY-04만. String≤100자. 키를 회원·요청 내용과 비교. 다른 내용이면409. 기존 작업/주문 반환 시 부작용 반복 금지. |
+| 번호 페이지 | 알림 page 기본1,size 기본4·1~20. 콘텐츠 page 기본1,size 기본20·최대20. 랭킹 page 기본1,size 기본20·최대100. items,page,size,total_items,total_pages. 빈 목록은 200,items=[]. |
+| 멱등 키 | 제공 중인 필수 대상은 GDE-02와 GDE-09. String≤100자. 키를 회원·요청 내용과 비교. 다른 내용이면409. 기존 작업/주문 반환 시 부작용 반복 금지. |
 | 공통 오류 | 인증401·소유권403·삭제/미존재404·형식400·상태충돌409·업무조건422·호출제한429·내부500. 실제 한도와 Retry-After는 운영 합의 필요. |
-| 제공 범위 | 회원5개 도메인 구조 유지. 제외된 ID는 재사용하지 않음. PG 2개 API와 각 미확정 항목은 구현 전 동결 필요. 실행 서버/실 DB 테스트는 이번 검증 범위 밖. |
+| 제공 범위 | 미제공 항목은 기존 설계로 보관한다. 제외된 ID는 재사용하지 않는다. |
 
-### 1.1 V1 적용 규칙 (2026-09-15)
+### 1.1 현재 적용 규칙
 
-- 미지원 Body/Query 필드는 400 COMMON_VALIDATION_ERROR. V1 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
+- 요청에는 각 API에 명시된 Body와 Query 필드를 사용한다. 미제공 경로는 등록하지 않는다. 인증 필터를 통과한 미등록 경로는 404다.
 - ONBOARDING 접근은 MEM-03/04/06/07/08/09/10/11과 공개 API로 제한, 나머지는 403 RESOURCE_FORBIDDEN. ACTIVE도 소유·보관 관계 검증 필수다.
 - 취향은 [V1 코드표](./V1%20취향%20Enum%20코드표.md). TourAPI 기반 THEME 1~3, 선택한 각 THEME의 DETAIL 1~3, 스타일은 선택 사항이며 `SCHEDULE_PACE`·`TRANSPORTATION` 그룹별 최대 1개. THEME:DETAIL은 1:N이며 중복/부모/코드/개수/배타 그룹 오류는 422 PREFERENCE_INVALID.
 - 가입월 3회 지급 후 매월 1일 잔액이 3개 미만일 때만 3개까지 보충한다. 3개 이상과 쿠폰분은 유지하며 탈퇴 시 소멸·재가입 시 3회를 지급한다. 현재 생성권 조회 예시 숫자는 지급 정책값이 아니다.
 - GDE-03은 DB 상태만 조회하고 진행 단계는 생성 전용 SSE로 제공한다. 상태 조회는 작업 유형(job_type)을 제공하며, 최초 생성·재생성 모두 조건 수정 화면 복원을 위해 원본 요청 조건(initial_request, user_request 포함)을 제공한다. 복원 가능한 스냅샷이 없으면 initial_request는 null이다. 재생성은 submitted_feedback으로 접수한 피드백도 제공하고 최초 생성의 submitted_feedback은 null이다. FAILED의 error에는 실패 코드·메시지와 수동 재시도 가능 여부인 retryable을 제공한다.
 - 세부 지역 입력·preference_tags는 받지 않는다. AI 결과의 대표 지역명 title 계약과 HTML은 V1-09/15 실연동 관문이다.
-- 공유 등 V3 응답에서도 preference_tags 계약은 제거한다. V1 재생성/공유는 제공하지 않는다.
-- GDE-05/07/13/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
+- 가이드북 재생성은 GDE-09에서 제공하며, 공유 API는 미제공 상태다.
+- GDE-05/15의 활성 보관 관계 부재는 404 RESOURCE_NOT_FOUND. 해당 표의 403은 회원 상태 제한이며 타인 가이드북 존재를 드러내지 않는다.
 - 공통 cursor: 가이드북은 여행 시작일 ASC·가이드북 생성일 DESC·보관 관계 id DESC, 관심 장소와 원장은 created_at·id의 DESC 키를 사용한다. size 기본20·1~100이며 관심 장소는 1~20으로 제한한다. 마지막 반환 행 기반 size+1 조회를 사용하고 다음이 없으면 next_cursor=null/has_more=false다.
 - 커서는 base64url payload+HMAC-SHA256 서명, 최대2048자·24시간. 버전/endpoint/세션 회원/정렬/필터/마지막 키/첫 상한 키/발급시각을 결속한다. 잘못됨·타인·만료는 400. DATETIME(6) 정밀도 유지, 키 행 삭제 후에도 값 비교로 진행한다. 데이터 변경 사이 완전한 snapshot은 보장하지 않는다.
 - 상세 session·cursor·TX·탈퇴 규약과 아직 미정인 AI 계약은 [개발 전 결정 목록](./개발%20전%20확정%20필수%20내용.md)을 따른다. CSRF 전달 계약은 API-MEM-16을 따른다.
 
 ### 읽는 방법
 
-각 API의 Request Body와 응답 예시는 이 문서의 V3 구현 계약을 따른다. 엑셀은 다음 일괄 갱신 전까지 이 문서와 다를 수 있다. PG·PDF 한도 등 명시적으로 보류한 항목은 현재 구현 범위에서 제외하며 예시를 최종 정책으로 간주하지 않는다. URL·HTTP 동작·검증 조건은 명세에 남기고, 테이블 선택 이유·FR/BR 연결은 별도 근거 문서로 분리한다.
+업무 API URL 앞에는 `/api/v1`을 붙인다. 내부 콜백과 Actuator는 표의 경로를 그대로 사용한다. **제공**은 현재 등록된 계약이며, **미제공** 항목의 본문과 응답 예시는 기존 설계 기록이다.
 
 ## 2. 엔드포인트 목록
 
-| API ID | 기능 | Method | URL | V1 제공 | V1 허용 입력 |
+| API ID | 기능 | Method | URL | 현재 제공 | 입력 · 비고 |
 |---|---|---|---|---|---|
-| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 예 | V1 Path provider=`kakao`; Query/Body 없음; 카카오 인가 요청에 `prompt=login` 적용 |
-| API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 예 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
-| API-MEM-16 | CSRF 토큰 계약 조회 | GET | `/auth/csrf` | 예 | Query/Body 없음; 공개 |
-| API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 예 | Body 없음 |
-| API-MEM-04 | 내 회원 조회 | GET | `/members/me` | 예 | Query/Body 없음; 응답 email 포함 |
-| API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` | 예 | Body 없음 |
-| API-MEM-07 | 취향 옵션 조회 | GET | `/preference-options` | 예 | Query/Body 없음; ko 고정 |
-| API-MEM-08 | 기본 취향 조회 | GET | `/members/me/preferences` | 예 | Query/Body 없음 |
-| API-MEM-09 | 기본 취향 전체 저장 | PUT | `/members/me/preferences` | 예 | Body selections[{preference_type,preference_code}] |
-| API-MEM-10 | 설정 조회 | GET | `/members/me/settings` | 예 | Query/Body 없음; language_code=ko 응답 |
-| API-MEM-11 | 설정 부분 수정 | PATCH | `/members/me/settings` | 예 | Body push_enabled만(Boolean) |
-| API-MEM-12 | 정책 안내 목록 | GET | `/policies` | 예 | Query/Body 없음 |
-| API-MEM-13 | 정책 안내 상세 | GET | `/policies/{policy_type}` | 예 | Path policy_type; Body 없음 |
-| API-NOT-01 | 미읽은 알림 목록 | GET | `/notifications` | 예 | Query page,size; Body 없음 |
-| API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` | 예 | Path notification_id; Body 없음 |
-| API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 예 | Body 없음 |
-| API-NOT-04 | 실시간 인앱 알림 연결 | GET | `/notifications/stream` | 예 | SSE; Body 없음 |
-| API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 아니오 | V2; Body 없음 |
-| API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 아니오 | V2; endpoint, expiration_time, keys |
-| API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 아니오 | V2; Path subscription_id |
-| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 예 | Query page,size,q,category(EVENT\|PLACE\|ALL),region_code,month |
-| API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 예 | Query south,west,north,east,zoom,filter,guidebook_id. 가이드북 필터는 항상 최소 markers 반환 |
-| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 예 | Query south,west,north,east,filter,guidebook_id,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
-| API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 예 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
-| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 예 | V2 회원별 관심 장소 커서 조회 |
-| API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 예 | Path content_id; Body 없음 |
-| API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 예 | Query cursor,size |
-| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 예 | Idempotency-Key; Body province,city,start_date,end_date,companion,people_count,user_request(선택) |
-| API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` | 예 | Path job_id; Body 없음 |
-| API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` | 예 | Path guidebook_id; Body 없음 |
-| API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 아니오 | API-GDE-05의 itinerary 재사용; 독립 소비처 확정 후 분리 검토 |
-| API-GDE-09 | 가이드북 재생성 접수 | POST | `/guidebooks/{guidebook_id}/regenerations` | 아니오 | V3 |
-| API-GDE-10 | 공유 링크 발급 | POST | `/guidebooks/{guidebook_id}/shares` | 아니오 | V3 |
-| API-GDE-11 | 공유 미리보기 | GET | `/shares/{share_token}` | 아니오 | V3 |
-| API-GDE-12 | 공유 가이드북 가져오기 | POST | `/shares/{share_token}/imports` | 아니오 | V3 |
-| API-GDE-13 | PDF 다운로드 | POST | `/guidebooks/{guidebook_id}/exports` | 예 | Path guidebook_id; Body format=PDF |
-| API-GDE-15 | HTML 뷰어 데이터 | GET | `/guidebooks/{guidebook_id}/viewer` | 예 | Path guidebook_id; Body 없음 |
-| API-GDE-16 | 가이드북 삭제 | DELETE | `/guidebooks/{guidebook_id}` | 예 | Path guidebook_id; Body 없음 |
-| API-RNK-01 | 평가 대상·진행 목록 | GET | `/guidebook-evaluations` | 아니오 | V3 |
-| API-RNK-02 | 평가 시작·재개 | PUT | `/guidebooks/{guidebook_id}/evaluation` | 아니오 | V3 |
-| API-RNK-03 | 평가 대상 조회 | GET | `/guidebook-evaluations/{evaluation_id}` | 아니오 | V3 |
-| API-RNK-05 | 평가 다음에 하기 | PATCH | `/guidebook-evaluations/{evaluation_id}` | 아니오 | V3 |
-| API-RNK-06 | 평가 최종 제출 | POST | `/guidebook-evaluations/{evaluation_id}/submit` | 아니오 | V3 |
-| API-RNK-07 | 랭킹 조회 | GET | `/rankings` | 아니오 | V3 |
-| API-PAY-01 | 생성권 지갑 조회 | GET | `/credits/wallet` | 예 | Query/Body 없음 |
-| API-PAY-02 | 생성권 원장 조회 | GET | `/credits/transactions` | 예 | Query cursor,size,type(FREE_GRANT/CONSUME/REVOKE/ADJUSTMENT); 구매분 미지원 |
-| API-PAY-03 | 생성권 상품 목록 | GET | `/credit-products` | 아니오 | V2 |
-| API-PAY-04 | 주문 생성 | POST | `/orders` | 아니오 | V2 |
-| API-PAY-05 | 주문 조회 | GET | `/orders/{merchant_order_id}` | 아니오 | V2 |
-| API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 아니오 | V2 |
-| API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 아니오 | V2 |
-| API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 예 | V1 운영 쿠폰 |
-| API-OPS-01 | 로드밸런서 헬스체크 | GET | `:8081/actuator/health` | 예 | Query/Body 없음; 내부 관리 포트 |
-| API-OPS-02 | Prometheus 메트릭 수집 | GET | `:8081/actuator/prometheus` | 예 | Query/Body 없음; 내부 관리 포트 |
-| API-OPS-03 | Kubernetes liveness Probe | GET | `:8081/actuator/health/liveness` | 예 | 환경별 활성화; 내부 관리 포트 |
-| API-OPS-04 | Kubernetes readiness Probe | GET | `:8081/actuator/health/readiness` | 예 | 환경별 활성화; 내부 관리 포트 |
+| API-MEM-01 | 소셜 로그인 시작 | GET | `/auth/oauth/authorize/{provider}` | 제공 | V1 Path provider=`kakao`; Query/Body 없음; 카카오 인가 요청에 `prompt=login` 적용 |
+| API-MEM-15 | 소셜 로그인 콜백·가입 | GET | `/auth/oauth/callback/{provider}` | 제공 | V1 Path provider=`kakao`; Query code/state 또는 error/state |
+| API-MEM-17 | OAuth 실패 응답 | GET | `/auth/oauth/error` | 제공 | Query code |
+| API-MEM-16 | CSRF 토큰 계약 조회 | GET | `/auth/csrf` | 제공 | Query/Body 없음; 공개 |
+| API-MEM-03 | 로그아웃 | POST | `/auth/logout` | 제공 | Body 없음 |
+| API-MEM-04 | 내 회원 조회 | GET | `/members/me` | 제공 | Query/Body 없음; 응답 email 포함 |
+| API-MEM-06 | 회원 탈퇴 | DELETE | `/members/me` | 제공 | Body 없음 |
+| API-MEM-07 | 취향 옵션 조회 | GET | `/preference-options` | 제공 | Query/Body 없음; ko 고정 |
+| API-MEM-08 | 기본 취향 조회 | GET | `/members/me/preferences` | 제공 | Query/Body 없음 |
+| API-MEM-09 | 기본 취향 전체 저장 | PUT | `/members/me/preferences` | 제공 | Body selections[{preference_type,preference_code}] |
+| API-MEM-10 | 설정 조회 | GET | `/members/me/settings` | 제공 | Query/Body 없음; language_code=ko 응답 |
+| API-MEM-11 | 설정 부분 수정 | PATCH | `/members/me/settings` | 제공 | Body push_enabled만(Boolean) |
+| API-MEM-12 | 정책 안내 목록 | GET | `/policies` | 제공 | Query/Body 없음 |
+| API-MEM-13 | 정책 안내 상세 | GET | `/policies/{policy_type}` | 제공 | Path policy_type; Body 없음 |
+| API-NOT-01 | 미읽은 알림 목록 | GET | `/notifications` | 제공 | Query page,size; Body 없음 |
+| API-NOT-02 | 알림 개별 삭제(읽기) | DELETE | `/notifications/{notification_id}` | 제공 | Path notification_id; Body 없음 |
+| API-NOT-03 | 알림 전체 삭제 | DELETE | `/notifications` | 제공 | Body 없음 |
+| API-NOT-04 | 실시간 인앱 알림 연결 | GET | `/notifications/stream` | 제공 | SSE; Body 없음 |
+| API-NOT-05 | VAPID 공개키 조회 | GET | `/push/vapid-public-key` | 제공 | 공개키 설정 필요, Body 없음 |
+| API-NOT-06 | 현재 브라우저 Push 구독 등록·갱신 | PUT | `/members/me/push-subscriptions` | 제공 | Body endpoint, expiration_time, keys |
+| API-NOT-07 | 현재 브라우저 Push 구독 해제 | DELETE | `/members/me/push-subscriptions/{subscription_id}` | 제공 | Path subscription_id |
+| API-CON-01 | 관광 콘텐츠 검색 | GET | `/contents` | 제공 | Query page,size,q,category(EVENT\|PLACE\|ALL),region_code,month |
+| API-CON-02 | 관광 콘텐츠 상세 | GET | `/contents/{content_id}` | 제공 | Path content_id; Body 없음 |
+| API-CON-03 | 지도 마커 조회 | GET | `/map/markers` | 제공 | Query south,west,north,east,zoom,filter,guidebook_id. 가이드북 필터는 항상 최소 markers 반환 |
+| API-CON-03-1 | 지도 바텀시트 목록 | GET | `/map/contents` | 제공 | Query south,west,north,east,filter,guidebook_id,cursor. 화면 중심 거리순 10개 커서 페이지 반환 |
+| API-CON-03-2 | 일자별 신규 행사 목록 | GET | `/events/new` | 제공 | Query date,page,size. TourAPI 원본 생성일 기준 신규 행사 반환 |
+| API-CON-04 | 관심 장소 목록 | GET | `/members/me/favorites` | 제공 | 회원별 관심 장소 커서 조회 |
+| API-CON-05 | 관심 장소 등록 | PUT | `/members/me/favorites/{content_id}` | 제공 | Path content_id; Body 없음 |
+| API-CON-06 | 관심 장소 해제 | DELETE | `/members/me/favorites/{content_id}` | 제공 | Path content_id; Body 없음 |
+| API-GDE-01 | 내 가이드북 목록 | GET | `/guidebooks` | 제공 | Query cursor,size |
+| API-GDE-02 | 최초 가이드북 생성 접수 | POST | `/guidebook-generations` | 제공 | Idempotency-Key; Body province,city,start_date,end_date,companion,people_count,user_request(선택) |
+| API-GDE-03 | 생성 상태 조회 | GET | `/guidebook-generations/{job_id}` | 제공 | Path job_id; Body 없음 |
+| API-GDE-04 | 생성 작업 수동 재시도 | POST | `/guidebook-generations/{job_id}/retry` | 제공 | Path job_id, Body 없음 |
+| API-GDE-SSE | 생성 진행 구독 | GET | `/guidebook-generations/{job_id}/stream` | 제공 | SSE, 본인 작업 |
+| API-AI-01 | AI 생성 이벤트 콜백 | POST | `/internal/v1/ai/generation-events` | 제공 | 내부 경로, AI Bearer 인증 |
+| API-GDE-05 | 가이드북 상세 | GET | `/guidebooks/{guidebook_id}` | 제공 | Path guidebook_id; Body 없음 |
+| API-GDE-07 | 일정 조회 | GET | `/guidebooks/{guidebook_id}/itinerary` | 미제공 | 설계 보관 |
+| API-GDE-09 | 가이드북 재생성 접수 | POST | `/guidebooks/{guidebook_id}/regenerations` | 제공 | Idempotency-Key, Path guidebook_id, Body feedback |
+| API-GDE-10 | 공유 링크 발급 | POST | `/guidebooks/{guidebook_id}/shares` | 미제공 | 설계 보관 |
+| API-GDE-11 | 공유 미리보기 | GET | `/shares/{share_token}` | 미제공 | 설계 보관 |
+| API-GDE-12 | 공유 가이드북 가져오기 | POST | `/shares/{share_token}/imports` | 미제공 | 설계 보관 |
+| API-GDE-13 | PDF 다운로드 | POST | `/guidebooks/{guidebook_id}/exports` | 미제공 | 설계 보관 |
+| API-GDE-15 | HTML 뷰어 데이터 | GET | `/guidebooks/{guidebook_id}/viewer` | 제공 | Path guidebook_id; Body 없음 |
+| API-GDE-16 | 가이드북 삭제 | DELETE | `/guidebooks/{guidebook_id}` | 제공 | Path guidebook_id; Body 없음 |
+| API-RNK-01 | 평가 대상·진행 목록 | GET | `/guidebook-evaluations` | 미제공 | 설계 보관 |
+| API-RNK-02 | 평가 시작·재개 | PUT | `/guidebooks/{guidebook_id}/evaluation` | 미제공 | 설계 보관 |
+| API-RNK-03 | 평가 대상 조회 | GET | `/guidebook-evaluations/{evaluation_id}` | 미제공 | 설계 보관 |
+| API-RNK-05 | 평가 다음에 하기 | PATCH | `/guidebook-evaluations/{evaluation_id}` | 미제공 | 설계 보관 |
+| API-RNK-06 | 평가 최종 제출 | POST | `/guidebook-evaluations/{evaluation_id}/submit` | 미제공 | 설계 보관 |
+| API-RNK-07 | 랭킹 조회 | GET | `/rankings` | 미제공 | 설계 보관 |
+| API-PAY-01 | 생성권 지갑 조회 | GET | `/credits/wallet` | 제공 | Query/Body 없음 |
+| API-PAY-02 | 생성권 원장 조회 | GET | `/credits/transactions` | 미제공 | 설계 보관 |
+| API-PAY-03 | 생성권 상품 목록 | GET | `/credit-products` | 미제공 | 설계 보관 |
+| API-PAY-04 | 주문 생성 | POST | `/orders` | 미제공 | 설계 보관 |
+| API-PAY-05 | 주문 조회 | GET | `/orders/{merchant_order_id}` | 미제공 | 설계 보관 |
+| API-PAY-06 | 결제 시도 생성 [PG 미확정] | POST | `/orders/{merchant_order_id}/payment-attempts` | 미제공 | 설계 보관 |
+| API-PAY-07 | PG 웹훅 [PG 미확정] | POST | `/payments/webhooks/{provider}` | 미제공 | 설계 보관 |
+| API-PAY-09 | 쿠폰 등록 | POST | `/credits/coupons/redeem` | 제공 | 운영 쿠폰 등록 |
+| API-OPS-01 | 로드밸런서 헬스체크 | GET | `:8081/actuator/health` | 제공 | Query/Body 없음; 내부 관리 포트 |
+| API-OPS-02 | Prometheus 메트릭 수집 | GET | `:8081/actuator/prometheus` | 제공 | Query/Body 없음; 내부 관리 포트 |
+| API-OPS-03 | Kubernetes liveness Probe | GET | `:8081/actuator/health/liveness` | 제공 | 환경별 활성화; 내부 관리 포트 |
+| API-OPS-04 | Kubernetes readiness Probe | GET | `:8081/actuator/health/readiness` | 제공 | 환경별 활성화; 내부 관리 포트 |
 
 ### 2.1 운영 헬스체크
 
@@ -151,7 +154,7 @@
 |---|---|---|
 | GET | `/auth/oauth/authorize/{provider}` | 공개. 브라우저 최상위 페이지 이동으로 호출 |
 
-- Path provider: 필수 소문자 String, `kakao` 또는 `google`. V1은 `kakao`, V2 이상(V3 포함)은 두 공급자 지원. DB/Java Enum은 `KAKAO`, `GOOGLE`을 유지한다.
+- Path provider: 소문자 `kakao`. 지원하지 않는 공급자로 로그인 시작을 요청하면 400을 반환한다.
 - 출시 단계 V1/V2/V3와 API Prefix `/api/v1`은 별개다. 위 URL에도 공통 prefix를 적용한다.
 - Query/Body 없음. 프론트는 code, state, verifier, redirect_uri를 만들거나 Body로 전달하지 않는다.
 - 서버가 공급자별 client_id·client_secret·redirect_uri를 설정으로 관리한다. 임의 return URL을 받지 않는다.
@@ -170,7 +173,7 @@
 |---|---|---|
 | GET | `/auth/oauth/callback/{provider}` | 공개 경로지만 기존 로그인 시도·브라우저 결속 검증 필수 |
 
-- Path provider: 소문자 `kakao` 또는 `google`. 서버가 저장한 로그인 시도의 provider와 일치해야 하며 내부에서는 `KAKAO`, `GOOGLE` Enum으로 변환한다.
+- Path provider: 소문자 `kakao`. 서버가 저장한 로그인 시도의 provider와 일치해야 한다.
 - 성공 Query: `code`, `state` 필수 String. 실패 Query: 공급자의 `error`, 가능하면 `state`. Body 없음.
 - 공급자 콘솔에는 prefix를 포함한 실제 백엔드 콜백 주소를 정확히 등록한다. V1 카카오는 로컬 `http://localhost:8080/api/v1/auth/oauth/callback/kakao`, 배포 `https://kguidebook.site/api/v1/auth/oauth/callback/kakao`다. Spring의 redirectUri, 인가 요청과 토큰 요청에도 환경별 동일 값을 사용한다.
 - state·브라우저·provider·유효기간을 검증하고 시도를 원자적으로 소비한 뒤, 저장한 verifier로 코드를 교환한다. client_secret과 verifier는 백엔드에서만 공급자에 전달한다.
@@ -221,6 +224,17 @@
 **구현 검증 체크리스트(설계 재결정 아님):** 선택한 Spring 버전에 맞춰 confidential client에도 S256을 명시 적용하고, KAKAO·GOOGLE 실제 요청에서 challenge/verifier 및 틀린 verifier 거절을 확인한다. state 누락·변조·만료·재사용, 브라우저/공급자 교체, 다중 탭·동시 콜백, 사용자 취소, 공급자 장애, 저장 실패, 로그인 후 세션 폐기·CSRF 거절을 테스트한다. 공급자/라이브러리 호환성 실패 시 배포를 막고 원인을 해결하며 plain 또는 PKCE 미사용으로 조용히 낮추지 않는다. 문서 확정은 연동 테스트 완료를 뜻하지 않는다.
 
 참고: [Spring OAuth 로그인](https://docs.spring.io/spring-security/reference/servlet/oauth2/login/advanced.html), [Spring PKCE 설정](https://docs.spring.io/spring-security/reference/servlet/oauth2/client/authorization-grants.html), [PKCE RFC 7636](https://www.rfc-editor.org/rfc/rfc7636.html), [OAuth 보안 RFC 9700](https://www.rfc-editor.org/rfc/rfc9700.html), [Spring CSRF](https://docs.spring.io/spring-security/reference/servlet/exploits/csrf.html).
+
+### API-MEM-17 OAuth 실패 응답
+
+`GET /auth/oauth/error?code={code}`는 프론트 복귀 URL이 구성되지 않은 환경에서 OAuth 실패를 공통 오류 형식으로 표시한다. 세션 쿠키는 필요하지 않다.
+
+| HTTP | code |
+|---|---|
+| 400 | OAUTH_ACCESS_DENIED, OAUTH_INVALID_REQUEST |
+| 401 | OAUTH_AUTHENTICATION_FAILED |
+| 502 | OAUTH_PROVIDER_UNAVAILABLE |
+| 500 | OAUTH_INTERNAL_ERROR |
 
 ### API-MEM-16 CSRF 토큰 계약 조회
 
@@ -833,11 +847,11 @@ Body 없음.
 ```
 
 - FE Service Worker는 payload를 받아 사용자에게 보이는 알림을 표시하고, 클릭 시 `reference_type`과 `reference_id`로 화면 이동 경로를 결정한다. 세부 경로와 강조 효과는 FE 라우팅 계약에서 관리한다.
-- Push 서비스의 2xx는 전송 접수 성공으로 기록한다. 404·410은 구독을 `INVALID`로 바꾸며, 429·재시도 가능한 5xx·timeout은 전용 제한 큐에서 최대 3회 백오프 재시도한다.
+- Push 서비스의 2xx는 전송 접수 성공으로 기록한다. 404·410은 구독을 `INVALID`로 바꾸며, 429·재시도 가능한 5xx·timeout은 MySQL Outbox에 다음 시도 시간을 기록한다. 기본값은 최초 전송을 포함해 총 3회 시도다.
 - Web Push 접수 성공은 사용자의 표시·클릭을 보장하는 delivery receipt가 아니다.
 - VAPID 키 쌍은 애플리케이션 환경별로 한 번 생성해 모든 인스턴스가 공유한다. 공개키는 API로 제공하지만 개인키는 배포 Secret으로만 주입한다.
 - endpoint는 capability URL이므로 endpoint·p256dh·auth·VAPID 개인키·payload 원문을 로그에 남기지 않는다.
-- V2는 단일 인스턴스 메모리에서 알림 ID 중복 작업 등록을 제한한다. 재시작·다중 인스턴스를 넘는 중복 방지와 영속 재처리는 보장하지 않는다.
+- 전송 작업은 MySQL `web_push_outbox`에 저장한다. 워커가 DB에서 작업을 선점하며 중단된 처리 건은 선점 시간이 만료된 뒤 다시 처리할 수 있다.
 
 **서버 설정 환경 변수**
 
@@ -1248,7 +1262,7 @@ Body 없음.
 
 ### API-GDE-02 최초 가이드북 생성 접수
 
-> 구현 상태: 요청 검증, 취향 스냅샷, 생성권 확인, 커밋 후 AI 접수와 외부 job_id 매핑을 구현했다. AI 후보는 province/city가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 EV를 id 오름차순 최대 100개로 조립한다. 행사는 상세 시작일·종료일이 모두 존재하고 요청 여행 기간과 양끝 포함으로 겹칠 때만 포함하며, 장소는 행사 상세 유무와 무관하게 조회한다. overview는 연속 공백 정규화·strip한 전체 원문이며 없으면 빈 문자열이다. local/prod 모두 HTTP로 AI에 접수한다. AI 이벤트와 시도별 15분 타이머로 처리하며 AI 폴링·내부 Fake·전달 모드 선택은 제거했다. 사용자 상태 GET은 DB만 조회한다. 완료 결과·일정·보관 관계·차감·원장·작업 완료는 같은 트랜잭션, 완료 알림은 커밋 후 별도 트랜잭션이다. BE 시작 시 진행 중 시도의 남은 타이머를 DB 기준으로 복구하되 큐·슬롯·자동 접수 복구와 MQ는 제외한다. [AI 콜백 연동](./AI-콜백-연동.md)을 따른다.
+> 구현 상태: 요청 검증, 취향 스냅샷, 생성권 확인, 커밋 후 AI 접수와 외부 job_id 매핑을 구현했다. AI 후보는 province/city가 일치하는 활성·미삭제 콘텐츠 중 BR-CON-10의 허용 장소 중분류와 행사 EV를 id 오름차순 최대 100개로 조립한다. 행사는 상세 시작일·종료일이 모두 존재하고 요청 여행 기간과 양끝 포함으로 겹칠 때만 포함하며, 장소는 행사 상세 유무와 무관하게 조회한다. overview는 연속 공백 정규화·strip한 전체 원문이며 없으면 빈 문자열이다. 기본 설정은 HTTP 접수다. MQ Outbox를 활성화한 배포에서는 커밋된 요청을 RabbitMQ로 발행한다. AI 이벤트와 시도별 15분 타이머로 처리한다. 사용자 상태 GET은 DB만 조회한다. 완료 결과·일정·보관 관계·차감·원장·작업 완료는 같은 트랜잭션, 완료 알림은 커밋 후 별도 트랜잭션이다. BE 시작 시 실행 중인 시도의 남은 타이머를 DB 기준으로 복구한다. [AI 콜백 연동](./AI-콜백-연동.md)을 따른다.
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1305,7 +1319,7 @@ Body 없음.
 | 422 | PREFERENCE_INVALID | 대분류 개수·코드·상하위 관계 위반 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
-**현재 구현:** 단일 BE 메모리 큐에 적재 후 202를 반환한다. AI 503과 명확한 `UPSTREAM_4XX`는 접수 거절로 즉시 실패 처리하고 자동 재접수하지 않는다. connection/read timeout과 통신 오류처럼 접수 여부가 불확실한 예외만 콜백 또는 전달 시작부터 15분 제한까지 기다린다. BE 큐 대기에는 시간 제한이 없다. 실패한 자신의 작업 중 error.retryable=true인 작업은 기존 retry API로 최대 3회 수동 재시도한다. 연결·응답 기본값은 3초·10초다. 시작 시 `attempt_started_at`이 있는 진행 중 작업의 남은 타이머를 복구하지만 큐·슬롯 복구와 콜백 유실 시 슬롯 복구는 제외한다.
+**기본 HTTP 모드:** 단일 BE 메모리 큐에 적재 후 202를 반환한다. AI 503과 명확한 `UPSTREAM_4XX`는 접수 거절로 즉시 실패 처리하고 자동 재접수하지 않는다. connection/read timeout과 통신 오류처럼 접수 여부가 불확실한 예외만 콜백 또는 전달 시작부터 15분 제한까지 기다린다. BE 큐 대기에는 시간 제한이 없다. 실패한 자신의 작업 중 error.retryable=true인 작업은 기존 retry API로 최대 3회 수동 재시도한다. 연결·응답 기본값은 3초·10초다. 시작 시 `attempt_started_at`이 있는 진행 중 작업의 남은 타이머를 복구하지만 큐·슬롯 복구와 콜백 유실 시 슬롯 복구는 제외한다.
 
 ### 생성 콜백·진행 SSE
 
@@ -1314,7 +1328,7 @@ Body 없음.
 | POST | `/internal/v1/ai/generation-events` | AI Bearer 토큰, 사용자 CSRF 제외 | DB 처리 후 204 |
 | GET | `/api/v1/guidebook-generations/{jobId}/stream` | ACTIVE 서비스 세션·본인 작업 | 200 text/event-stream |
 
-두 경로는 모드 선택 없이 제공하며 AI_CALLBACK_TOKEN은 필수다. 콜백 본문은 기존 message/data/job_id/status/result/error에
+두 경로는 HTTP와 MQ 모드에서 모두 사용하며 콜백에는 AI_CALLBACK_TOKEN이 필요하다. 콜백 본문은 기존 message/data/job_id/status/result/error에
 event_id/request_id/sequence/progress를 추가한 형태다. SSE 이벤트명은 generation-status다.
 진행 step은 queued/checking/arranging/writing/rendering을 허용한다. 현재 AI 최초 생성은
 checking → arranging → writing 순서로 전송하고 재생성은 checking을 생략한다. 독립 전송으로
@@ -1323,11 +1337,11 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 
 생성·재생성·재시도 접수 응답, 작업 조회와 SSE의 공개 status는 내부 발행 대기(PUBLISH_PENDING)와
 실행 대기(QUEUED)를 모두 PENDING으로 반환한다. 나머지 상태는 그대로 반환한다.
-생성·재생성·재시도 POST는 작업 저장 커밋·자원 정리 후 단일 BE 무제한 메모리 큐에 적재하고
+기본 HTTP 모드에서는 생성·재생성·재시도 POST가 작업 저장 커밋·자원 정리 후 단일 BE 메모리 큐에 적재하고
 202를 반환한다. 기본 3개 슬롯의 워커가 트랜잭션 밖에서 AI에 접수하며 AI ID는 별도
 트랜잭션으로 저장한다. 실제 완료·실패 콜백 커밋 또는 명확한 접수 실패 뒤 다음 작업을 보낸다.
 202는 BE 접수이며 AI 접수 성공을 뜻하지 않는다. 멱등 재요청은 다시 적재하지 않는다.
-응답 스키마는 유지하지만 큐·슬롯 영속 복구와 다중 BE 전역 제한은 제공하지 않는다.
+HTTP 큐·슬롯은 메모리에서 관리한다. MQ 모드는 DB 발행 대기(`PUBLISH_PENDING`)를 기록하며 발행 확인 후 `QUEUED`로 전환한다. 첫 AI 진행 또는 종결 콜백에서 실행 시작을 기록한다. 두 모드의 접수 응답 형식은 동일하다.
 15분 메모리 타이머, 중복·이전 회차 처리, Redis fan-out, 재연결 규칙과 예시는
 [AI 콜백 연동](./AI-콜백-연동.md)을 따른다. 기존 상태 GET은 아래와 같이 유지한다.
 
@@ -1383,6 +1397,19 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 | 403 | RESOURCE_FORBIDDEN | 타인 소유 데이터 또는 허용되지 않은 상태 |
 | 404 | RESOURCE_NOT_FOUND | 없거나 삭제된 리소스 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
+
+### API-GDE-04 생성 작업 수동 재시도
+
+`POST /guidebook-generations/{job_id}/retry`는 본인의 실패한 작업을 같은 작업 ID로 다시 접수한다. ACTIVE 세션과 CSRF 헤더가 필요하다. 본문과 멱등 키 없이 호출한다.
+
+작업 상태가 `FAILED`이고 `error.retryable=true`일 때 최초 접수 이후 최대 3회 재시도할 수 있다. 성공 응답은 HTTP 202 및 `message=guidebook_retry_accepted`이며, `data`는 GDE-02와 같은 형식이다.
+
+| HTTP | error.code | 조건 |
+|---|---|---|
+| 403 | RESOURCE_FORBIDDEN | 다른 회원의 작업 |
+| 404 | RESOURCE_NOT_FOUND | 존재하지 않는 작업 |
+| 409 | RETRY_INVALID_STATE | 실패 상태가 아니거나 재시도가 불가능한 오류 |
+| 409 | RETRY_LIMIT_EXCEEDED | 재시도 3회 소진 |
 
 ### API-GDE-05 가이드북 상세
 
@@ -1444,6 +1471,8 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 **구현 전 확인:** DEC-01 대체: preference_tags 저장·표시를 제거한다. DB 현재 취향은 변경되지만 접수된 작업의 request_payload와 기존 가이드북 결과는 바뀌지 않음.
 
 ### API-GDE-07 일정 조회
+
+> 설계 보관 · 현재 미제공
 
 > 현재 V1에서는 API-GDE-05가 전체 `itinerary`를 반환하므로 별도 엔드포인트를 구현하지 않는다. 지도·공유·평가에서 독립 일정 조회가 필요해질 때 분리를 검토한다.
 
@@ -1539,6 +1568,8 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 
 ### API-GDE-10 공유 링크 발급
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/guidebooks/{guidebook_id}/shares` | 세션 쿠키 필수 |
@@ -1574,6 +1605,8 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 **구현 전 확인:** DEC-06/12 확정: 발급 후 24시간 만료하며 불변 가이드북을 참조한다. 발급 회원의 보관 관계가 삭제되면 링크 사용을 차단한다.
 
 ### API-GDE-11 공유 미리보기
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1613,6 +1646,8 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 **구현 전 확인:** DEC-06 확정: 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 공개하고 상세 일정·HTML·개인화 입력은 제외.
 
 ### API-GDE-12 공유 가이드북 가져오기
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1661,6 +1696,8 @@ DB 상태와 SSE 최신 진행률을 되돌리지 않는다.
 **구현 전 확인:** DEC-07 확정: 가이드북·일정은 복사하지 않는다. `member_guidebooks(member_id, guidebook_id)` UNIQUE로 중복을 막고 삭제된 관계는 복구한다.
 
 ### API-GDE-13 PDF 다운로드
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1762,6 +1799,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-RNK-01 평가 대상·진행 목록
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/guidebook-evaluations` | 세션 쿠키 필수 |
@@ -1794,6 +1833,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-RNK-02 평가 시작·재개
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1843,6 +1884,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-RNK-03 평가 대상 조회
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/guidebook-evaluations/{evaluation_id}` | 세션 쿠키 필수 |
@@ -1883,6 +1926,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-RNK-05 평가 다음에 하기
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | PATCH | `/guidebook-evaluations/{evaluation_id}` | 세션 쿠키 필수 |
@@ -1922,6 +1967,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 409 | RESOURCE_STATE_CONFLICT | 동시에 수정됐거나 현재 상태에서 처리 불가 |
 
 ### API-RNK-06 평가 최종 제출
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -1975,6 +2022,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-RNK-07 랭킹 조회
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/rankings` | 세션 쿠키 필수 |
@@ -2027,8 +2076,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | GET | `/credits/wallet` | 세션 쿠키 필수 |
 
 - credit_balance: Integer ≥0
-- active_job_id: Long|null, PENDING/PROCESSING 작업
-- can_generate: Boolean, 잔액≥1·활성 작업 없음·유효 취향·활성 회원
+- active_job_id: Long|null. 내부 상태가 PENDING, PUBLISH_PENDING, QUEUED, PROCESSING인 작업의 ID.
+- can_generate: Boolean. 잔액이 1개 이상이고 활성 작업이 없으면 true. 이 경로는 ACTIVE 회원에게 열려 있으며, 기본 취향 유효성은 실제 생성 요청에서 확인한다.
 - 예약 수량·지갑 version 응답 없음
 
 **Request Body**
@@ -2039,7 +2088,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ```json
 {
-  "message": "credit_wallet_get_success",
+  "message": "credit_wallet_success",
   "data": {
     "credit_balance": 6,
     "active_job_id": null,
@@ -2051,6 +2100,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 오류 HTTP | error.code | 조건 |
 |---|---|---|
 | 401 | AUTH_SESSION_REQUIRED | 세션 쿠키 누락·유효하지 않음 |
+| 403 | RESOURCE_FORBIDDEN | ACTIVE 회원이 아님 |
+| 404 | WALLET_NOT_FOUND | 회원의 생성권 지갑을 찾을 수 없음 |
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-PAY-09 쿠폰 등록
@@ -2086,6 +2137,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-PAY-02 생성권 원장 조회
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/credits/transactions` | 세션 쿠키 필수 |
@@ -2120,6 +2173,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-PAY-03 생성권 상품 목록
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/credit-products` | 세션 쿠키 필수 |
@@ -2150,6 +2205,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | 500 | INTERNAL_SERVER_ERROR | 내부 오류; 원본 예외·개인정보는 응답에서 제외 |
 
 ### API-PAY-04 주문 생성
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -2212,6 +2269,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-PAY-05 주문 조회
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | GET | `/orders/{merchant_order_id}` | 세션 쿠키 필수 |
@@ -2252,6 +2311,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 
 ### API-PAY-06 결제 시도 생성 [PG 미확정]
 
+> 설계 보관 · 현재 미제공
+
 | Method | URL | 인증 |
 |---|---|---|
 | POST | `/orders/{merchant_order_id}/payment-attempts` | 세션 쿠키 필수 |
@@ -2289,6 +2350,8 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 **구현 전 확인:** API-DEC-10: PG 선정 후 Body/checkout·승인 확인 API·키/실패 복구 확정. 현재 구현 보류.
 
 ### API-PAY-07 PG 웹훅 [PG 미확정]
+
+> 설계 보관 · 현재 미제공
 
 | Method | URL | 인증 |
 |---|---|---|
@@ -2370,7 +2433,6 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | API-MEM-14 | POST /members/me/consents | 별도 서비스 약관 동의 저장은 현재 범위 제외. 안내는 정적 콘텐츠. |
 | API-NOT-04 | GET /push-preferences | 푸시 설정 조회는 MEM-10 회원 설정 조회로 통합. |
 | API-NOT-05 | PATCH /push-preferences | 푸시 설정 변경은 MEM-11 회원 설정 부분 수정으로 통합. |
-| API-GDE-04 | POST /guidebook-generations/{job_id}/retry | 기술 재시도는 서버 내부 동일 작업 처리. 사용자 재생성은 GDE-09. |
 | API-GDE-06 | PATCH /guidebooks/{guidebook_id} | 제목·일정을 직접 수정하는 기능은 제외. GDE-09는 자연어 feedback으로 본문·일정만 재생성하며 제목을 유지. |
 | API-GDE-08 | PUT /guidebooks/{guidebook_id}/itinerary | 사용자의 일정 직접 편집 기능이 없어 제외. 변경은 GDE-09 자연어 피드백 재생성으로만 처리. |
 | API-GDE-14 | GET /guidebook-exports/{export_id} | MVP는 동기 PDF이므로 작업 조회 API 미제공. |
@@ -2388,7 +2450,7 @@ V1에서는 회원별 보관 관계 삭제만 처리한다. 공유 링크, 생�
 | DEC-06 | GDE-10/11 | 확정: 발급 후 24시간 만료, 미리보기도 로그인 필수. 공유자 닉네임·제목·여행 기간·장소 수만 공개하고 상세 일정·HTML·개인화 입력은 제외. |
 | DEC-07 | GDE-12 | 확정: 가이드북을 복제하지 않고 `member_guidebooks` 관계를 생성하며 삭제된 관계는 복구. |
 | DEC-08 | NOT-01 | 확정: 초기 4개 노출, 회원별 미읽음 최대 20개 보관. 새 알림이 추가될 때 20개를 초과하면 가장 오래된 행부터 삭제. |
-| DEC-09 | GDE-02/03/09 | FAILED 작업의 수동 재시도 최대 3회(`attempt_count=0~3`). callback은 15분 메모리 타이머와 늦은/이전 회차 콜백 차단을 적용하고, BE 시작 시 진행 중 시도의 남은 타이머를 복구한다. 자동 재접수·큐 및 슬롯 복구·MQ는 제외한다. |
+| DEC-09 | GDE-02/03/04/09 | FAILED 작업의 수동 재시도 최대 3회(`attempt_count=0~3`). callback은 15분 메모리 타이머와 늦은/이전 회차 콜백 차단을 적용하고, BE 시작 시 진행 중 시도의 남은 타이머를 복구한다. HTTP 큐·슬롯은 메모리에서 관리한다. MQ를 켠 경우 DB Outbox로 발행을 관리한다. |
 | DEC-10 | PAY-08 제외 | 환불 정책·저장·API는 MVP 이후. |
 | DEC-11 | MEM-06 | 확정: 탈퇴 시 세션 즉시 폐기·`deleted_at` 소프트 삭제, 서비스 데이터 30일 보관 후 삭제·비식별화. 재가입은 기존 회원을 복구하지 않고 새 회원 생성. 결제·원장은 법정 보존 예외. |
 | DEC-12 | GDE-09~16/RNK | 확정: 최초 생성 결과 화면에서만 같은 가이드북을 재생성. 공유는 재생성 흐름 종료 후 제공. |
