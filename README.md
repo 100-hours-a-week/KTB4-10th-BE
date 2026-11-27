@@ -1,111 +1,97 @@
-# KGB Backend
+# KGB | Korea Guide Book
 
-KGB 서비스의 백엔드 애플리케이션입니다.
+**취향에서 시작해, 한 권의 여행으로.**
 
-## 가이드북 생성 API 구현 상태
+KGB는 국내 관광지와 행사를 찾아보고, 여행 일정과 취향에 맞는 **AI 여행 가이드북**을 만드는 서비스입니다. 여행을 준비할 때는 지도에서 가고 싶은 곳을 찾고, 여행 중에는 가이드북에서 일정과 장소 정보를 확인할 수 있습니다.
 
-생성·재생성은 작업 저장 후 AI에 HTTP 접수하고 진행·결과 콜백을 반영합니다. 생성 전용 SSE와 DB 상태 GET을 제공하며, BE→AI 폴링과 내부 Fake는 제거했습니다. 15분 메모리 타이머·재시작 복구 한계는 아래 콜백 계약을 따릅니다. 실제 FE 생성 SSE 구독과 운영 장애·부하 검증은 별도입니다.
+카카오테크 부트캠프 4기 10팀 · **8월–11월**
 
-## 개발 환경
+[서비스 소개](https://kguidebook.site/about) · [서비스 시작하기](https://kguidebook.site) · [팀원](#팀원) · [저장소 활용](#저장소-활용) · [로컬 실행](#로컬에서-실행하기)
 
-- Java 21
-- Spring Boot 3.5.16
-- Gradle 8.14.3 Wrapper / Kotlin DSL
-- MySQL 8.4 LTS / InnoDB / utf8mb4
+[![KGB 서비스 소개 랜딩 페이지. 서비스 소개 문구와 지도·가이드북 화면](./docs/images/kgb-landing.webp)](https://kguidebook.site/about)
 
-## 로컬 데이터베이스 설정
+## 주요 기능
 
-각 개발자는 자신의 MySQL 8.4 LTS 데이터베이스를 사용합니다. `.env.example`과 같은 이름의 환경변수를 설정하되 실제 비밀번호는 Git에 커밋하지 않습니다.
+| 지도 탐색 | AI 가이드북 생성 |
+| --- | --- |
+| ![지도에서 주변 장소를 탐색하고 상세를 확인하는 화면](./docs/images/kgb-map.webp) | ![여행 조건을 입력하고 가이드북 생성 단계를 확인하는 화면](./docs/images/kgb-guidebook.webp) |
+| 관광지와 행사를 지도에서 확인하고 관심 장소를 저장합니다. | 여행지·기간·동행·취향에 맞는 날짜별 일정을 만듭니다. |
+
+| 행사 정보 | 즐겨찾기와 알림 |
+| --- | --- |
+| ![행사 목록과 개별 행사 상세 화면](./docs/images/kgb-events.webp) | ![즐겨찾기 목록과 알림 설정 화면](./docs/images/kgb-saved.webp) |
+| 지역과 월로 행사를 찾고, 기간·장소·이용 정보를 확인합니다. | 저장한 장소와 행사를 모아 보고 알림을 설정합니다. |
+
+### 생성된 가이드북
+
+![종로 역사와 전통 여행과 강서 공원 힐링여행 가이드북 표지](./docs/images/kgb-guidebook-examples.webp)
+
+## 팀원
+
+| AI | 풀스택 | 클라우드·인프라 |
+| --- | --- | --- |
+| [Sian](https://github.com/sian056) | [Justin](https://github.com/dwkim0512) | [Ayden](https://github.com/taejun-J) |
+| [Orbit](https://github.com/KIMDONGWOOK12) | [Jun](https://github.com/Yonduss) | [Mia](https://github.com/sim16065) |
+
+## 저장소 활용
+
+이 저장소에는 KGB 백엔드 API가 있습니다. 화면까지 띄우려면 프런트엔드를, 가이드북 생성까지 테스트하려면 AI 서버를 함께 실행합니다. 배포 구성을 살펴보려면 인프라 저장소를 참고하세요.
+
+| 저장소 | 역할 |
+| --- | --- |
+| [백엔드](https://github.com/100-hours-a-week/KTB4-10th-BE) | Spring Boot API, 카카오 로그인, 관광 데이터·가이드북 생성 관리 |
+| [프런트엔드](https://github.com/100-hours-a-week/KTB4-10th-FE) | React·Vite 기반 지도, 가이드북, 알림 화면 |
+| [AI 서버](https://github.com/100-hours-a-week/KTB4-10th-AI) | 여행 일정·가이드북 HTML 생성, 진행·결과 콜백 |
+| [인프라](https://github.com/100-hours-a-week/KTB4-10th-Cloud) | 배포 환경과 GitOps 구성 |
+
+## 로컬에서 실행하기
+
+**준비물**은 Java 21, Node.js 24, MySQL 8.4와 클라이언트, Docker Compose입니다. 백엔드와 프런트엔드 저장소를 각각 받아 두세요.
+
+### 1. 백엔드와 관광 데이터
+
+빈 MySQL 스키마 `kgb_local`과 그 스키마에 권한이 있는 계정을 준비합니다. 백엔드에서 [`.env.example`](./.env.example)을 `.env`로 복사하고 `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `AI_CALLBACK_TOKEN`을 설정합니다. 로컬 체험에서는 `TOUR_API_SCHEDULER_ENABLED=false`로 둡니다.
 
 ```bash
-export DB_URL="jdbc:mysql://localhost:3306/kgb_local"
-export DB_USERNAME="kgb"
-export DB_PASSWORD="로컬 비밀번호"
-```
-
-Spring Boot는 프로젝트 루트의 `.env`를 자동으로 읽지 않으므로 IntelliJ 실행 구성 또는 셸 환경변수로 전달합니다.
-
-## 실행
-
-```bash
+docker compose -f compose.redis.yml up -d
+set -a
+source ./.env
+set +a
 SPRING_PROFILES_ACTIVE=local ./gradlew bootRun
 ```
 
-### 로컬 AI 서버 연결
-
-local과 prod 모두 HTTP로 AI에 접수하고 진행·결과는 콜백으로 받습니다.
-BE 내부 Fake 클라이언트, AI 상태 조회 및 백그라운드 폴링은 제거했습니다.
-로컬 생성 실험은 별도 AI 컨테이너를 `LLM_MODE=fake`로 실행합니다.
-
-- 로컬 HTTP 기본 주소: `http://localhost:8000`, `AI_SERVER_BASE_URL`로 변경
-- 접수 HTTP 연결/응답 제한: `AI_SERVER_CONNECT_TIMEOUT=3s`, `AI_SERVER_READ_TIMEOUT=10s`
-- AI의 `FAKE_LLM_DELAY_SEC`는 계산 지연이며 접수 응답 타임아웃과 별개
-- BE도 컨테이너라면 `localhost` 대신 공유 Docker 네트워크의 AI 주소 등을 사용
-- AI에는 BE에 접근 가능한 `BE_CALLBACK_BASE_URL`과 BE와 동일한 `AI_CALLBACK_TOKEN` 주입
-- 기존 polling/Fake로 접수한 미종료 작업의 자동 인계·복구는 제공하지 않음
-
-기본 헬스 체크는 내부 관리 포트 `8081`의 `GET /actuator/health`에서 확인할 수 있습니다.
-EKS liveness·readiness Probe를 사용할 환경은
-`MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`를 주입하고 같은 관리 포트의
-`GET /actuator/health/liveness`, `GET /actuator/health/readiness`를 사용합니다.
-세 경로는 서비스 세션 없이 접근하지만 관리 포트는 공용 라우팅에 노출하지 않습니다.
-
-- JPA는 스키마를 자동 변경하지 않고 `ddl-auto=validate`로 Flyway 결과만 검증합니다.
-- Flyway는 `src/main/resources/db/migration/V1__init_v1_schema.sql`부터 V1 스키마를 관리합니다. 한 번 적용된 migration은 수정하지 않고 후속 변경을 새 migration으로 추가합니다.
-- MySQL 8.4의 정확한 패치 버전은 로컬·CI·운영에서 동일하게 맞춥니다.
-
-## AI 콜백 설정
-
-콜백은 유일한 처리 경로입니다. local과 prod 모두 다음 실행 환경을 구성합니다.
-
-```dotenv
-AI_SERVER_BASE_URL=http://localhost:8000
-AI_CALLBACK_TOKEN=AI와-BE에-동일하게-주입할-랜덤-비밀값
-AI_GENERATION_TIMEOUT=15m
-```
-
-토큰은 필수이며 비어 있으면 기동을 거절합니다. 실제 실행 환경에만 주입하고 커밋하지
-않습니다. 상태 GET은 DB만 읽고 AI를 조회하지 않습니다. 진행·종료 SSE, Redis 설정, 15분 메모리
-타이머와 재시작 한계는 [AI 콜백 연동](./docs/AI-콜백-연동.md)을 확인하세요.
-다중 인스턴스에서는 `AI_GENERATION_REDIS_ENABLED=true`와 같은 채널을 사용합니다.
-`AI_CLIENT_MODE`와 `AI_GENERATION_DELIVERY_MODE`는 제거했으며 더 이상 사용하지 않습니다.
-
-## 관측성
-
-- Prometheus 수집 엔드포인트: `GET http://<backend-host>:8081/actuator/prometheus`
-- 제공 범위: CPU·메모리, JVM Heap·GC·Thread, HTTP 요청 수·지연·상태, HikariCP Active·Idle·Pending·Max
-- 메트릭에는 `application=kgb` 공통 태그가 포함됩니다.
-- Actuator는 업무 API 포트 `8080`과 분리된 관리 포트 `8081`에서 제공됩니다.
-- `/actuator/prometheus`는 Prometheus scraper가 서비스 세션 없이 접근하며, 운영에서는 관리 포트를 공용 라우팅에 연결하지 않고 보안 그룹이나 프록시로 접근 범위를 제한합니다.
-- 백엔드는 메트릭 엔드포인트까지만 제공합니다. Prometheus 서버, Grafana, 수집 주기와 경보 임계값은 인프라에서 구성합니다.
-- 별도 로그 파일은 생성하지 않습니다. 애플리케이션 로그는 콘솔로 출력되어 Docker stdout/stderr에서 수집합니다.
-- 예기치 않은 예외와 5xx 업무 예외는 trace ID, HTTP method·URI, 오류 코드, 예외·root cause 타입과 stack trace를 남깁니다. 요청 본문과 인증 비밀값은 기록하지 않습니다.
-
-## 브라우저 CSRF·CORS 전제
-
-- 운영은 브라우저가 `https://kguidebook.site`에 접속하고 CloudFront가 같은 호스트의
-  `/api/*` 요청을 백엔드로 전달하는 구성을 전제로 합니다.
-- 이 구성에서는 FE가 host-only `XSRF-TOKEN` 쿠키를 읽어 상태 변경 요청의
-  `X-XSRF-TOKEN` 헤더로 전달합니다. `KGB_SESSION`은 계속 HttpOnly입니다.
-- 로컬에서 FE와 BE 포트가 다르면 FE origin을 `CORS_ALLOWED_ORIGINS`에 등록하고 두 서버
-  모두 `localhost`를 사용합니다. `localhost`와 `127.0.0.1`을 섞으면 쿠키 호스트가 달라집니다.
-- FE와 BE를 실제로 서로 다른 호스트에 배포하면 FE JavaScript는 백엔드의 host-only
-  쿠키를 읽을 수 없습니다. 이 경우 현재 계약을 그대로 사용하지 말고 동일 호스트 프록시
-  또는 CSRF 토큰 응답 방식 중 하나를 보안 검토 후 확정해야 합니다.
-- 배포 전 실제 브라우저에서 CSRF 조회 → 쿠키 확인 → preflight → 상태 변경 요청 순서를
-  검증합니다.
-
-## 검증
+백엔드는 [8080](http://localhost:8080), 헬스 체크는 [8081의 `/actuator/health`](http://localhost:8081/actuator/health)입니다. Flyway가 테이블을 만든 뒤 백엔드를 종료하고, 아래 명령으로 덤프를 복원한 다음 다시 실행합니다.
 
 ```bash
-./gradlew test
-./gradlew checkstyleMain
-./gradlew spotbugsMain
-./gradlew build
+./scripts/database/restore-tourism-data.sh
 ```
 
-- Checkstyle은 Google Java Style 기반 위반을 `build/reports/checkstyle/`에 기록하지만 Task를 실패시키지 않습니다.
-- SpotBugs 4.9.8은 Rank 1~4 문제를 검사하며 발견 시 Task를 실패시킵니다. HTML 리포트는 `build/reports/spotbugs/main.html`에서 확인할 수 있습니다.
-- V1에서는 main Source Set만 정적 분석하며 `checkstyleTest`, `spotbugsTest`는 비활성화합니다.
+덤프에 지역·관광 콘텐츠·행사 데이터가 들어 있어 **TourAPI 키 없이** 초기 데이터를 채울 수 있습니다. [초기 데이터 적재 안내](./docs/TourAPI%20초기%20데이터%20적재.md)
 
-협업 규칙은 [CONTRIBUTING.md](./CONTRIBUTING.md)를 따릅니다.
+### 2. 프런트엔드
+
+프런트엔드에서 `.env.example`을 `.env.local`로 복사하고, 지도를 보려면 `VITE_KAKAO_MAP_APP_KEY`를 설정합니다. `VITE_API_BASE_URL`을 비워 두면 Vite 프록시가 백엔드 `8080`으로 요청을 전달합니다.
+
+```bash
+npm ci
+npm run dev
+```
+
+[localhost:5173](http://localhost:5173)을 엽니다. 카카오 로그인을 테스트하려면 백엔드에 카카오 REST API 키와 클라이언트 시크릿을 설정하고, 카카오 앱에 `http://localhost:8080/api/v1/auth/oauth/callback/kakao`를 등록합니다.
+
+### 3. 가이드북 생성까지 체험하기
+
+AI 저장소에서 Python 3.14와 `uv`를 사용합니다. 백엔드와 동일한 `AI_CALLBACK_TOKEN`을 환경 변수로 설정한 뒤 실행합니다.
+
+```bash
+LLM_MODE=fake BE_CALLBACK_BASE_URL=http://localhost:8080 \
+  uv run uvicorn src.main:app --host 127.0.0.1 --port 8000
+```
+
+`fake` 모드는 실제 LLM을 호출하지 않습니다. 기본 로컬 구성은 HTTP 접수와 콜백을 사용합니다. RabbitMQ 연동은 [생성 메시징 설계](./docs/architecture/guidebook-mq-generation.md)를 참고하세요.
+
+## 개발 문서
+
+[요구사항 정의서](./docs/요구사항정의서-최종.md) · [API 명세](./docs/V3%20API%20명세서.md) · [테이블 정의서](./docs/테이블정의서-최종.md) · [ERD](./docs/KGB-ERD-최종.png) · [AI 콜백 연동](./docs/AI-콜백-연동.md) · [성능 측정과 모니터링](./docs/성능%20측정%20및%20모니터링%20계획.md) · [기여 가이드](./CONTRIBUTING.md)
+
+백엔드 테스트는 `./gradlew test`, 빌드는 `./gradlew build`로 실행합니다.
